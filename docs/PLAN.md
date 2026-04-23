@@ -63,6 +63,28 @@ Full catalog with mitigations in `docs/ARCHITECTURE.md` §17. Summary:
 **Entry criteria:** None.
 **Exit criteria:** All accounts created, all CLIs installed, initial monorepo committed.
 
+**Session config:** `/model claude-sonnet-4-6` · `/effort low` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior engineer guiding me through Outpost Phase 0 (accounts + CLIs).
+
+Read CLAUDE.md and docs/PLAN.md Phase 0 first.
+
+This phase is admin work I execute myself. Walk me through Tasks 0.1–0.6
+one at a time, in order. For each task:
+- Tell me exactly what to click / run / paste
+- Wait for me to confirm completion (or describe what I see if different)
+- If the task produces a key or value, we capture it to backend/.env.example
+  as a blank field; the real value goes in my local .env only (never committed)
+
+Stop at Phase 0 exit criteria. Do not start Phase 1.
+
+At phase close, if we established any new convention or admin gotcha worth
+pinning, add it to the right CLAUDE.md per the docs discipline section.
+```
+
 ### Task 0.1: Install Railway CLI
 
 - [ ] **Step 1:** Install Railway CLI.
@@ -171,6 +193,37 @@ Full catalog with mitigations in `docs/ARCHITECTURE.md` §17. Summary:
 
 **Entry criteria:** Phase 0 complete.
 **Exit criteria:** `docker compose up` runs FastAPI, `curl localhost:8000/health` returns `{"status":"ok"}`, connects to local Supabase, tests pass, ruff clean.
+
+**Session config:** `/model claude-sonnet-4-6` · `/effort medium` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior Python backend engineer. Execute Outpost Phase 1.
+
+Read in order:
+  1. CLAUDE.md (invariants, commands, docs discipline)
+  2. docs/PLAN.md Phase 1 — all tasks
+  3. docs/research/03-fastapi-supabase.md — source for project structure
+
+Execute Tasks 1.1–1.7 inline, task by task, TDD per PLAN.md pattern.
+After each task: run the verification command, /commit via the commit skill,
+mark the task complete in PLAN.md.
+
+Before writing any code against an unfamiliar library (FastAPI 0.115+,
+pydantic-settings, uv, Alembic async mode), invoke context7 MCP first —
+do not guess APIs.
+
+Hard invariants from CLAUDE.md still apply. Do not skip the ruff check or
+the docker compose verification at exit.
+
+If during this phase you establish a backend-specific convention (how
+services vs routers are organized, exception-handling patterns, async
+pitfalls discovered), create or update backend/CLAUDE.md with it before
+declaring Phase 1 done.
+
+Stop at Phase 1 exit. Do not start Phase 2.
+```
 
 ### File structure to be produced
 
@@ -661,6 +714,33 @@ docker compose down
 **Entry criteria:** Phase 1 exit passed.
 **Exit criteria:** Authenticated requests with a real Supabase JWT reach protected endpoints. Daily gate prevents a second run on the same day. `/me` returns user info + gate status.
 
+**Session config:** `/model claude-sonnet-4-6` · `/effort medium` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior backend engineer. Execute Outpost Phase 2 — Auth + Daily Gate.
+
+Read:
+  1. CLAUDE.md + backend/CLAUDE.md
+  2. docs/PLAN.md Phase 2
+  3. docs/research/03-fastapi-supabase.md §"Supabase Integration from FastAPI"
+  4. docs/ARCHITECTURE.md §9 (Auth flow) and §10 (Daily gate)
+
+Execute Tasks 2.1–2.6 inline, TDD. Use the supabase MCP to verify that
+Alembic migrations landed, Supabase CLI migrations applied RLS, and the
+on_auth_user_created trigger exists.
+
+Before any JWT/auth code, use context7 to check current PyJWT and Supabase
+SSR patterns. End-to-end verify: obtain a real Supabase access token from
+my running dev Supabase, hit /me, confirm the response shape matches.
+
+If you establish auth-specific conventions (dependency composition, where
+user_id extraction happens, rate-limit placement), update backend/CLAUDE.md.
+
+Stop at Phase 2 exit. Do not start Phase 3.
+```
+
 ### Task 2.1: Auth service (JWT decode)
 
 **Files:** Create `backend/app/auth/__init__.py`, `backend/app/auth/service.py`, `backend/app/auth/schemas.py`, `backend/tests/test_auth_service.py`.
@@ -1031,7 +1111,47 @@ uv run ruff check app/      # clean
 **Entry criteria:** Phase 2 exit passed.
 **Exit criteria:** Turn engine resolves a full turn with mocked inputs. All state transitions validated. Setting loader produces valid setting schema. Tool validator rejects bad calls.
 
-> Strategy: build the engine as pure functions over Pydantic models first, with zero LLM calls. Every mutation goes through a validated tool call. This gives us a fully testable game engine that the agent system in Phase 4 plugs into.
+**Session config:** `/model claude-opus-4-7` · `/effort high` · plan mode: no · execution: subagent-driven
+
+**Session start prompt:**
+
+```
+Role: senior game engine architect. Execute Outpost Phase 3 — Game State + Engine.
+
+This is the core of the backend. The entire agent system in Phase 4 sits
+on what you build here. Quality matters more than speed.
+
+Read first, in order:
+  1. CLAUDE.md + backend/CLAUDE.md
+  2. docs/SPEC.md §§5 (mechanics), 6 (agents), 7 (run structure), 8 (settings),
+     9 (player), 10 (end states)
+  3. docs/ARCHITECTURE.md §§3 (agents + tools), 4 (state model), 7 (DB)
+  4. docs/PLAN.md Phase 3 — all tasks
+  5. docs/research/02-game-design.md — the three mechanical systems reference
+
+Invoke superpowers:subagent-driven-development and dispatch one subagent
+per task (3.1 through 3.10). Review between each subagent. Fresh context
+per task is the point — engine decisions deserve it.
+
+Hard constraints:
+- CLAUDE.md invariant #11: all state mutations flow through validated tool
+  calls. Engine helpers that adjust grievance/health emit tool calls,
+  never mutate state directly.
+- Coup resolution (Task 3.6, ARCHITECTURE §3.5) is rule-based and pure.
+  No LLM. Test every branch of OUSTED/KILLED.
+- Setting YAMLs (Task 3.3) are procedural. Never hardcode a setting in
+  Python — enforce the schema.
+- Difficulty rails (Task 3.8) must be encoded as validator rules, not as
+  "we'll remember to tune this later."
+
+Before Phase 3 exit, create backend/app/game/CLAUDE.md documenting:
+- The pure-function discipline (state in, state out, no side effects)
+- The tool-call → validator → apply pipeline
+- How setting YAMLs are loaded and validated
+- Any gotchas discovered during implementation
+
+Stop at Phase 3 exit. Do not start Phase 4.
+```
 
 ### File structure produced
 
@@ -1460,7 +1580,58 @@ uv run ruff check app/       # clean
 **Entry criteria:** Phase 3 exit passed.
 **Exit criteria:** A full turn executes end-to-end with real LLM calls. The XML debate format produces parseable per-agent responses. Tool calls are validated by the engine. Cost stays under $0.30/run in integration test.
 
-> Strategy: build LangGraph state graph with nodes that call Anthropic SDK directly. Use respx to mock Anthropic in unit tests, but integration test with real API on a flag.
+**Session config:** `/model claude-opus-4-7` · `/effort xhigh` · **plan mode: YES** (graph wiring has design space) · execution: subagent-driven
+
+**Session start prompt:**
+
+```
+Role: senior AI agent systems engineer. Execute Outpost Phase 4 — Agent System.
+
+This is the portfolio centerpiece. It must demonstrate genuine multi-agent
+orchestration: tool calling, cached personality prompts, XML-batched debate,
+LangGraph state management with pause/resume.
+
+Start in plan mode. Read fully before any edits:
+  1. CLAUDE.md + backend/CLAUDE.md + backend/app/game/CLAUDE.md (from Phase 3)
+  2. docs/ARCHITECTURE.md §§3 (agent architecture — critical), 5 (prompt engineering)
+  3. docs/research/01-agent-architecture.md — full research, including the XML debate format
+  4. docs/PLAN.md Phase 4
+
+Produce a plan that walks through the LangGraph node graph: which nodes
+call LLMs, which don't, where state transitions happen, where the pause
+point is, how the decide endpoint resumes. Get my approval before exiting
+plan mode.
+
+Once approved, invoke superpowers:subagent-driven-development. Dispatch
+one subagent per task 4.1–4.8.
+
+Auto-trigger: the `claude-api` skill will fire on Anthropic SDK imports.
+Let it run — it has current patterns for caching, tool use, streaming.
+
+Before Task 4.1: invoke context7:
+  mcp__plugin_context7_context7__resolve-library-id "anthropic-sdk-python"
+  mcp__plugin_context7_context7__query-docs <id> "prompt caching ephemeral cache_control messages tool_use"
+Use dated model IDs (claude-haiku-4-5-20251001, and whatever context7
+returns for Sonnet 4.6) — not aliases.
+
+Hard invariants for this phase:
+- #5 prompt caching mandatory — every system prompt has cache_control
+  blocks; verify `cache_read_input_tokens > 0` in tests after turn 2.
+- #6 debate is ONE batched call — not 4. XML persona sections.
+- #12 thread_id on every graph.ainvoke / graph.astream.
+
+Integration test (4.8) costs real tokens. Run manually when the graph feels
+solid. Target: 10-turn run completes, cost < $0.30, no silent LLM failures.
+
+Before Phase 4 exit, create backend/app/agent/CLAUDE.md covering:
+- LangGraph node pattern (async def over GameTurnState)
+- XML debate response parsing per agent
+- Cache layout (what's cached, why, what invalidates it)
+- Cost accounting (which functions emit costs, how turn_cost_cents grows)
+- Any Anthropic SDK quirks discovered
+
+Stop at Phase 4 exit. Do not start Phase 5.
+```
 
 ### Task 4.1: Anthropic client wrapper with caching
 
@@ -1665,6 +1836,43 @@ uv run pytest -m integration tests/integration/  # run manually, verify cost + s
 **Entry criteria:** Phase 4 exit passed.
 **Exit criteria:** Langfuse traces appear in dashboard for every run. 5 eval metrics compute on simulated games. `agentevals` CI test passes.
 
+**Session config:** `/model claude-opus-4-7` · `/effort high` · plan mode: no · execution: subagent-driven
+
+**Session start prompt:**
+
+```
+Role: senior ML/observability engineer. Execute Outpost Phase 5 — Observability + Eval.
+
+Read:
+  1. CLAUDE.md + backend/CLAUDE.md + backend/app/agent/CLAUDE.md
+  2. docs/ARCHITECTURE.md §§11 (observability), 12 (eval)
+  3. docs/research/05-eval-observability.md — 5 metric definitions + compute
+  4. docs/PLAN.md Phase 5
+
+Invoke superpowers:subagent-driven-development. Each metric is self-
+contained — per-task subagent fits perfectly.
+
+Before Langfuse code: context7.
+  mcp__plugin_context7_context7__resolve-library-id "langfuse python"
+  mcp__plugin_context7_context7__query-docs <id> "langgraph callback trace score"
+
+Personality consistency (5.2) downloads sentence-transformers (~80MB model)
+on first use. Warn me or cache in the Docker image.
+
+CI workflow (5.5): the eval job runs on PR and costs real tokens. Include
+a budget ceiling — abort if per-run cost exceeds $0.50. ANTHROPIC_API_KEY
+from GitHub Secrets.
+
+After Phase 5 exit, verify traces flow to the Langfuse dashboard from one
+test run and confirm all 5 metrics compute on a sample.
+
+Add any eval-specific conventions (metric naming, threshold placement,
+score emission patterns) to backend/app/eval/CLAUDE.md if the directory
+develops enough to warrant one.
+
+Stop at Phase 5 exit. Do not start Phase 6.
+```
+
 ### Task 5.1: Wire Langfuse callback handler
 
 - [ ] **Step 1:** Add Langfuse handler to each `graph.ainvoke()` call. Reference `docs/ARCHITECTURE.md` §11.
@@ -1725,6 +1933,46 @@ uv run pytest -m integration tests/integration/  # run manually, verify cost + s
 
 **Entry criteria:** Phase 5 exit passed (or deferred — FE can start once BE session + turn endpoints work).
 **Exit criteria:** Next.js app renders landing page with pixel-art theme applied. Fonts load. DiceBear portrait renders correctly. Auth callback redirects work.
+
+**Session config:** `/model claude-opus-4-7` · `/effort medium` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior frontend engineer. Execute Outpost Phase 6 — Next.js + Pixel Theme.
+
+Shift context: backend is done; this is a fresh frontend tree. Re-read:
+  1. CLAUDE.md (root)
+  2. docs/ARCHITECTURE.md §8 (frontend architecture)
+  3. docs/research/04-visual-system.md — full visual reference
+  4. docs/SPEC.md §§14 (tone), 10 (aesthetic direction)
+  5. docs/PLAN.md Phase 6
+
+Execute inline — each visual step benefits from seeing the previous.
+
+Context7 before writing against:
+- Next.js 16 App Router + next/font
+- Tailwind v4 theme syntax (different from v3)
+- shadcn/ui CLI and theme vars
+- @dicebear/core + @dicebear/pixel-art
+- @supabase/ssr for SSR auth
+
+Invoke the vercel:shadcn skill during Task 6.1 — it has current theming
+patterns.
+
+After each UI task from 6.3 onward, use playwright MCP to screenshot at
+1440, 1024, and 768. Describe what you SEE, not what you coded. Iterate.
+
+Create frontend/CLAUDE.md after Task 6.3 with:
+- Pixel-art theme conventions (--radius: 0, NES-pattern borders, dither)
+- Font role mapping (Silkscreen/Press Start 2P/VT323/IBM Plex Mono)
+- shadcn composition strategy (Level 2 override vs Level 3 copy-edit)
+- Setting palette swap mechanics (data-setting attribute)
+
+Phase 6 is not done until landing + auth callback work end-to-end in dev.
+
+Stop at Phase 6 exit. Do not start Phase 7.
+```
 
 ### Task 6.1: Initialize Next.js + Tailwind + shadcn
 
@@ -1813,6 +2061,45 @@ cd frontend && pnpm dev
 **Entry criteria:** Phase 6 exit. Backend `/game/{id}/turn` SSE works.
 **Exit criteria:** Full dashboard renders. Starting a turn streams agent debate. Player choice submission works. Dashboard state updates correctly across turns.
 
+**Session config:** `/model claude-opus-4-7` · `/effort high` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior frontend engineer + UI designer. Execute Outpost Phase 7 — Live Dashboard.
+
+This is where the game becomes real. Visual iteration IS the work. Expect
+many screenshot-adjust loops.
+
+Read:
+  1. CLAUDE.md + frontend/CLAUDE.md (from Phase 6)
+  2. docs/SPEC.md §4 (core loop walkthrough — shape of what the UI expresses)
+  3. docs/ARCHITECTURE.md §§8.3 (layout grid), 8.7 (SSE hook)
+  4. docs/PLAN.md Phase 7
+
+Execute inline, task by task. After every component task, use playwright
+MCP to screenshot and describe the visual result before proceeding.
+
+Auto-trigger: vercel:react-best-practices will fire after multiple TSX
+edits. Run the checklist.
+
+Hard rules for this phase:
+- No placeholder copy on a committed component. WIP lives in branches, not
+  main.
+- CRT scanline overlay (Task 7.8) must not drop text contrast below WCAG
+  AA. Verify with a contrast tool before commit.
+- SSE token refresh (Task 7.6) is non-negotiable. Phase 7 not done until
+  a simulated mid-stream refresh recovers cleanly.
+
+After Phase 7 exit, update frontend/CLAUDE.md with:
+- Dashboard grid conventions and responsive breakpoints
+- SSE consumption patterns (hook shape, error recovery)
+- How errors surface to the user (toasts? inline? dialog?)
+- Any shadcn components that needed Level 3 override
+
+Stop at Phase 7 exit. Do not start Phase 8.
+```
+
 ### Task 7.1: Dashboard layout shell
 
 **Files:** `frontend/app/(authed)/run/[id]/page.tsx`, `frontend/components/dashboard/DashboardShell.tsx`.
@@ -1879,6 +2166,41 @@ cd frontend && pnpm dev
 **Entry criteria:** Phase 7 exit passed.
 **Exit criteria:** Post-mortem renders timeline + counterfactuals for completed runs. Share card generates correctly and is accessible via public `/share/[token]` URL.
 
+**Session config:** `/model claude-opus-4-7` · `/effort medium` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior frontend engineer. Execute Outpost Phase 8 — Post-Mortem + Share.
+
+This phase produces the shareable artifact that replaces a leaderboard.
+Quality of the timeline + share card determines how the game spreads.
+
+Read:
+  1. CLAUDE.md + frontend/CLAUDE.md
+  2. docs/SPEC.md §11 (post-mortem structure — detailed)
+  3. docs/PLAN.md Phase 8
+
+Execute inline. Playwright-screenshot after each UI task.
+
+Before opengraph image (Task 8.4): context7 next/og — API changes per
+Next.js major version.
+
+Test the share URL on Twitter/X, Discord, and Bluesky — each has different
+OG rules. Task 8.4 is done only when all three unfurl correctly.
+
+Counterfactuals panel (Task 8.3) needs a backend endpoint for dormant
+seeds + near-miss coup data. If it doesn't exist yet, build backend
+first — no faked data in the UI.
+
+Run /humanizer on any marketing-voice copy before commit.
+
+Update frontend/CLAUDE.md if new conventions emerge (share-card layout,
+public vs auth routes, OG image generation patterns).
+
+Stop at Phase 8 exit. Do not start Phase 9.
+```
+
 ### Task 8.1: Post-mortem data endpoint
 
 **Files:** `backend/app/game/router.py` (add `GET /game/{id}/post-mortem`), test.
@@ -1922,6 +2244,42 @@ cd frontend && pnpm dev
 
 **Entry criteria:** Phase 8 exit passed.
 **Exit criteria:** Outpost is live at a public URL. All items in `docs/SPEC.md` §16 success criteria check.
+
+**Session config:** `/model claude-sonnet-4-6` (Opus for README in Task 9.6, Opus for Task 9.7 verification) · `/effort medium` · plan mode: no
+
+**Session start prompt:**
+
+```
+Role: senior DevOps + SRE. Execute Outpost Phase 9 — Deploy + Polish.
+
+Read:
+  1. CLAUDE.md entire (launch reality check)
+  2. docs/ARCHITECTURE.md §13 (deployment)
+  3. docs/PLAN.md Phase 9
+  4. docs/SPEC.md §16 (MVP ship criteria — the gate)
+
+Execute inline. Deploy first (9.1, 9.2), polish second.
+
+9.1 (Vercel) and 9.2 (Railway) run in parallel — Vercel auto-deploys from
+GitHub, Railway wants a first deploy then auto. Use vercel MCP for build
+status.
+
+9.4 (CI/CD): verify the full pipeline runs green on a trivial follow-up PR.
+
+9.6 (README polish): switch to Opus. Run /humanizer on marketing prose.
+Avoid AI-writing tells — this is the recruiter first impression.
+
+9.7 is THE GATE. Opus + /effort high. Walk through docs/SPEC.md §16
+checklist item by item. Each unchecked box = Phase 9 not done. Failures
+route back to the relevant earlier phase for fix.
+
+Final CLAUDE.md update: note anything production or deploy-related that
+future you (or a maintainer) would need to know — Railway quirks, Vercel
+config surprises, env-var precedence, CORS edge cases discovered.
+
+When §16 fully checks: declare MVP complete. Prompt me to flip the repo
+public (commands in README.md). Do not flip it yourself.
+```
 
 ### Task 9.1: Frontend deploy
 

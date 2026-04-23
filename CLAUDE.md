@@ -36,6 +36,7 @@ Daily browser-based narrative roguelike. Four AI advisors run a fragile colony u
 10. **Eval thresholds gate merges.** PRs dropping personality consistency < 0.72 or tool validity < 85% do not merge.
 11. **All state mutations through validated tool calls — no engine-only side channel.** Axis-heuristic engine code (e.g., "Collective agent gains grievance when decision harms group") emits `adjust_grievance` tool calls rather than mutating state directly, so the Tool-Call Validity metric captures every state change.
 12. **Thread-id discipline for LangGraph.** Every `graph.invoke` and `graph.ainvoke` passes `config={"configurable": {"thread_id": str(game_id)}}`. Missing thread_id silently breaks pause/resume between `/agent/turn` and `/decide`.
+13. **Keep CLAUDE.md files current.** At phase close, audit new conventions, commands, anti-patterns, and gotchas — write them into the right `CLAUDE.md` (root or per-directory). Undocumented conventions cannot be followed.
 
 ---
 
@@ -176,6 +177,19 @@ When writing advisor lines, events, or UI copy, pass through the `/humanizer` sk
 See `docs/PLAN.md`. Update the phase status and checkbox completion in PLAN.md as work progresses. Entry/exit criteria gate phase transitions — do not skip exit verification.
 
 ---
+
+## Docs & memory discipline
+
+`CLAUDE.md` files are persistent memory across sessions. What isn't written here, future you (or a subagent) cannot know. Maintain actively:
+
+- **Root `CLAUDE.md`:** stack + invariants + cross-cutting commands + MCP rules. Update when any of these change.
+- **Per-directory `CLAUDE.md`:** conventions specific to that directory (e.g., `backend/app/game/CLAUDE.md` for engine patterns, `frontend/CLAUDE.md` for theming rules). Create when a directory develops genuinely non-obvious conventions that a future session would otherwise have to re-discover.
+- **At phase close:** audit what new conventions, commands, gotchas, and anti-patterns emerged during the phase. Write them into the right `CLAUDE.md`. This is part of the phase exit — not optional, not deferrable.
+- **When a bug root-causes to a non-obvious gotcha:** add it to the relevant `CLAUDE.md`'s anti-patterns section so the same bug doesn't bite next session.
+- **When a convention changes:** update the existing line, don't duplicate. Stale conventions are worse than missing ones.
+- **Per-directory files stay lean.** If `backend/app/game/CLAUDE.md` exceeds ~100 lines, the directory probably has too many conventions and needs refactoring, not more docs.
+
+Design docs under `docs/` (SPEC, ARCHITECTURE, PLAN, research/) are loaded on demand — they capture what the project IS. `CLAUDE.md` files capture how the project WORKS in practice as it grows. Both must stay accurate.
 
 ## Known risks (full catalog in ARCHITECTURE §17)
 
