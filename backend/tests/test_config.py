@@ -1,6 +1,7 @@
 """Settings loads the required Supabase/Anthropic env vars and fails fast when missing."""
 
 import pytest
+from pydantic import ValidationError
 
 REQUIRED_ENV = {
     "DATABASE_URL": "postgresql+psycopg://u:p@h/db",
@@ -31,7 +32,7 @@ def test_settings_require_critical_env_vars(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     from app.config import Settings
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Settings(_env_file=None)
 
 
