@@ -1,0 +1,18 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./tests:/app/tests
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override .env so the container talks to local Supabase (host Postgres)
+      # instead of the remote project URL set for the host shell.
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@host.docker.internal:54322/postgres
+    restart: unless-stopped
