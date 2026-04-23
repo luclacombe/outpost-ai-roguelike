@@ -193,6 +193,8 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
 
 ## Phase 1: Backend Scaffolding
 
+**Status:** ✅ Complete (2026-04-23)
+
 **Entry criteria:** Phase 0 complete.
 **Exit criteria:** `docker compose up` runs FastAPI, `curl localhost:8000/health` returns `{"status":"ok"}`, connects to local Supabase, tests pass, ruff clean.
 
@@ -262,23 +264,23 @@ backend/
 
 ### Task 1.1: Initialize backend with uv
 
-- [ ] **Step 1:** Create backend directory and init uv project.
+- [x] **Step 1:** Create backend directory and init uv project.
   ```bash
   mkdir -p backend && cd backend
   uv init --name outpost-backend --python 3.12
   ```
-- [ ] **Step 2:** Add runtime dependencies.
+- [x] **Step 2:** Add runtime dependencies.
   ```bash
   uv add "fastapi>=0.115" "uvicorn[standard]" pydantic "pydantic-settings" \
     "sqlalchemy[asyncio]" "psycopg[binary,pool]" "alembic" "python-jose[cryptography]" \
     "pyjwt" "structlog" "httpx" "anthropic" "langgraph" "langfuse" "langchain-core" \
     "slowapi" "python-multipart"
   ```
-- [ ] **Step 3:** Add dev dependencies.
+- [x] **Step 3:** Add dev dependencies.
   ```bash
   uv add --dev pytest pytest-asyncio pytest-cov ruff httpx respx
   ```
-- [ ] **Step 4:** Configure ruff + pytest in `pyproject.toml` — append:
+- [x] **Step 4:** Configure ruff + pytest in `pyproject.toml` — append:
   ```toml
   [tool.ruff]
   line-length = 100
@@ -294,7 +296,7 @@ backend/
       "eval: simulated-game evaluation tests (slow, costs LLM tokens)",
   ]
   ```
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/pyproject.toml backend/uv.lock backend/README.md
   git commit -m "feat(backend): initialize uv project with dependencies"
@@ -304,7 +306,7 @@ backend/
 
 **Files:** Create `backend/app/config.py`, `backend/app/__init__.py`, `backend/.env.example`, `backend/tests/test_config.py`, `backend/tests/__init__.py`.
 
-- [ ] **Step 1:** Write failing test `backend/tests/test_config.py`:
+- [x] **Step 1:** Write failing test `backend/tests/test_config.py`:
   ```python
   from app.config import Settings
   
@@ -325,11 +327,11 @@ backend/
       assert s.DATABASE_URL == "postgresql+psycopg://u:p@h/db"
       assert s.ENVIRONMENT == "dev"  # default
   ```
-- [ ] **Step 2:** Run — expect failure.
+- [x] **Step 2:** Run — expect failure.
   ```bash
   cd backend && uv run pytest tests/test_config.py -v
   ```
-- [ ] **Step 3:** Implement `backend/app/__init__.py` (empty) and `backend/app/config.py`:
+- [x] **Step 3:** Implement `backend/app/__init__.py` (empty) and `backend/app/config.py`:
   ```python
   from pydantic import Field
   from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -359,7 +361,7 @@ backend/
   
   settings = Settings()
   ```
-- [ ] **Step 4:** Create `backend/.env.example`:
+- [x] **Step 4:** Create `backend/.env.example`:
   ```dotenv
   DATABASE_URL=postgresql+psycopg://postgres:postgres@host.docker.internal:54322/postgres
   SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
@@ -372,16 +374,16 @@ backend/
   ENVIRONMENT=dev
   LOG_LEVEL=info
   ```
-- [ ] **Step 5:** Copy to `.env` with real values from Phase 0:
+- [x] **Step 5:** Copy to `.env` with real values from Phase 0:
   ```bash
   cp .env.example .env
   # Edit .env, fill real values
   ```
-- [ ] **Step 6:** Run tests — expect pass.
+- [x] **Step 6:** Run tests — expect pass.
   ```bash
   uv run pytest tests/test_config.py -v
   ```
-- [ ] **Step 7:** Commit.
+- [x] **Step 7:** Commit.
   ```bash
   git add backend/app/config.py backend/app/__init__.py backend/tests/ backend/.env.example
   git commit -m "feat(backend): pydantic settings from env"
@@ -391,7 +393,7 @@ backend/
 
 **Files:** Create `backend/app/database.py`, `backend/tests/test_database.py`.
 
-- [ ] **Step 1:** Write failing test:
+- [x] **Step 1:** Write failing test:
   ```python
   # backend/tests/test_database.py
   import pytest
@@ -404,7 +406,7 @@ backend/
           result = await session.execute(text("SELECT 1"))
           assert result.scalar() == 1
   ```
-- [ ] **Step 2:** Implement `backend/app/database.py`:
+- [x] **Step 2:** Implement `backend/app/database.py`:
   ```python
   from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
   from app.config import settings
@@ -423,17 +425,17 @@ backend/
       expire_on_commit=False,
   )
   ```
-- [ ] **Step 3:** Start local Supabase (requires Docker running).
+- [x] **Step 3:** Start local Supabase (requires Docker running).
   ```bash
   cd backend && supabase init  # accept defaults
   supabase start
   # note the output's "API URL" and "DB URL" — the DB URL is port 54322
   ```
-- [ ] **Step 4:** Run tests — expect pass.
+- [x] **Step 4:** Run tests — expect pass.
   ```bash
   uv run pytest tests/test_database.py -v
   ```
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/app/database.py backend/tests/test_database.py backend/supabase/
   git commit -m "feat(backend): async SQLAlchemy engine"
@@ -443,8 +445,8 @@ backend/
 
 **Files:** Create `backend/app/middleware/__init__.py`, `backend/app/middleware/logging.py`.
 
-- [ ] **Step 1:** Write `backend/app/middleware/__init__.py` (empty).
-- [ ] **Step 2:** Write `backend/app/middleware/logging.py`:
+- [x] **Step 1:** Write `backend/app/middleware/__init__.py` (empty).
+- [x] **Step 2:** Write `backend/app/middleware/logging.py`:
   ```python
   import logging
   import time
@@ -494,7 +496,7 @@ backend/
 
 **Files:** Create `backend/app/main.py`, `backend/tests/test_health.py`, `backend/tests/conftest.py`.
 
-- [ ] **Step 1:** Write `backend/tests/conftest.py`:
+- [x] **Step 1:** Write `backend/tests/conftest.py`:
   ```python
   import pytest_asyncio
   from httpx import AsyncClient, ASGITransport
@@ -507,14 +509,14 @@ backend/
       ) as c:
           yield c
   ```
-- [ ] **Step 2:** Write `backend/tests/test_health.py`:
+- [x] **Step 2:** Write `backend/tests/test_health.py`:
   ```python
   async def test_health(client):
       response = await client.get("/health")
       assert response.status_code == 200
       assert response.json() == {"status": "ok", "service": "outpost-backend"}
   ```
-- [ ] **Step 3:** Implement `backend/app/main.py`:
+- [x] **Step 3:** Implement `backend/app/main.py`:
   ```python
   from contextlib import asynccontextmanager
   from fastapi import FastAPI
@@ -547,17 +549,17 @@ backend/
   async def health():
       return {"status": "ok", "service": "outpost-backend"}
   ```
-- [ ] **Step 4:** Run tests — expect pass.
+- [x] **Step 4:** Run tests — expect pass.
   ```bash
   uv run pytest tests/ -v
   ```
-- [ ] **Step 5:** Run locally to sanity check.
+- [x] **Step 5:** Run locally to sanity check.
   ```bash
   uv run uvicorn app.main:app --reload
   # in another terminal:
   curl localhost:8000/health
   ```
-- [ ] **Step 6:** Commit.
+- [x] **Step 6:** Commit.
   ```bash
   git add backend/app/ backend/tests/
   git commit -m "feat(backend): FastAPI app with health endpoint"
@@ -565,7 +567,7 @@ backend/
 
 ### Task 1.6: Dockerfile, Dockerfile.dev, docker-compose.yml
 
-- [ ] **Step 1:** Create `backend/Dockerfile.dev`:
+- [x] **Step 1:** Create `backend/Dockerfile.dev`:
   ```dockerfile
   FROM python:3.12-slim
   
@@ -580,7 +582,7 @@ backend/
   
   CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
   ```
-- [ ] **Step 2:** Create `backend/Dockerfile`:
+- [x] **Step 2:** Create `backend/Dockerfile`:
   ```dockerfile
   FROM python:3.12-slim
   
@@ -598,7 +600,7 @@ backend/
   EXPOSE 8000
   CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
   ```
-- [ ] **Step 3:** Create `backend/docker-compose.yml`:
+- [x] **Step 3:** Create `backend/docker-compose.yml`:
   ```yaml
   services:
     api:
@@ -617,7 +619,7 @@ backend/
         DATABASE_URL: postgresql+psycopg://postgres:postgres@host.docker.internal:54322/postgres
       restart: unless-stopped
   ```
-- [ ] **Step 4:** Verify `docker compose up` runs.
+- [x] **Step 4:** Verify `docker compose up` runs.
   ```bash
   # from backend/
   docker compose up --build -d
@@ -625,7 +627,7 @@ backend/
   # expect: {"status":"ok","service":"outpost-backend"}
   docker compose down
   ```
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/Dockerfile backend/Dockerfile.dev backend/docker-compose.yml
   git commit -m "feat(backend): Docker Compose dev setup"
@@ -633,11 +635,11 @@ backend/
 
 ### Task 1.7: Alembic init
 
-- [ ] **Step 1:** Initialize Alembic.
+- [x] **Step 1:** Initialize Alembic.
   ```bash
   cd backend && uv run alembic init -t async alembic
   ```
-- [ ] **Step 2:** Edit `backend/alembic/env.py`. Replace the connection setup with:
+- [x] **Step 2:** Edit `backend/alembic/env.py`. Replace the connection setup with:
   ```python
   import asyncio
   from logging.config import fileConfig
@@ -687,12 +689,12 @@ backend/
   else:
       run_migrations_online()
   ```
-- [ ] **Step 3:** Verify alembic recognizes config.
+- [x] **Step 3:** Verify alembic recognizes config.
   ```bash
   uv run alembic current
   # expect no output or "INFO [alembic.runtime.migration] Context impl..."
   ```
-- [ ] **Step 4:** Commit.
+- [x] **Step 4:** Commit.
   ```bash
   git add backend/alembic/ backend/alembic.ini
   git commit -m "feat(backend): alembic async setup"
@@ -2350,6 +2352,16 @@ Any gap → back to fix.
 - **Supabase-generated DB passwords contain reserved URL characters.** Symptom: the auto-generated password with `#`, `%`, `!`, `$` in `DATABASE_URL` would silently truncate at `#` or fail as invalid percent-escape. Fix: percent-encode in the URL (`#`→`%23`, `%`→`%25`, `!`→`%21`, `$`→`%24`). File: `backend/.env` `DATABASE_URL`. Takeaway: always URL-encode Supabase passwords before embedding.
 
 - **`LANGFUSE_HOST` is deprecated; SDK reads `LANGFUSE_BASE_URL`.** Symptom: I suggested `LANGFUSE_HOST` based on stale training knowledge. Root cause: Langfuse Python SDK repo rules explicitly deprecate HOST. Fix: renamed var in `backend/.env.example`. Takeaway: verify env var names via context7 before instructing — don't rely on memory for SDK contracts.
+
+### Phase 1 (2026-04-23)
+
+- **Module-level `settings = Settings()` crashes at import when `.env` is missing a required key.** Symptom: `ruff check` and tests exploded with `FRONTEND_URL Field required` because the Phase 0 `.env` predates the Phase 1 Settings schema. Fix: appended `FRONTEND_URL=http://localhost:3000` to `backend/.env`. Takeaway: whenever Settings gains a required field, update `.env.example` _and_ prompt the user to top up their `.env` — pydantic-settings doesn't fall back to `.env.example`.
+
+- **Postgres connection tests must override `DATABASE_URL` to localhost.** Symptom: `uv run pytest tests/test_database.py` failed against the remote Supabase URL baked into `.env`. Fix: prefix the test command with `DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:54322/postgres` so pydantic-settings picks up the OS env over `.env`. Takeaway: document the override as the standard local test invocation; OS env beats `.env` so no `.env` mutation needed. Inside `docker-compose.yml` the same override is baked in via `environment:` so the container always hits the host's local Postgres.
+
+- **Supabase CLI project-id follows the directory name where `supabase init` ran.** Symptom: running `supabase status` from `backend/` looked for container `supabase_db_backend` while the live container was `supabase_db_Outpost` (started from the repo root). Fix: always run `supabase start/stop/status` from the same directory — preferring `backend/` since `backend/supabase/config.toml` lives there. Takeaway: stale project-id references are a normal migration footgun; `docker ps` is the fastest sanity check.
+
+- **Ruff B017: `pytest.raises(Exception)` is too broad.** Symptom: `ruff check` flagged `tests/test_config.py` after I wrote the initial red test. Fix: narrowed to `pytest.raises(ValidationError)`. Takeaway: assert the specific exception type when testing validation paths; B017 is intentional and useful.
 
 ---
 
