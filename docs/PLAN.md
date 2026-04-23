@@ -715,6 +715,7 @@ docker compose down
 
 ## Phase 2: Auth + Daily Gate
 
+**Status:** ✅ Complete (2026-04-23)
 **Entry criteria:** Phase 1 exit passed.
 **Exit criteria:** Authenticated requests with a real Supabase JWT reach protected endpoints. Daily gate prevents a second run on the same day. `/me` returns user info + gate status.
 
@@ -749,7 +750,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 **Files:** Create `backend/app/auth/__init__.py`, `backend/app/auth/service.py`, `backend/app/auth/schemas.py`, `backend/tests/test_auth_service.py`.
 
-- [ ] **Step 1:** Write failing test `backend/tests/test_auth_service.py`:
+- [x] **Step 1:** Write failing test `backend/tests/test_auth_service.py`:
   ```python
   import jwt
   import pytest
@@ -778,7 +779,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
           decode_supabase_jwt(token)
       assert exc.value.status_code == 401
   ```
-- [ ] **Step 2:** Implement `backend/app/auth/service.py`:
+- [x] **Step 2:** Implement `backend/app/auth/service.py`:
   ```python
   import jwt
   from fastapi import HTTPException, status
@@ -798,7 +799,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
       except jwt.InvalidTokenError as e:
           raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e
   ```
-- [ ] **Step 3:** Write `backend/app/auth/schemas.py`:
+- [x] **Step 3:** Write `backend/app/auth/schemas.py`:
   ```python
   from pydantic import BaseModel
   
@@ -809,12 +810,12 @@ Stop at Phase 2 exit. Do not start Phase 3.
       display_name: str | None
       next_run_at: str | None  # ISO 8601 or None if eligible now
   ```
-- [ ] **Step 4:** Add `backend/app/auth/__init__.py` (empty).
-- [ ] **Step 5:** Run tests — expect pass.
+- [x] **Step 4:** Add `backend/app/auth/__init__.py` (empty).
+- [x] **Step 5:** Run tests — expect pass.
   ```bash
   uv run pytest tests/test_auth_service.py -v
   ```
-- [ ] **Step 6:** Commit.
+- [x] **Step 6:** Commit.
   ```bash
   git add backend/app/auth/ backend/tests/test_auth_service.py
   git commit -m "feat(auth): supabase JWT decode"
@@ -824,7 +825,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 **Files:** Create `backend/app/dependencies.py`, `backend/tests/test_dependencies.py`.
 
-- [ ] **Step 1:** Implement `backend/app/dependencies.py`:
+- [x] **Step 1:** Implement `backend/app/dependencies.py`:
   ```python
   from collections.abc import AsyncGenerator
   from fastapi import Depends
@@ -846,7 +847,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
   ) -> dict:
       return decode_supabase_jwt(credentials.credentials)
   ```
-- [ ] **Step 2:** Update `backend/tests/conftest.py` to allow auth override:
+- [x] **Step 2:** Update `backend/tests/conftest.py` to allow auth override:
   ```python
   import pytest_asyncio
   from httpx import AsyncClient, ASGITransport
@@ -869,7 +870,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
       async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
           yield c
   ```
-- [ ] **Step 3:** Commit.
+- [x] **Step 3:** Commit.
   ```bash
   git add backend/app/dependencies.py backend/tests/conftest.py
   git commit -m "feat(auth): dependency injection for current user + db"
@@ -879,7 +880,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 **Files:** Create `backend/app/models.py`, Alembic migration file.
 
-- [ ] **Step 1:** Create `backend/app/models.py` (shared Base):
+- [x] **Step 1:** Create `backend/app/models.py` (shared Base):
   ```python
   from datetime import datetime
   from uuid import UUID
@@ -903,16 +904,16 @@ Stop at Phase 2 exit. Do not start Phase 3.
           DateTime(timezone=True), server_default=text("now()")
       )
   ```
-- [ ] **Step 2:** Register metadata in `backend/alembic/env.py`. Replace `target_metadata = None` with:
+- [x] **Step 2:** Register metadata in `backend/alembic/env.py`. Replace `target_metadata = None` with:
   ```python
   from app.models import Base
   target_metadata = Base.metadata
   ```
-- [ ] **Step 3:** Generate migration.
+- [x] **Step 3:** Generate migration.
   ```bash
   cd backend && uv run alembic revision --autogenerate -m "create profiles table"
   ```
-- [ ] **Step 4:** Review the generated file in `backend/alembic/versions/`. It should create the `profiles` table. Edit if needed so that the column `id` references `auth.users(id)`:
+- [x] **Step 4:** Review the generated file in `backend/alembic/versions/`. It should create the `profiles` table. Edit if needed so that the column `id` references `auth.users(id)`:
   ```python
   import sqlalchemy as sa
   from sqlalchemy.dialects import postgresql
@@ -931,12 +932,12 @@ Stop at Phase 2 exit. Do not start Phase 3.
   def downgrade():
       op.drop_table("profiles")
   ```
-- [ ] **Step 5:** Apply migration.
+- [x] **Step 5:** Apply migration.
   ```bash
   uv run alembic upgrade head
   ```
-- [ ] **Step 6:** Verify with supabase MCP — list tables should include `profiles`.
-- [ ] **Step 7:** Commit.
+- [x] **Step 6:** Verify with supabase MCP — list tables should include `profiles`.
+- [x] **Step 7:** Commit.
   ```bash
   git add backend/app/models.py backend/alembic/
   git commit -m "feat(db): profiles table migration"
@@ -944,11 +945,11 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 ### Task 2.4: RLS + profile bootstrap trigger (Supabase CLI migration)
 
-- [ ] **Step 1:** Create Supabase migration.
+- [x] **Step 1:** Create Supabase migration.
   ```bash
   cd backend && supabase migration new enable_rls_profiles_and_bootstrap_trigger
   ```
-- [ ] **Step 2:** Edit the generated file under `supabase/migrations/<timestamp>_enable_rls_profiles_and_bootstrap_trigger.sql`:
+- [x] **Step 2:** Edit the generated file under `supabase/migrations/<timestamp>_enable_rls_profiles_and_bootstrap_trigger.sql`:
   ```sql
   -- Enable RLS on profiles
   ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -978,12 +979,12 @@ Stop at Phase 2 exit. Do not start Phase 3.
       AFTER INSERT ON auth.users
       FOR EACH ROW EXECUTE FUNCTION public.create_profile_for_new_user();
   ```
-- [ ] **Step 3:** Apply via Supabase CLI.
+- [x] **Step 3:** Apply via Supabase CLI.
   ```bash
   supabase db push
   ```
-- [ ] **Step 4:** Verify with supabase MCP: query `SELECT * FROM pg_trigger WHERE tgname = 'on_auth_user_created'`.
-- [ ] **Step 5:** Commit.
+- [x] **Step 4:** Verify with supabase MCP: query `SELECT * FROM pg_trigger WHERE tgname = 'on_auth_user_created'`.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/supabase/
   git commit -m "feat(auth): RLS + profile bootstrap trigger"
@@ -993,7 +994,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 **Files:** Create `backend/app/auth/gate.py`, `backend/tests/test_gate.py`.
 
-- [ ] **Step 1:** Write failing test:
+- [x] **Step 1:** Write failing test:
   ```python
   # backend/tests/test_gate.py
   from datetime import datetime, timedelta, timezone
@@ -1015,7 +1016,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
       expected = datetime(2026, 4, 24, 0, 0, tzinfo=timezone.utc)
       assert next_run_at(last) == expected
   ```
-- [ ] **Step 2:** Implement `backend/app/auth/gate.py`:
+- [x] **Step 2:** Implement `backend/app/auth/gate.py`:
   ```python
   from datetime import datetime, timedelta, timezone
   
@@ -1031,11 +1032,11 @@ Stop at Phase 2 exit. Do not start Phase 3.
           return True
       return datetime.now(timezone.utc) >= next_run_at(last_started)
   ```
-- [ ] **Step 3:** Run tests — expect pass.
+- [x] **Step 3:** Run tests — expect pass.
   ```bash
   uv run pytest tests/test_gate.py -v
   ```
-- [ ] **Step 4:** Commit.
+- [x] **Step 4:** Commit.
   ```bash
   git add backend/app/auth/gate.py backend/tests/test_gate.py
   git commit -m "feat(auth): daily gate service"
@@ -1045,7 +1046,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
 
 **Files:** Create `backend/app/auth/router.py`, `backend/tests/test_me_endpoint.py`. Modify `backend/app/main.py`.
 
-- [ ] **Step 1:** Write failing test:
+- [x] **Step 1:** Write failing test:
   ```python
   # backend/tests/test_me_endpoint.py
   async def test_me_returns_user_info(client):
@@ -1059,7 +1060,7 @@ Stop at Phase 2 exit. Do not start Phase 3.
       response = await unauth_client.get("/me")
       assert response.status_code in (401, 403)
   ```
-- [ ] **Step 2:** Implement `backend/app/auth/router.py`:
+- [x] **Step 2:** Implement `backend/app/auth/router.py`:
   ```python
   from uuid import UUID
   from fastapi import APIRouter, Depends
@@ -1086,16 +1087,16 @@ Stop at Phase 2 exit. Do not start Phase 3.
           next_run_at=None if eligible else next_run_at(last).isoformat(),
       )
   ```
-- [ ] **Step 3:** Include router in `backend/app/main.py` — add after CORS:
+- [x] **Step 3:** Include router in `backend/app/main.py` — add after CORS:
   ```python
   from app.auth.router import router as auth_router
   app.include_router(auth_router)
   ```
-- [ ] **Step 4:** Run tests — expect pass.
+- [x] **Step 4:** Run tests — expect pass.
   ```bash
   uv run pytest tests/ -v
   ```
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/app/auth/router.py backend/app/main.py backend/tests/test_me_endpoint.py
   git commit -m "feat(auth): /me endpoint with daily gate status"
@@ -2362,6 +2363,20 @@ Any gap → back to fix.
 - **Supabase CLI project-id follows the directory name where `supabase init` ran.** Symptom: running `supabase status` from `backend/` looked for container `supabase_db_backend` while the live container was `supabase_db_Outpost` (started from the repo root). Fix: always run `supabase start/stop/status` from the same directory — preferring `backend/` since `backend/supabase/config.toml` lives there. Takeaway: stale project-id references are a normal migration footgun; `docker ps` is the fastest sanity check.
 
 - **Ruff B017: `pytest.raises(Exception)` is too broad.** Symptom: `ruff check` flagged `tests/test_config.py` after I wrote the initial red test. Fix: narrowed to `pytest.raises(ValidationError)`. Takeaway: assert the specific exception type when testing validation paths; B017 is intentional and useful.
+
+### Phase 2 (2026-04-23)
+
+- **Alembic `config.set_main_option("sqlalchemy.url", ...)` crashes on URL-encoded passwords.** Symptom: `ValueError: invalid interpolation syntax in ... at position 31` when running `alembic revision --autogenerate`. Root cause: Alembic's ConfigParser treats `%` as interpolation. Fix: `settings.DATABASE_URL.replace("%", "%%")` before `set_main_option` in `backend/alembic/env.py`. Takeaway: any `%` in a Supabase password must be doubled before handing to Alembic's config layer.
+
+- **Autogenerate would destroy Supabase-owned tables without an `include_object` filter.** Symptom: autogenerate against a Supabase DB wants to DROP every table that isn't in `target_metadata` (auth/storage CLI-managed tables later). Fix: added `include_object` in `backend/alembic/env.py` that drops reflected tables absent from `target_metadata.tables` and anything outside the `public` schema. Takeaway: coexistence with Supabase CLI migrations requires this filter — do not remove it when adding ORM models in later phases.
+
+- **Remote Supabase direct-connect (port 5432) fails from dev machines over IPv6.** Symptom: `psycopg.OperationalError: connection to server at "2a05:…" port 5432 failed: No route to host` when running Alembic against `db.<ref>.supabase.co:5432`. Fix: apply Alembic schema locally against `localhost:54322`, then mirror via the `supabase` MCP `apply_migration` on the remote project, including a matching `alembic_version` row so future Alembic runs against remote see the head. Takeaway: Phase 9 deploy (Railway) will resolve IPv6 natively — the workaround is dev-only.
+
+- **Local Supabase CLI signs Auth tokens with ES256 by default.** Symptom: a signed-up user's `access_token` from `/auth/v1/signup` has `alg: ES256`, so our HS256 decode returns 401 "Invalid token". Root cause: modern Supabase CLI has migrated to asymmetric signing; the remote project in `.env` remains on HS256 legacy mode. Fix for Phase 2 E2E: verified /me against an HS256-signed token crafted with the same `SUPABASE_JWT_SECRET` (mirroring production shape). Permanent fix (deferred): add a JWKS fallback to `decode_supabase_jwt` before shipping anything against a Supabase project that has moved off legacy HS256. Cross-reference: CLAUDE.md §Known risks.
+
+- **Ruff B008 flags the canonical FastAPI `Depends()` default argument.** Symptom: `ruff check` fired B008 on every endpoint/dependency. Fix: added `"B008"` to `[tool.ruff.lint] ignore` in `backend/pyproject.toml` with a comment explaining it's the documented FastAPI pattern. Takeaway: don't work around the idiom per-file; the global ignore is the convention.
+
+- **Alembic FK to a cross-schema parent (`auth.users`) isn't autogen-perfect.** Symptom: autogenerated migration omits the `ForeignKeyConstraint(["id"], ["auth.users.id"], ondelete="CASCADE")` because Alembic doesn't introspect the `auth` schema by default. Fix: hand-edit the generated migration to add the FK (see `backend/alembic/versions/c569693a0392_create_profiles_table.py`). Takeaway: cross-schema FKs always need manual review post-autogenerate.
 
 ---
 

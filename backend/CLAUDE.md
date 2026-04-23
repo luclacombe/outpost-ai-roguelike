@@ -72,11 +72,23 @@ Use `settings.FOO` directly; do not re-read `os.environ` in feature code.
 - Adding a new Pydantic v1 `@validator` — use `@field_validator` (v2 semantics).
 - Using the Supabase client for game-state queries — SQLAlchemy async + psycopg3 only. `supabase-py` is reserved for auth admin.
 - `pytest.raises(Exception)` — use the specific class.
+- Trusting a local-Supabase access token to verify the auth flow end-to-end. Modern Supabase CLI signs with ES256; our `decode_supabase_jwt` runs HS256. For E2E, craft an HS256 token with the project's `SUPABASE_JWT_SECRET` matching the Supabase payload shape. The long-term fix (JWKS fallback) is tracked as a known risk.
+
+## Auth & dependency composition
+
+- `app.dependencies.get_current_user` is the only auth gate. It returns the raw Supabase JWT claim dict — feature routers pull `user["sub"]` and wrap with `UUID(...)` themselves. Do not introduce a `CurrentUser` Pydantic model unless more than one router needs extra derived fields; the claims dict keeps the dependency honest.
+- `app.dependencies.get_db` yields a short-lived `AsyncSession`. Routers are responsible for `await db.commit()` when they mutate. Never re-use a session across requests.
+- `bearer_scheme = HTTPBearer(auto_error=True)` returns 403 on missing/malformed `Authorization`; bad-but-present tokens surface 401 from `decode_supabase_jwt`. Tests assert `status_code in (401, 403)` to cover both.
+- Tests stub auth by overriding `get_current_user` in the `client` fixture. The stub `sub` is a real UUID (`00000000-0000-0000-0000-000000000001`) because routers call `UUID(sub)` — a placeholder string breaks the route before it reaches the assertion.
+- DB-touching router tests must call `_require_db()` (see `tests/test_me_endpoint.py`) so contributors without local Postgres get SKIP, not failure.
 
 ## Migrations
 
-- Python ORM changes → Alembic. Autogenerate needs `target_metadata = Base.metadata` in `alembic/env.py` once Phase 3 introduces `app.game.models`. A comment in `env.py` marks the line to update.
-- RLS policies, auth-schema triggers, storage config → Supabase CLI migrations under `supabase/migrations/`. Alembic and Supabase CLI do not conflict — they manage disjoint schema surface.
+- Python ORM changes → Alembic. `target_metadata = Base.metadata` is wired in `alembic/env.py` with an `include_object` filter that ignores non-public schemas and any reflected table absent from our ORM — this keeps autogenerate from fighting Supabase-CLI-managed tables. Do not drop the filter when adding new models; extend ORM metadata instead.
+- Alembic's ConfigParser breaks on URL-encoded passwords. `env.py` calls `settings.DATABASE_URL.replace("%", "%%")` before `set_main_option`; preserve that on any future edit.
+- Cross-schema FKs (e.g. `profiles.id -> auth.users.id`) don't survive `--autogenerate` round-trips — hand-edit the generated migration to add them. See `alembic/versions/c569693a0392_create_profiles_table.py`.
+- RLS policies, auth-schema triggers, storage config → Supabase CLI migrations under `supabase/migrations/`. Alembic and Supabase CLI manage disjoint schema surface.
+- Remote Supabase direct-connect (5432) is unreachable from some dev networks over IPv6. Workflow: apply Alembic locally against `localhost:54322`, mirror to the remote project via the `supabase` MCP `apply_migration` tool, and seed `public.alembic_version` with the revision id so future runs against remote see the head.
 
 ## Docker
 
