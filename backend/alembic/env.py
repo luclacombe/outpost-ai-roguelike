@@ -1,9 +1,13 @@
 """Alembic async env.
 
 Reads settings.DATABASE_URL at startup so migrations run against the same
-Postgres the app is pointed at. target_metadata is None until Phase 3 imports
-ORM models — leave this wiring in place; just add model imports above
-`target_metadata = Base.metadata` when the time comes.
+Postgres the app is pointed at. target_metadata is wired to app.models.Base
+so --autogenerate sees the ORM.
+
+`include_object` filters keep autogenerate from fighting with Supabase CLI
+migrations: anything outside the `public` schema and any table not declared
+in our ORM is treated as not-ours, so no spurious DROPs land in new
+revisions.
 """
 
 import asyncio
@@ -17,14 +21,33 @@ from alembic import context
 from app.config import settings
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Escape '%' so configparser's ConfigParser (RawConfigParser variant used by
+# Alembic) doesn't treat URL-encoded characters (e.g. '%24' in a Supabase
+# DB password) as interpolation tokens.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Phase 3: add `from app.game.models import Base` and set
-# `target_metadata = Base.metadata` so --autogenerate sees the ORM.
-target_metadata = None
+from app.models import Base  # noqa: E402  — must follow settings wiring above
+
+target_metadata = Base.metadata
+
+
+def _include_object(object_, name, type_, reflected, compare_to):
+    """Only autogenerate diffs for tables/constraints we declare.
+
+    Supabase's own schema (auth, storage, realtime, etc.) and anything the
+    Supabase CLI migrations add inside `public` must remain invisible to
+    Alembic's diff, or autogenerate will emit destructive DROPs.
+    """
+    if type_ == "table":
+        schema = getattr(object_, "schema", None)
+        if schema and schema != "public":
+            return False
+        if reflected and name not in target_metadata.tables:
+            return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -34,13 +57,18 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=_include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
