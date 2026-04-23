@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.router import router as auth_router
 from app.config import settings
 from app.middleware.logging import configure_logging, log_requests
 
@@ -37,6 +38,8 @@ app.add_middleware(
 )
 
 app.middleware("http")(log_requests)
+
+app.include_router(auth_router)
 
 
 @app.get("/health")
