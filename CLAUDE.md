@@ -136,9 +136,6 @@ Use the right skill for the task:
 - Using `ChatAnthropic` from LangChain — call `anthropic.messages.create()` directly for cache/batch control
 - Skipping prompt caching "for simplicity" — cache_control is mandatory
 - One LLM call per agent in debate — use one batched XML call (see ARCHITECTURE §3.6)
-- Enabling Anthropic Managed Agents — conflicts with invariant #1 (engine is source of truth). Outpost runs its own orchestration via LangGraph + raw SDK.
-- Unencoded special chars in `DATABASE_URL` — Supabase-generated passwords often contain `#`, `%`, `!`, `$`. All must be percent-encoded (`#`→`%23`, `%`→`%25`, `!`→`%21`, `$`→`%24`) or the psycopg connection string parses wrong and fails silently or truncates at `#`.
-- Using `LANGFUSE_HOST` — deprecated by Langfuse. Use `LANGFUSE_BASE_URL` (SDK reads this; older name is ignored).
 - Writing AI-tell prose: "unfortunately", "delve into", em-dash overuse, rule-of-three lists, "a tapestry of" (run `/humanizer` on user-facing prose)
 
 ---
