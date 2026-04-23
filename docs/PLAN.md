@@ -60,6 +60,8 @@ Full catalog with mitigations in `docs/ARCHITECTURE.md` §17. Summary:
 
 ## Phase 0: Prerequisites & Accounts
 
+**Status:** ✅ Complete (2026-04-23)
+
 **Entry criteria:** None.
 **Exit criteria:** All accounts created, all CLIs installed, initial monorepo committed.
 
@@ -87,7 +89,7 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
 
 ### Task 0.1: Install Railway CLI
 
-- [ ] **Step 1:** Install Railway CLI.
+- [x] **Step 1:** Install Railway CLI.
   ```bash
   npm i -g @railway/cli
   railway --version  # expect 3.x+
@@ -95,14 +97,14 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
 
 ### Task 0.2: Create Supabase project
 
-- [ ] **Step 1:** Go to https://supabase.com/dashboard. Create organization "Outpost" if needed.
-- [ ] **Step 2:** Create new project: name "outpost", region closest to you, generate strong DB password. Save password in 1Password or equivalent.
-- [ ] **Step 3:** Use supabase MCP to verify connection:
+- [x] **Step 1:** Go to https://supabase.com/dashboard. Create organization "Outpost" if needed.
+- [x] **Step 2:** Create new project: name "outpost", region closest to you, generate strong DB password. Save password in 1Password or equivalent.
+- [x] **Step 3:** Use supabase MCP to verify connection:
   ```
   mcp__plugin_supabase_supabase__list_projects
   ```
   Expected: project "outpost" appears.
-- [ ] **Step 4:** Note from Supabase dashboard → Settings → API:
+- [x] **Step 4:** Note from Supabase dashboard → Settings → API:
   - Project URL (`SUPABASE_URL`)
   - `anon` public key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`)
   - `service_role` secret key (`SUPABASE_SERVICE_ROLE_KEY`)
@@ -110,32 +112,32 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
 
 ### Task 0.3: Create Langfuse account
 
-- [ ] **Step 1:** Sign up at https://cloud.langfuse.com. Free Hobby tier.
-- [ ] **Step 2:** Create new project "outpost-dev".
-- [ ] **Step 3:** Generate API keys → note `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`.
+- [x] **Step 1:** Sign up at https://cloud.langfuse.com. Free Hobby tier.
+- [x] **Step 2:** Create new project "outpost-dev".
+- [x] **Step 3:** Generate API keys → note `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`.
 
 ### Task 0.4: Create Anthropic API key
 
-- [ ] **Step 1:** Sign in to https://console.anthropic.com.
-- [ ] **Step 2:** Generate key with $20 initial budget. Save as `ANTHROPIC_API_KEY`.
+- [x] **Step 1:** Sign in to https://console.anthropic.com.
+- [x] **Step 2:** Generate key with $20 initial budget. Save as `ANTHROPIC_API_KEY`.
 
 ### Task 0.5: Create Google OAuth credentials
 
-- [ ] **Step 1:** Go to https://console.cloud.google.com. Create project "Outpost".
-- [ ] **Step 2:** APIs & Services → OAuth consent screen. Configure as external, app name "Outpost", support email = your email, add scopes `email` and `profile`.
-- [ ] **Step 3:** Credentials → Create OAuth client ID → Web application.
-- [ ] **Step 4:** Authorized redirect URIs: add `https://<your-supabase-project-ref>.supabase.co/auth/v1/callback`.
-- [ ] **Step 5:** Copy Client ID and Client Secret.
-- [ ] **Step 6:** In Supabase dashboard → Authentication → Providers → Google, paste Client ID and Client Secret, enable.
+- [x] **Step 1:** Go to https://console.cloud.google.com. Create project "Outpost".
+- [x] **Step 2:** APIs & Services → OAuth consent screen. Configure as external, app name "Outpost", support email = your email, add scopes `email` and `profile`.
+- [x] **Step 3:** Credentials → Create OAuth client ID → Web application.
+- [x] **Step 4:** Authorized redirect URIs: add `https://<your-supabase-project-ref>.supabase.co/auth/v1/callback`.
+- [x] **Step 5:** Copy Client ID and Client Secret.
+- [x] **Step 6:** In Supabase dashboard → Authentication → Providers → Google, paste Client ID and Client Secret, enable.
 
 ### Task 0.6: Initialize monorepo + GitHub
 
-- [ ] **Step 1:** In `/Users/luclacombe/Documents/Outpost`:
+- [x] **Step 1:** In `/Users/luclacombe/Documents/Outpost`:
   ```bash
   git init
   git branch -M main
   ```
-- [ ] **Step 2:** Create `.gitignore`:
+- [x] **Step 2:** Create `.gitignore`:
   ```gitignore
   # Python
   __pycache__/
@@ -168,11 +170,11 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
   # Logs
   *.log
   ```
-- [ ] **Step 3:** Create GitHub repo via `gh`:
+- [x] **Step 3:** Create GitHub repo via `gh`:
   ```bash
   gh repo create Outpost --private --source=. --remote=origin --push=false
   ```
-- [ ] **Step 4:** Create placeholder `README.md`:
+- [x] **Step 4:** Create placeholder `README.md`:
   ```markdown
   # Outpost
   
@@ -180,7 +182,7 @@ pinning, add it to the right CLAUDE.md per the docs discipline section.
   
   See `docs/SPEC.md` for game design, `docs/ARCHITECTURE.md` for technical architecture, `docs/PLAN.md` for implementation plan.
   ```
-- [ ] **Step 5:** Commit scaffolding.
+- [x] **Step 5:** Commit scaffolding.
   ```bash
   git add .gitignore README.md docs/
   git commit -m "chore: initial repo scaffolding with spec, architecture, plan, research"
@@ -2340,6 +2342,14 @@ Any gap → back to fix.
 ## Errors & Learnings
 
 <!-- Populate during execution. Log any non-obvious failure, the fix, and the file changed. Prevents re-learning. -->
+
+### Phase 0 (2026-04-23)
+
+- **Supabase free tier caps accounts at 2 active projects per org.** Symptom: "organization has members who have exceeded their free project limits" on project creation. Root cause: free-tier quota is per account owner across all orgs they administer, not per org. Fix: created a second Supabase account via email alias (`luclacombe+outpost@duck.com`) rather than pausing an unrelated active project. Takeaway: budget one Supabase account per major project.
+
+- **Supabase-generated DB passwords contain reserved URL characters.** Symptom: the auto-generated password with `#`, `%`, `!`, `$` in `DATABASE_URL` would silently truncate at `#` or fail as invalid percent-escape. Fix: percent-encode in the URL (`#`→`%23`, `%`→`%25`, `!`→`%21`, `$`→`%24`). File: `backend/.env` `DATABASE_URL`. Takeaway: always URL-encode Supabase passwords before embedding.
+
+- **`LANGFUSE_HOST` is deprecated; SDK reads `LANGFUSE_BASE_URL`.** Symptom: I suggested `LANGFUSE_HOST` based on stale training knowledge. Root cause: Langfuse Python SDK repo rules explicitly deprecate HOST. Fix: renamed var in `backend/.env.example`. Takeaway: verify env var names via context7 before instructing — don't rely on memory for SDK contracts.
 
 ---
 
