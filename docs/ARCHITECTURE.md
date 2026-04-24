@@ -418,27 +418,39 @@ Anthropic's tool-use machinery handles the tool calls across agent personas in o
 
 ### 3.7 Agent memory injection
 
-Each agent's persona block (cached per run) includes the verbal tic and ends with a "RECENT MEMORIES" section:
+Per-agent memories live in the **colony-state block**, not the persona block, so
+per-run persona caching stays intact across turns (see §5.1). The persona block
+is stable for the whole run; the colony-state block is rebuilt every turn and
+carries the volatile per-agent data — grievance, morale, health, relationships,
+and the memory list — inline for each alive agent.
+
+Persona block (cached per run, one breakpoint shared across all 4 advisors):
 
 ```
-<agent name="Nadia" ...>
-Personality: Idealist/Cautious/Collective
-Role: Climate Scientist (Vorgrad Station)
-Verbal tic: references scientific journals when making technical arguments
-Core value: "The record matters more than any one of us. What we measure, we preserve."
+<persona id="..." name="Nadia" role="Climate Scientist" archetype_quadrant="CONSCIENCE"
+         ethics="0.60" temperament="-0.30" loyalty="0.80"
+         verbal_tic="references scientific journals when making technical arguments">
+Voice: idealist / cautious / collectivist. Keep utterances under 25 words.
+</persona>
+```
 
-RECENT MEMORIES:
+Colony-state block (cached per turn; same cache TTL but invalidates when the
+turn flips):
+
+```
+<agent_state id="<nadia-uuid>" name="Nadia" grievance="3" morale="60" health="100" is_alive="true">
+MEMORIES:
 - Player overruled me on the samples (turn 3)
 - Irena supported me on the heating decision (turn 4)
 - Marko's proposal cost us fuel reserves (turn 4)
-
-Respond to the current event. Use your tools. Keep each utterance under 25 words.
-</agent>
+RELATIONSHIPS: →<marko-uuid>: -2, →<irena-uuid>: +3
+</agent_state>
 ```
 
-The verbal tic field is populated from the setting's archetype template at run generation and stays constant for the run.
-
-Memory entries turn over with FIFO after 10, except death memories which are pinned.
+The `verbal_tic` field is populated from the setting's archetype template at run
+generation and stays constant for the run. Memory entries turn over FIFO after
+10, except death memories which are pinned (see
+`backend/app/game/engine._pin_memory`).
 
 ---
 
@@ -581,24 +593,35 @@ Each of the above has a corresponding Postgres table:
 
 ### 5.1 Caching layout
 
-Every Anthropic call structures its system prompt in stable-to-volatile order:
+Every Anthropic call structures its system prompt as **three** cache-control
+breakpoints (stable-to-volatile). Anthropic caps the cache_control breakpoint
+count at 4 per request; we use 3 with one spare.
 
 ```
 System:
-  [cached — static] Outpost game rules + debate preamble            (~1000 tok)
-  [cached — per agent per run] Nadia persona block                   (~800 tok each)
-  [cached — per agent per run] Marko persona block                   (~800 tok each)
-  [cached — per agent per run] Irena persona block                   (~800 tok each)
-  [cached — per agent per run] Yuri persona block                    (~800 tok each)
-  [cached — per turn] Colony state snapshot                          (~600 tok)
+  [cached — static, never invalidates within TTL] Preamble + tool rules  (~900 tok)
+  [cached — per-run stable] 4 personas concatenated (id, role, axes, tic) (~1500 tok)
+  [cached — per-turn] Colony state: resources, legitimacy, player_health,
+                       per-agent memories + grievance + relationships     (~800 tok)
 
 User (not cached):
-  Current event + instructions                                       (~400 tok)
+  Current event + response instructions                                  (~400 tok)
 ```
 
-The first 4 cached blocks are stable for the entire run. Only the colony state block invalidates each turn.
+The preamble and persona blocks are stable for the entire run (9 reads per
+10-turn run, 1 write). The colony-state block invalidates every turn but is
+still cache-hit within the turn by the second and third LLM calls
+(debate → autonomous → narrate).
 
-Expected cache hit rate after turn 2: **85–90%** of input tokens.
+**Per-agent memories live in the colony-state block, not the persona block.**
+Inlining memories into personas would invalidate the per-run cache every turn
+when a new memory is appended — dropping expected cache hit rate from 85–90%
+to roughly 40–50% on input tokens. See §3.7 for the block layout and
+`backend/app/agent/prompts.build_colony_state_block`.
+
+Expected cache hit rate after turn 2: **85–90%** of input tokens. Verified in
+`tests/integration/test_full_run.py` via a wrapped `cost_cents_of` that records
+`cache_read_input_tokens` per call.
 
 ### 5.2 Cost-control constants
 
