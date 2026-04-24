@@ -118,6 +118,18 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
   a subset check against `AGENT_TOOL_SCHEMAS`. If a tool is renamed or removed
   in `app/game/tools.py`, startup fails loudly rather than silently dropping
   the tool from the autonomous phase.
+- **Autonomous sends the FULL tool schema, then filters on the response.**
+  Sending only the autonomous subset to the SDK is tempting (it's what we
+  did originally) but it shrinks the cached prefix below Haiku 4.5's
+  4096-token minimum, silently disabling caching for the entire autonomous
+  phase. Cost impact: ~4¢/run wasted on uncached fresh input. Current
+  pattern: pass `tools=AGENT_TOOL_SCHEMAS`, instruct the model in the
+  preamble to restrict itself to autonomous-appropriate tools, then drop
+  any off-list `ToolCall` from `parse_debate_response` BEFORE handing the
+  list to `engine.apply_tool_calls`. The runtime filter is the safety net;
+  the prompt does the heavy lifting. Side benefit: autonomous shares the
+  exact cached prefix as debate (same tools, same preamble, same personas),
+  so its first call of each turn cache-reads from debate's earlier write.
 
 ## Graph pattern
 

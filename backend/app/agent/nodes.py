@@ -311,19 +311,30 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     colony_state_text = build_colony_state_block(colony_state)["text"]
     user_message = f"{colony_state_text}\n\n{build_autonomous_user_message(summary)}"
 
-    autonomous_tools = [t for t in AGENT_TOOL_SCHEMAS if t["name"] in AUTONOMOUS_TOOL_NAMES]
-
+    # Pass the FULL tool list — passing a smaller subset drops the cached
+    # prefix below Haiku 4.5's 4096-token cache minimum and silently
+    # disables caching for this node, costing ~9¢ per 10-turn run. The
+    # preamble's "OFF-TURN (AUTONOMOUS) PHASE" section instructs the model
+    # to restrict itself to introspective tools; the filter on parsed
+    # tool calls below is the runtime safety net that drops anything
+    # off-list before the engine sees it.
     response = await call_haiku(
         system_blocks,
         user_message,
-        tools=autonomous_tools,
+        tools=AGENT_TOOL_SCHEMAS,
         max_tokens=1500,
     )
     cost = cost_cents_of(response, MODEL_HAIKU)
     parsed = parse_debate_response(response, alive_agents)
 
+    # Drop any tool call the model emitted that isn't on the autonomous
+    # whitelist (propose_action, modify_resource, modify_health,
+    # adjust_grievance — all debate-phase only). Drops happen silently
+    # before the engine; they never appear in turn_tool_calls.
+    autonomous_tool_calls = [tc for tc in parsed.tool_calls if tc.name in AUTONOMOUS_TOOL_NAMES]
+
     pre_tc_len = len(colony_state.turn_tool_calls)
-    new_colony = engine.apply_tool_calls(colony_state, parsed.tool_calls)
+    new_colony = engine.apply_tool_calls(colony_state, autonomous_tool_calls)
     newly_logged = new_colony.turn_tool_calls[pre_tc_len:]
     applied_autonomous = [tc for tc in newly_logged if tc.rejection_reason is None]
 

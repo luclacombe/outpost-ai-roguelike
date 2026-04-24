@@ -51,6 +51,7 @@ from app.game.schemas import (
     SeedPayload,
     ToolCall,
 )
+from app.game.tools import AGENT_TOOL_SCHEMAS
 from tests.conftest import fake_haiku_response, fake_sonnet_response
 
 # The AsyncAnthropic SDK hits this URL; verified via the probe recommended
@@ -668,7 +669,12 @@ async def test_autonomous_actions_skips_llm_when_no_alive_agents():
 
 
 @respx.mock
-async def test_autonomous_actions_filters_to_introspective_tools():
+async def test_autonomous_actions_sends_full_tool_list_for_caching():
+    """Autonomous now ships the FULL tool list to keep the cached prefix
+    above Haiku 4.5's 4096-token minimum (a smaller subset dropped below
+    threshold and silently disabled caching). Off-list tools the model
+    might emit are dropped runtime-side; see the next test.
+    """
     colony = make_colony_state()
     route = respx.post(_ANTHROPIC_URL).mock(
         return_value=Response(200, json=fake_haiku_response(text_xml=""))
@@ -682,11 +688,82 @@ async def test_autonomous_actions_filters_to_introspective_tools():
 
     sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
     sent_tool_names = {t["name"] for t in sent_body["tools"]}
-    assert sent_tool_names == set(AUTONOMOUS_TOOL_NAMES)
-    # Explicitly check that the player-visible tools are excluded.
-    assert "propose_action" not in sent_tool_names
-    assert "modify_resource" not in sent_tool_names
-    assert "modify_health" not in sent_tool_names
+    # Full list — prefix-size matches debate's, so caching shares an entry.
+    assert sent_tool_names == {t["name"] for t in AGENT_TOOL_SCHEMAS}
+    # Sanity: AUTONOMOUS_TOOL_NAMES is still a strict subset (it's the
+    # runtime filter, not the schema payload).
+    assert sent_tool_names >= AUTONOMOUS_TOOL_NAMES
+
+
+@respx.mock
+async def test_autonomous_actions_drops_debate_only_tool_calls():
+    """Runtime safety net: even if the model emits a propose_action or
+    modify_resource off-turn (now possible because we send the full tool
+    list), the node must drop it before reaching the engine.
+
+    Build a fake response with mixed tool calls and assert the resulting
+    colony_state shows only the autonomous-whitelist effects.
+    """
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    colony = make_colony_state(agents=[nadia])
+    nadia_id = str(nadia.id)
+
+    # Two debate-only tool calls (must be dropped) + one introspective
+    # call (must apply).
+    debate_only_modify = {
+        "id": "tu_drop_1",
+        "name": "modify_resource",
+        "input": {
+            "resource_id": "fuel",
+            "delta": -10,
+            "reason": "off-turn raid",
+            "caller_agent_id": nadia_id,
+        },
+    }
+    debate_only_propose = {
+        "id": "tu_drop_2",
+        "name": "propose_action",
+        "input": {
+            "name": "Burn the records",
+            "description": "Off-turn proposal that should never reach the engine.",
+            "flavor": "WILDCARD",
+            "caller_agent_id": nadia_id,
+        },
+    }
+    introspective_remember = {
+        "id": "tu_keep",
+        "name": "remember",
+        "input": {
+            "fact": "Player overruled me on the samples.",
+            "caller_agent_id": nadia_id,
+        },
+    }
+
+    respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(
+            200,
+            json=fake_haiku_response(
+                text_xml="",
+                tool_uses=[debate_only_modify, debate_only_propose, introspective_remember],
+            ),
+        )
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 0.0,
+    }
+    result = await autonomous_actions(state)
+
+    # The dropped calls never reach the engine — they don't appear in
+    # turn_tool_calls (rejected or applied) on the new colony state.
+    new_colony: ColonyState = result["colony_state"]
+    logged_names = {tc.name for tc in new_colony.turn_tool_calls}
+    assert "modify_resource" not in logged_names
+    assert "propose_action" not in logged_names
+    # And the introspective call DID apply: Nadia's memory grew by one.
+    nadia_post = next(a for a in new_colony.agents if a.id == nadia.id)
+    assert any("Player overruled me" in m for m in nadia_post.memory)
 
 
 # ---------------------------------------------------------------------------
