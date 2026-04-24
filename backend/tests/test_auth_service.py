@@ -53,3 +53,97 @@ def test_reject_malformed_token():
     with pytest.raises(HTTPException) as exc:
         decode_supabase_jwt("not.a.jwt")
     assert exc.value.status_code == 401
+
+
+def test_reject_unsupported_algorithm():
+    """`none` / unknown algs must be rejected before we touch key material."""
+    unsigned = jwt.encode(
+        {"sub": "u", "aud": "authenticated", "exp": 9999999999},
+        key="",
+        algorithm="none",
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_supabase_jwt(unsigned)
+    assert exc.value.status_code == 401
+
+
+# --- ES256 / JWKS path ---------------------------------------------------
+#
+# We spin up a test keypair, monkey-patch the PyJWKClient resolver to hand
+# back a signing key wrapping our public key, then sign tokens with the
+# matching private key. No network, no Supabase.
+
+
+class _FakeSigningKey:
+    def __init__(self, key):
+        self.key = key
+
+
+def _make_es256_keypair():
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    pub = priv.public_key()
+    return priv, pub
+
+
+def _patch_jwks(monkeypatch, public_key):
+    from jwt import PyJWKClient
+
+    monkeypatch.setattr(
+        PyJWKClient,
+        "get_signing_key_from_jwt",
+        lambda self, token: _FakeSigningKey(public_key),
+    )
+
+
+def test_decode_es256_via_jwks(monkeypatch):
+    priv, pub = _make_es256_keypair()
+    _patch_jwks(monkeypatch, pub)
+    token = jwt.encode(
+        {"sub": "user-es", "aud": "authenticated", "exp": 9999999999},
+        priv,
+        algorithm="ES256",
+    )
+    result = decode_supabase_jwt(token)
+    assert result["sub"] == "user-es"
+
+
+def test_reject_es256_wrong_signer(monkeypatch):
+    _, pub = _make_es256_keypair()
+    other_priv, _ = _make_es256_keypair()
+    _patch_jwks(monkeypatch, pub)
+    token = jwt.encode(
+        {"sub": "evil", "aud": "authenticated", "exp": 9999999999},
+        other_priv,  # signed with a different private key
+        algorithm="ES256",
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_supabase_jwt(token)
+    assert exc.value.status_code == 401
+
+
+def test_reject_alg_confusion_hs256_with_public_key_bytes(monkeypatch):
+    """Classic alg-confusion: attacker mints an HS256 token using the
+    asymmetric public key bytes as the HMAC secret. Our dispatcher picks
+    the HS256 branch which verifies against SUPABASE_JWT_SECRET, not the
+    public key, so the forgery fails. (PyJWT itself blocks PEM-formatted
+    keys at encode time, so we pass raw DER-encoded bytes to make sure
+    the rejection comes from *our* dispatch logic, not that safety net.)
+    """
+    from cryptography.hazmat.primitives import serialization
+
+    _, pub = _make_es256_keypair()
+    _patch_jwks(monkeypatch, pub)
+    pub_der = pub.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    token = jwt.encode(
+        {"sub": "evil", "aud": "authenticated", "exp": 9999999999},
+        pub_der,
+        algorithm="HS256",
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_supabase_jwt(token)
+    assert exc.value.status_code == 401
