@@ -4,11 +4,12 @@ Model IDs, pricing (cents per million tokens), and budget rails. No imports
 from app internals — this module is the root of the agent dependency graph.
 """
 
-# Dated model IDs — use dated form over aliases for production stability.
+# Model IDs. Haiku 4.5 publishes a dated snapshot; Sonnet 4.6 and Opus 4.7
+# do not — per Anthropic's models overview (platform.claude.com/docs/en/about-
+# claude/models/overview, verified 2026-04-24), the "Claude API ID" for
+# claude-sonnet-4-6 is the alias itself. Only Haiku 4.5 has a dated form.
+# If Anthropic publishes a dated Sonnet 4.6 later, swap it in here.
 MODEL_HAIKU = "claude-haiku-4-5-20251001"
-# Sonnet 4.6 dated ID not yet surfaced by context7 at planning time.
-# TODO: resolve the dated form via `await client.models.list()` at dev time
-# and replace the alias below. Alias is fine for now — narration is optional.
 MODEL_SONNET = "claude-sonnet-4-6"
 
 # Pricing in cents per million tokens. Verify against Anthropic pricing

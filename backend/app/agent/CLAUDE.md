@@ -90,10 +90,12 @@ spare. Expected hit rate after turn 2: 85–90% on input tokens.
 - **Optional usage fields:** `cache_read_input_tokens` and
   `cache_creation_input_tokens` may be absent when caching is off. Use
   `getattr(..., 0) or 0` — this also handles the "present but None" case.
-- **Sonnet 4.6 dated ID:** context7 has not surfaced the dated form yet; we use
-  the alias `claude-sonnet-4-6`. Narration is optional and budget-gated, so the
-  alias is safe. TODO in `constants.py` flags the need to resolve via
-  `client.models.list()` at first run.
+- **Sonnet 4.6 has no dated snapshot.** Per Anthropic's models overview
+  (platform.claude.com/docs/en/about-claude/models/overview, verified
+  2026-04-24), `claude-sonnet-4-6` IS the canonical Claude API ID — same
+  situation for Opus 4.7. Only Haiku 4.5 publishes a dated form
+  (`claude-haiku-4-5-20251001`). If Anthropic publishes a dated Sonnet 4.6
+  later, swap it in `constants.py`. Until then, the alias is all we have.
 - **Exception catch scope:** in `narrate_turn`, catch `anthropic.APIError` only,
   not bare `Exception`. Bare catches mask programming bugs in `call_sonnet` that
   should fail fast in development.
@@ -151,4 +153,3 @@ spare. Expected hit rate after turn 2: 85–90% on input tokens.
 - **Relationship UUIDs in the colony-state block** aren't name-resolved. The
   model parses them fine; readability is poor. Swap to names if eval shows
   comprehension regressions.
-- **Sonnet 4.6 dated model ID** TODO in `constants.py` — resolve before Phase 5.
