@@ -1113,8 +1113,10 @@ uv run ruff check app/      # clean
 
 ## Phase 3: Game State + Engine (no LLM yet)
 
+**Status:** ✅ Complete (2026-04-24)
 **Entry criteria:** Phase 2 exit passed.
 **Exit criteria:** Turn engine resolves a full turn with mocked inputs. All state transitions validated. Setting loader produces valid setting schema. Tool validator rejects bad calls.
+**Phase 3 exit:** verified 2026-04-24 — 301 passed / 1 skipped, ruff clean, alembic head `3ba6ba8568f0`, all 3 settings pool-valid.
 
 **Session config:** `/model claude-opus-4-7` · `/effort high` · plan mode: no · execution: subagent-driven
 
@@ -1186,7 +1188,7 @@ backend/app/game/
 
 Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the architecture doc for exact field definitions.
 
-- [ ] **Step 1:** Write failing test that validates a minimal ColonyState roundtrips through JSON:
+- [x] **Step 1:** Write failing test that validates a minimal ColonyState roundtrips through JSON:
   ```python
   # backend/tests/test_game_schemas.py
   from uuid import uuid4
@@ -1213,9 +1215,9 @@ Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the arc
       restored = ColonyState.model_validate_json(dumped)
       assert restored.agents[0].name == "Nadia"
   ```
-- [ ] **Step 2:** Implement `backend/app/game/schemas.py` following `docs/ARCHITECTURE.md` §4. Use Pydantic v2 syntax throughout. Key models: `ColonyState`, `Agent`, `Event`, `Resource`, `Proposal`, `ToolCall`, `ConsequenceSeed`, `Decision`, `ResolvedEvent`, `EndState`, `Quadrant`, `ProposalFlavor`, `EventOrigin`, `Transformation`.
+- [x] **Step 2:** Implement `backend/app/game/schemas.py` following `docs/ARCHITECTURE.md` §4. Use Pydantic v2 syntax throughout. Key models: `ColonyState`, `Agent`, `Event`, `Resource`, `Proposal`, `ToolCall`, `ConsequenceSeed`, `Decision`, `ResolvedEvent`, `EndState`, `Quadrant`, `ProposalFlavor`, `EventOrigin`, `Transformation`.
 
-- [ ] **Step 3:** Run tests — expect pass. Commit.
+- [x] **Step 3:** Run tests — expect pass. Commit.
   ```bash
   uv run pytest tests/test_game_schemas.py -v
   git add backend/app/game/ backend/tests/test_game_schemas.py
@@ -1226,22 +1228,22 @@ Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the arc
 
 **Files:** Modify `backend/app/models.py` (add game tables). Create Alembic migration.
 
-- [ ] **Step 1:** Add ORM models to `backend/app/models.py` matching `docs/ARCHITECTURE.md` §7.1. Tables: `game_sessions`, `agents`, `turn_logs`, `consequence_seeds`.
-- [ ] **Step 2:** Generate migration.
+- [x] **Step 1:** Add ORM models to `backend/app/models.py` matching `docs/ARCHITECTURE.md` §7.1. Tables: `game_sessions`, `agents`, `turn_logs`, `consequence_seeds`.
+- [x] **Step 2:** Generate migration.
   ```bash
   uv run alembic revision --autogenerate -m "create game tables"
   ```
-- [ ] **Step 3:** Review and edit if needed. Apply.
+- [x] **Step 3:** Review and edit if needed. Apply.
   ```bash
   uv run alembic upgrade head
   ```
-- [ ] **Step 4:** Create Supabase migration for RLS on `game_sessions`:
+- [x] **Step 4:** Create Supabase migration for RLS on `game_sessions`:
   ```bash
   supabase migration new enable_rls_game_sessions
   # Add policies from docs/ARCHITECTURE.md §7.2
   supabase db push
   ```
-- [ ] **Step 5:** Commit.
+- [x] **Step 5:** Commit.
   ```bash
   git add backend/app/models.py backend/alembic/ backend/supabase/
   git commit -m "feat(game): ORM models + migrations + RLS"
@@ -1251,8 +1253,8 @@ Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the arc
 
 **Files:** Create `backend/app/game/setting_loader.py`, `backend/app/game/settings/arctic_station_v1.yml`, `backend/tests/test_setting_loader.py`.
 
-- [ ] **Step 1:** Write `arctic_station_v1.yml` matching the schema in `docs/SPEC.md` §8 and the lore in §8.2 setting 1. Include 5 resources, 4 advisor archetypes mapped to quadrants, and 12-15 event category definitions.
-- [ ] **Step 2:** Write failing test:
+- [x] **Step 1:** Write `arctic_station_v1.yml` matching the schema in `docs/SPEC.md` §8 and the lore in §8.2 setting 1. Include 5 resources, 4 advisor archetypes mapped to quadrants, and 12-15 event category definitions.
+- [x] **Step 2:** Write failing test:
   ```python
   # backend/tests/test_setting_loader.py
   from app.game.setting_loader import load_setting
@@ -1270,8 +1272,8 @@ Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the arc
       with pytest.raises(FileNotFoundError):
           load_setting("nonexistent")
   ```
-- [ ] **Step 3:** Implement `setting_loader.py` using `PyYAML` (add to deps if not present). Validate against a Pydantic `Setting` schema.
-- [ ] **Step 4:** Run tests. Commit.
+- [x] **Step 3:** Implement `setting_loader.py` using `PyYAML` (add to deps if not present). Validate against a Pydantic `Setting` schema.
+- [x] **Step 4:** Run tests. Commit.
   ```bash
   uv run pytest tests/test_setting_loader.py -v
   git add backend/app/game/setting_loader.py backend/app/game/settings/
@@ -1284,7 +1286,7 @@ Write all the Pydantic models from `docs/ARCHITECTURE.md` §4. Reference the arc
 
 Define tool schemas exactly as in `docs/ARCHITECTURE.md` §3.5. Each tool has a name, description, and JSON schema for its inputs.
 
-- [ ] **Step 1:** Implement `tools.py`:
+- [x] **Step 1:** Implement `tools.py`:
   ```python
   # Shortened — full definition per ARCHITECTURE.md §3.5
   AGENT_TOOL_SCHEMAS = [
@@ -1294,7 +1296,7 @@ Define tool schemas exactly as in `docs/ARCHITECTURE.md` §3.5. Each tool has a 
       # remember, initiate_coup, back_leader
   ]
   ```
-- [ ] **Step 2:** Test that the schemas are valid JSON Schema and have required tool names:
+- [x] **Step 2:** Test that the schemas are valid JSON Schema and have required tool names:
   ```python
   from app.game.tools import AGENT_TOOL_SCHEMAS
   
@@ -1306,7 +1308,7 @@ Define tool schemas exactly as in `docs/ARCHITECTURE.md` §3.5. Each tool has a 
           "remember", "initiate_coup", "back_leader",
       }
   ```
-- [ ] **Step 3:** Run tests. Commit.
+- [x] **Step 3:** Run tests. Commit.
 
 ### Task 3.5: Tool validator
 
@@ -1314,7 +1316,7 @@ Define tool schemas exactly as in `docs/ARCHITECTURE.md` §3.5. Each tool has a 
 
 The validator is a pure function over `(ToolCall, ColonyState) → ValidationResult`. Every tool type has its own validation branch.
 
-- [ ] **Step 1:** Write failing tests for each tool:
+- [x] **Step 1:** Write failing tests for each tool:
   ```python
   # backend/tests/test_validator.py
   def test_modify_resource_accepts_valid_delta():
@@ -1340,14 +1342,14 @@ The validator is a pure function over `(ToolCall, ColonyState) → ValidationRes
   
   # Add tests for every tool type
   ```
-- [ ] **Step 2:** Implement `validator.py` with one branch per tool type. Reference `docs/ARCHITECTURE.md` §3.5 for the full validation logic.
-- [ ] **Step 3:** Run tests until all pass. Commit.
+- [x] **Step 2:** Implement `validator.py` with one branch per tool type. Reference `docs/ARCHITECTURE.md` §3.5 for the full validation logic.
+- [x] **Step 3:** Run tests until all pass. Commit.
 
 ### Task 3.6: Engine tick — apply validated tool calls
 
 **Files:** Create `backend/app/game/engine.py`, `backend/tests/test_engine.py`.
 
-- [ ] **Step 1:** Write failing tests:
+- [x] **Step 1:** Write failing tests:
   ```python
   # backend/tests/test_engine.py
   from uuid import uuid4
@@ -1403,7 +1405,7 @@ The validator is a pure function over `(ToolCall, ColonyState) → ValidationRes
       new_state = resolve_coup(state, initiator_id=state.initiator_id)
       assert new_state.end_state == EndState.OUSTED
   ```
-- [ ] **Step 2:** Implement `engine.py`:
+- [x] **Step 2:** Implement `engine.py`:
   - `apply_tool_call(state, tc) -> ColonyState` — validates via `validator.py`, applies if valid, records the attempt either way.
   - `apply_single_effect(state, effect) -> ColonyState` — single-tool-call mutation helper. Dispatches on `tc.name`. Clamps grievance to 0-10, health to 0-100.
   - `check_deaths(state) -> ColonyState` — sets `is_alive=False` for any agent with `health <= 0`; pins "died in turn N" memory into all *surviving* agents' memory lists (non-evicting).
@@ -1413,13 +1415,13 @@ The validator is a pure function over `(ToolCall, ColonyState) → ValidationRes
 
 All functions are pure — they return a new state, not mutate.
 
-- [ ] **Step 3:** Run tests. Commit.
+- [x] **Step 3:** Run tests. Commit.
 
 ### Task 3.7: Consequence seed scheduler
 
 **Files:** Create `backend/app/game/consequence.py`, `backend/tests/test_consequence.py`.
 
-- [ ] **Step 1:** Write failing test:
+- [x] **Step 1:** Write failing test:
   ```python
   def test_schedule_seed_writes_to_state():
       state = make_state(turn=3)
@@ -1438,18 +1440,18 @@ All functions are pure — they return a new state, not mutate.
       # assert the event pool has a new entry with origin_seed_id
       ...
   ```
-- [ ] **Step 2:** Implement `consequence.py` with:
+- [x] **Step 2:** Implement `consequence.py` with:
   - `schedule_seed(state, seed)`
   - `check_and_fire_seeds(state) -> (new_state, fired_events)`
   - `foreshadow_signals(state, turn) -> list[str]` (returns advisor comment suggestions)
 
-- [ ] **Step 3:** Run tests. Commit.
+- [x] **Step 3:** Run tests. Commit.
 
 ### Task 3.8: Event pool + selection + difficulty rails
 
 **Files:** Create `backend/app/game/events.py`, `backend/app/game/difficulty.py`, `backend/tests/test_events.py`, `backend/tests/test_difficulty.py`.
 
-- [ ] **Step 1:** Write tests for event selection:
+- [x] **Step 1:** Write tests for event selection:
   ```python
   # backend/tests/test_events.py
   def test_select_event_respects_cooldown():
@@ -1469,11 +1471,11 @@ All functions are pure — they return a new state, not mutate.
       # high-stability state → higher-severity weights in selection
       ...
   ```
-- [ ] **Step 2:** Implement `events.py`:
+- [x] **Step 2:** Implement `events.py`:
   - `select_event(state, setting, rng) -> Event`
   - Respects: cooldown rules, wealth-scaling, forced escalation guarantee, seeded event priority
 
-- [ ] **Step 3:** Write difficulty-rails tests per `SPEC.md` §7.2:
+- [x] **Step 3:** Write difficulty-rails tests per `SPEC.md` §7.2:
   ```python
   # backend/tests/test_difficulty.py
   def test_no_event_drops_any_resource_more_than_30_percent():
@@ -1489,18 +1491,18 @@ All functions are pure — they return a new state, not mutate.
       # applying any single event's default effect cannot drop legitimacy below 20 before turn 4
       ...
   ```
-- [ ] **Step 4:** Implement `difficulty.py` enforcing the rails from `SPEC.md` §7.2:
+- [x] **Step 4:** Implement `difficulty.py` enforcing the rails from `SPEC.md` §7.2:
   - `validate_event_pool_for_setting(setting)` — static check run at setting-load time
   - `apply_early_turn_floors(state, effect)` — clamp effects in turns 1-3 per the rails
   - `wealth_scale_factor(state) -> float` — 0.5 to 2.0 based on resource stability + agent health average
 
-- [ ] **Step 5:** Run tests. Commit.
+- [x] **Step 5:** Run tests. Commit.
 
 ### Task 3.9: Procedural run generator + transformations
 
 **Files:** Create `backend/app/game/generator.py`, `backend/app/game/transformations.py`, `backend/tests/test_generator.py`, `backend/tests/test_transformations.py`.
 
-- [ ] **Step 1:** Write generator tests:
+- [x] **Step 1:** Write generator tests:
   ```python
   def test_generate_run_with_seed_is_deterministic():
       r1 = generate_run(user_id=UUID(...), setting_id="arctic_station_v1", seed=42)
@@ -1517,7 +1519,7 @@ All functions are pure — they return a new state, not mutate.
       run = generate_run(user_id=UUID(...), setting_id="arctic_station_v1", seed=42)
       assert all(a.verbal_tic for a in run.agents)
   ```
-- [ ] **Step 2:** Implement `generator.py`:
+- [x] **Step 2:** Implement `generator.py`:
   - `generate_run(user_id, setting_id, seed) -> ColonyState`
   - Selects 4 advisors, one per quadrant
   - Rolls axes per archetype template
@@ -1525,7 +1527,7 @@ All functions are pure — they return a new state, not mutate.
   - Randomizes max_turns in [8, 12]
   - Initial resources per setting
 
-- [ ] **Step 3:** Write transformations tests per `SPEC.md` §6.4:
+- [x] **Step 3:** Write transformations tests per `SPEC.md` §6.4:
   ```python
   # backend/tests/test_transformations.py
   def test_transformation_eligibility_requires_high_emotion_turn():
@@ -1540,25 +1542,25 @@ All functions are pure — they return a new state, not mutate.
       # Idealist agent watching collective sacrifice fail → shifts toward Individual
       ...
   ```
-- [ ] **Step 4:** Implement `transformations.py`:
+- [x] **Step 4:** Implement `transformations.py`:
   - `check_transformation_eligibility(state, agent, triggering_event) -> TransformationCandidate | None`
   - `apply_transformation(state, agent_id, candidate) -> ColonyState` — writes transformation to agent, shifts axis value, emits memory entry
   - Triggers are setting-agnostic heuristics based on (agent axes, event severity, outcome of chosen action)
 
-- [ ] **Step 5:** Run tests. Commit.
+- [x] **Step 5:** Run tests. Commit.
 
 ### Task 3.10: Game router — session creation
 
 **Files:** Create `backend/app/game/router.py`, `backend/app/game/service.py`, `backend/tests/test_game_router.py`.
 
-- [ ] **Step 1:** Implement `POST /game/session` endpoint.
+- [x] **Step 1:** Implement `POST /game/session` endpoint.
   - Checks daily gate via `can_start_run(profile.last_run_started_at)`
   - Generates run with a random seed (or date-derived)
   - Persists to DB (`game_sessions` + `agents` rows)
   - Updates profile: `last_run_started_at = now()`, `total_runs += 1`
   - Returns `game_id`, `setting`, `agents` (public fields only)
-- [ ] **Step 2:** Implement `GET /game/{id}` endpoint returning full state.
-- [ ] **Step 3:** Write failing tests:
+- [x] **Step 2:** Implement `GET /game/{id}` endpoint returning full state.
+- [x] **Step 3:** Write failing tests:
   ```python
   async def test_create_session_enforces_daily_gate(client):
       # first call succeeds
@@ -1569,7 +1571,7 @@ All functions are pure — they return a new state, not mutate.
       assert r2.status_code == 429
       assert r2.json()["error"]["code"] == "daily_gate_exceeded"
   ```
-- [ ] **Step 4:** Implement. Include router in `main.py`. Run tests. Commit.
+- [x] **Step 4:** Implement. Include router in `main.py`. Run tests. Commit.
 
 **Phase 3 exit verification:**
 ```bash
@@ -2250,7 +2252,7 @@ Stop at Phase 8 exit. Do not start Phase 9.
 **Entry criteria:** Phase 8 exit passed.
 **Exit criteria:** Outpost is live at a public URL. All items in `docs/SPEC.md` §16 success criteria check.
 
-**Session config:** `/model claude-sonnet-4-6` (Opus for README in Task 9.6, Opus for Task 9.7 verification) · `/effort medium` · plan mode: no
+**Session config:** `/model claude-opus-4-7` (Opus for README in Task 9.6, Opus for Task 9.7 verification) · `/effort medium` · plan mode: no
 
 **Session start prompt:**
 
@@ -2377,6 +2379,20 @@ Any gap → back to fix.
 - **Ruff B008 flags the canonical FastAPI `Depends()` default argument.** Symptom: `ruff check` fired B008 on every endpoint/dependency. Fix: added `"B008"` to `[tool.ruff.lint] ignore` in `backend/pyproject.toml` with a comment explaining it's the documented FastAPI pattern. Takeaway: don't work around the idiom per-file; the global ignore is the convention.
 
 - **Alembic FK to a cross-schema parent (`auth.users`) isn't autogen-perfect.** Symptom: autogenerated migration omits the `ForeignKeyConstraint(["id"], ["auth.users.id"], ondelete="CASCADE")` because Alembic doesn't introspect the `auth` schema by default. Fix: hand-edit the generated migration to add the FK (see `backend/alembic/versions/c569693a0392_create_profiles_table.py`). Takeaway: cross-schema FKs always need manual review post-autogenerate.
+
+### Phase 3 (2026-04-24)
+
+- **Pydantic v2 `@field_validator` only sees earlier-declared sibling fields.** Symptom: a `@field_validator` that referenced a sibling field returned `None` from `info.data` because the sibling was declared below the validated field. Root cause: v2 validators fire in declaration order; `info.data` only holds already-validated fields. Fix: switched cross-field checks to `@model_validator(mode="after")` where the full instance is available, and added a regression test that reorders declaration. File: `backend/app/game/schemas.py` (Task 3.1 review).
+
+- **Supabase CLI migrations run before Alembic on `supabase start`.** Symptom: the Supabase CLI's `on_auth_user_created` trigger expected `public.profiles` to exist, but the local Postgres had Alembic migrations pending at CLI-startup time — so the initial bootstrap produced a duplicate/empty profiles table owned by Supabase. Root cause: `supabase start` only applies `supabase/migrations/`; Alembic is a separate step. Fix: documented the ordering (supabase start → `alembic upgrade head` → then auth ops work) and ensured the profiles-table SQL in `supabase/migrations/` is `CREATE TABLE IF NOT EXISTS` compatible with the Alembic-owned definition. File: `backend/supabase/migrations/*create_profiles_table.sql` (Task 3.2).
+
+- **`MissingGreenlet` after `await db.rollback()` on SQLAlchemy async.** Symptom: `POST /game/session` on a second same-day attempt rolled back, then accessed `profile.last_run_started_at` for the 429 detail → `MissingGreenlet: greenlet_spawn has not been called`. Root cause: lazy-loaded async relationships detach after rollback; the ORM tried to re-fetch from a sync path and couldn't. Fix: snapshot the attribute into a local variable **before** `await db.rollback()`. File: `backend/app/game/service.py` (Task 3.10).
+
+- **`_append_memory` silently dropped entries when all 10 slots were pinned.** Symptom: after a coup scenario accumulated 10 death-pins, subsequent `remember` tool calls appeared to apply but the entry never surfaced. Root cause: the eviction branch looked for a non-pinned entry to drop; finding none, it fell through and returned the list unchanged. Fix: when every slot is pinned, evict the oldest pinned by turn number; added a test covering the all-pinned path. File: `backend/app/game/engine.py` (Task 3.6 review).
+
+- **Float precision in multiplicative `forced_escalation_probability`.** Symptom: over turns 5-9 the cumulative guarantee drifted ~1e-12, so a strict `== 1.0` assertion in the forced-escalation test failed intermittently. Root cause: product-of-complements (`1 - ∏(1 - p_t)`) accumulates epsilon. Fix: rewrote as additive normalization against a running `remaining_budget` so the final turn's probability equals exactly `1.0` when reached. File: `backend/app/game/events.py` (Task 3.8).
+
+- **`_pin_memory` deduped by `id()`.** Symptom: two agents pinning identical "died in turn 5" entries in the same tick — one call deduped, the other didn't. Root cause: Python interns short strings unpredictably; `id()` is not a stable identity for value equality. Fix: dedupe by `(turn, text)` tuple. File: `backend/app/game/engine.py` (Task 3.6 review).
 
 ---
 
