@@ -38,3 +38,10 @@ class Profile(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+
+
+# Import feature models so their classes register against Base.metadata.
+# Alembic's env.py imports Base; these side-effect imports ensure all tables
+# are visible to --autogenerate without changing env.py. Placed at the end
+# to avoid a circular import (game.models imports Base from this module).
+from app.game import models as _game_models  # noqa: E402, F401
