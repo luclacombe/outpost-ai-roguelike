@@ -1,9 +1,9 @@
-"""LangGraph nodes for the Outpost turn graph — pre-pause half.
+"""LangGraph nodes for the Outpost turn graph.
 
 Each node is an `async def` over `GameTurnState` and returns a partial
 update that LangGraph merges into the carried state. The graph pauses
-via `interrupt_before=["resolve"]` (wired in Task 4.6); everything
-below runs before that pause.
+via `interrupt_before=["resolve"]` (wired in Task 4.6); nodes above
+`resolve` run pre-pause, nodes from `resolve` onward run post-pause.
 
 Invariants enforced here:
   * #5 — prompt caching is mandatory: system blocks come from `prompts`
@@ -12,15 +12,25 @@ Invariants enforced here:
     one `call_haiku` regardless of how many advisors are alive.
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
+    The one documented exception: `resolve` applies a small legitimacy
+    shift based on the picked proposal's flavor directly via
+    `model_copy`, because `modify_legitimacy` is not a tool in the
+    autonomous-tool surface. See the comment in `resolve` for details.
 """
 
 from __future__ import annotations
 
+import logging
 import random
+from datetime import UTC, datetime
+from uuid import UUID
 
-from app.agent.anthropic_client import call_haiku, cost_cents_of
-from app.agent.constants import MODEL_HAIKU
+from sqlalchemy import select
+
+from app.agent.anthropic_client import call_haiku, call_sonnet, cost_cents_of
+from app.agent.constants import MAX_COST_CENTS_PER_TURN, MODEL_HAIKU, MODEL_SONNET
 from app.agent.prompts import (
+    build_autonomous_user_message,
     build_colony_state_block,
     build_debate_user_message,
     build_personas_block,
@@ -28,8 +38,38 @@ from app.agent.prompts import (
     parse_debate_response,
 )
 from app.agent.state import GameTurnState
+from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
+from app.game.models import GameSession, TurnLog
+from app.game.schemas import DecisionRef, ProposalFlavor, ResolvedEvent, SeedPayload
 from app.game.tools import AGENT_TOOL_SCHEMAS
+
+logger = logging.getLogger(__name__)
+
+# Whitelist of tools the autonomous (post-pause, introspective) phase offers
+# to the model. `propose_action`, `modify_resource`, and `modify_health` are
+# deliberately excluded — they belong to the pre-pause debate where the player
+# has visibility and control. Keeping this list in one place makes the scope
+# of off-turn agent behaviour auditable from the filter alone.
+AUTONOMOUS_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "adjust_own_grievance",
+        "remember",
+        "speak_to_agent",
+        "adjust_relationship",
+        "initiate_coup",
+        "back_leader",
+    }
+)
+
+# Legitimacy shifts applied in `resolve` based on the picked proposal's
+# flavor. Applied directly on ColonyState via `model_copy` — see the
+# invariant #11 exception note in `resolve` for rationale.
+_FLAVOR_LEGITIMACY_SHIFT: dict[ProposalFlavor, int] = {
+    ProposalFlavor.DOMINANT: 0,
+    ProposalFlavor.MORAL: 2,
+    ProposalFlavor.WILDCARD: -3,
+}
 
 
 async def generate_event(state: GameTurnState) -> GameTurnState:
@@ -136,4 +176,279 @@ async def apply_tool_calls(state: GameTurnState) -> GameTurnState:
         "applied_tool_calls": applied,
         "rejected_tool_calls": rejected,
         "proposals": proposals,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Post-pause nodes (Task 4.5)
+# ---------------------------------------------------------------------------
+
+
+async def resolve(state: GameTurnState) -> GameTurnState:
+    """Apply the player's chosen proposal, log it, schedule consequence.
+
+    Pure Python — no LLM call. The node fires AFTER the graph's
+    `interrupt_before=["resolve"]` pause, so `state["player_choice"]` is
+    expected to be set by the `/decide` handler before resume.
+    """
+    colony_state = state["colony_state"]
+    proposals = state["proposals"]
+    chosen_id = state["player_choice"]
+
+    picked = next((p for p in proposals if p.id == chosen_id), None)
+    if picked is None:
+        raise ValueError("player_choice did not match any surfaced proposal")
+
+    # Phase 3 populates `tool_calls_on_pick=[]`; the call is kept so that
+    # when proposals grow teeth, every state change flows through the
+    # single validated mutation pipeline (invariant #11).
+    new_colony = engine.apply_tool_calls(colony_state, picked.tool_calls_on_pick)
+
+    # Append the resolved event to the colony's log.
+    current_event = state["current_event"]
+    resolved = ResolvedEvent(
+        turn_number=new_colony.turn_number,
+        event=current_event,
+        chosen_proposal_id=picked.id,
+        summary=picked.description,
+    )
+    new_colony = new_colony.model_copy(update={"event_log": [*new_colony.event_log, resolved]})
+
+    # Engine-direct legitimacy shift — not routed through apply_tool_call
+    # because `modify_legitimacy` is not a tool. Acceptable per the
+    # documented invariant #11 exception for flavor-canonical effects
+    # (see ARCHITECTURE.md Phase 4 notes and the module docstring).
+    shift = _FLAVOR_LEGITIMACY_SHIFT[picked.flavor]
+    if shift:
+        new_legit = max(0, min(100, new_colony.legitimacy + shift))
+        new_colony = new_colony.model_copy(update={"legitimacy": new_legit})
+
+    # Consequence-seed scheduling — severity >= 3 events leave a trace.
+    if current_event.severity >= 3:
+        rng = random.Random(new_colony.seed ^ new_colony.turn_number ^ 0xD34DBEEF)
+        foreshadow = consequence.decide_foreshadow(rng)
+        fires_at = min(new_colony.turn_number + 2, new_colony.max_turns)
+        # Schema requires fires_at_turn > written_at_turn. If we're close
+        # to max_turns the clamp may equal turn_number — skip silently
+        # rather than raise a ValidationError.
+        if fires_at > new_colony.turn_number:
+            seed = consequence.build_seed(
+                game_id=new_colony.game_id,
+                written_at_turn=new_colony.turn_number,
+                fires_at_turn=fires_at,
+                payload=SeedPayload(
+                    event_id=f"aftermath_{current_event.id}",
+                    severity=max(1, current_event.severity - 1),
+                    category=current_event.category,
+                    description=f"Aftermath of {current_event.title}",
+                ),
+                origin_decision=DecisionRef(
+                    turn_number=new_colony.turn_number,
+                    event_id=current_event.id,
+                    chosen_proposal_id=picked.id,
+                ),
+                foreshadow=foreshadow,
+            )
+            new_colony = consequence.schedule_seed(new_colony, seed)
+
+    return {"colony_state": new_colony}
+
+
+async def autonomous_actions(state: GameTurnState) -> GameTurnState:
+    """Off-turn introspective Haiku call — one batched request.
+
+    Skipped entirely when no advisors are alive. Uses the 6-tool
+    autonomous whitelist (AUTONOMOUS_TOOL_NAMES) so the model cannot
+    propose new actions or move resources behind the player's back.
+    """
+    colony_state = state["colony_state"]
+    alive_agents = [a for a in colony_state.agents if a.is_alive]
+
+    if not alive_agents:
+        return {"autonomous_tool_calls": []}
+
+    system_blocks = [
+        build_preamble_block(),
+        build_personas_block(alive_agents),
+        build_colony_state_block(colony_state),
+    ]
+
+    # Prefer the Sonnet narration summary if the narrate node already ran;
+    # otherwise synthesize one from the most recent event_log entry (which
+    # `resolve` just appended). Cap at 300 chars to keep token cost bounded.
+    summary = state.get("narration")
+    if not summary:
+        last_resolved = colony_state.event_log[-1] if colony_state.event_log else None
+        if last_resolved is not None:
+            summary = (
+                f"Turn {colony_state.turn_number}: chose "
+                f"'{last_resolved.summary}' for {last_resolved.event.title}."
+            )
+        else:
+            summary = f"Turn {colony_state.turn_number}: decision resolved."
+    summary = summary[:300]
+
+    user_message = build_autonomous_user_message(summary)
+
+    autonomous_tools = [t for t in AGENT_TOOL_SCHEMAS if t["name"] in AUTONOMOUS_TOOL_NAMES]
+
+    response = await call_haiku(
+        system_blocks,
+        user_message,
+        tools=autonomous_tools,
+        max_tokens=1500,
+    )
+    cost = cost_cents_of(response, MODEL_HAIKU)
+    parsed = parse_debate_response(response, alive_agents)
+
+    pre_tc_len = len(colony_state.turn_tool_calls)
+    new_colony = engine.apply_tool_calls(colony_state, parsed.tool_calls)
+    newly_logged = new_colony.turn_tool_calls[pre_tc_len:]
+    applied_autonomous = [tc for tc in newly_logged if tc.rejection_reason is None]
+
+    return {
+        "colony_state": new_colony,
+        "autonomous_tool_calls": applied_autonomous,
+        "cost_cents_this_turn": state.get("cost_cents_this_turn", 0.0) + cost,
+    }
+
+
+async def check_deaths(state: GameTurnState) -> GameTurnState:
+    """Flip `is_alive=False` for agents at 0 health and pin death memories.
+
+    Thin wrapper: `engine.check_deaths` already handles memory pinning for
+    both the dying agent and survivors, and sets `end_state=KILLED` when
+    the player's health hits zero.
+    """
+    new_colony = engine.check_deaths(state["colony_state"])
+    return {"colony_state": new_colony}
+
+
+async def narrate_turn(state: GameTurnState) -> GameTurnState:
+    """Optional Sonnet narration. Skipped if the run is over turn budget.
+
+    Templated fallback is used when (a) we're over the per-turn cost cap
+    or (b) the Sonnet call itself fails. The fallback is intentionally
+    spare — the turn number and a bare colony status line. Not an attempt
+    at literary prose, just a placeholder the UI can render.
+    """
+    colony_state = state["colony_state"]
+    cost_so_far = state.get("cost_cents_this_turn", 0.0)
+
+    fallback = f"Turn {colony_state.turn_number} ended. Colony stands."
+
+    if cost_so_far >= MAX_COST_CENTS_PER_TURN:
+        return {"narration": fallback}
+
+    # One cache breakpoint (preamble). Personas + colony-state caches are
+    # reserved for the debate path; narration is infrequent enough that
+    # partial cache hit on the preamble is the right trade-off.
+    system_blocks = [build_preamble_block()]
+
+    picked_summary = (
+        colony_state.event_log[-1].summary if colony_state.event_log else "(no decision)"
+    )
+    event_title = (
+        colony_state.event_log[-1].event.title
+        if colony_state.event_log
+        else (state["current_event"].title if state.get("current_event") else "")
+    )
+    dead_names = [a.name for a in colony_state.agents if not a.is_alive]
+    user_message = (
+        f"<turn>{colony_state.turn_number}</turn>\n"
+        f"<event>{event_title}</event>\n"
+        f"<choice>{picked_summary}</choice>\n"
+        f"<dead>{', '.join(dead_names) if dead_names else '(none)'}</dead>\n\n"
+        "Write a 2-3 sentence narrator-voice recap of this turn. "
+        "No meta-commentary, no bullet points. Grim-not-nihilistic tone."
+    )
+
+    try:
+        response = await call_sonnet(system_blocks, user_message, max_tokens=500)
+    except Exception as exc:  # noqa: BLE001 — any SDK failure should not crash the graph
+        logger.warning("narrate_turn: Sonnet call failed (%s); using fallback", exc)
+        return {"narration": fallback}
+
+    cost = cost_cents_of(response, MODEL_SONNET)
+
+    # Sonnet returns a single text block for prose-only requests. Defensive
+    # extraction — if something unexpected comes back, fall back gracefully.
+    narration_text = fallback
+    content = getattr(response, "content", None) or []
+    for block in content:
+        if getattr(block, "type", None) == "text":
+            narration_text = getattr(block, "text", fallback) or fallback
+            break
+
+    return {
+        "narration": narration_text,
+        "cost_cents_this_turn": cost_so_far + cost,
+    }
+
+
+async def advance_turn(state: GameTurnState) -> GameTurnState:
+    """Advance the run and persist — the sole DB-write site in the graph.
+
+    Delegates to `engine.advance_turn` for the pure bits (turn++, decay,
+    end-state evaluation, per-turn field clearing), marks dormant seeds
+    on transition to a terminal end state, accumulates the turn's cost,
+    writes both the `game_sessions` snapshot and the immutable `turn_logs`
+    row, and surfaces `is_run_over` for the graph's terminal edge.
+    """
+    colony_state = state["colony_state"]
+    prev_end_state = colony_state.end_state
+
+    new_colony = engine.advance_turn(colony_state)
+
+    if new_colony.end_state is not None and prev_end_state is None:
+        new_colony = consequence.mark_dormant_seeds(new_colony)
+
+    turn_cost_int = round(state.get("cost_cents_this_turn", 0.0))
+    new_colony = new_colony.model_copy(
+        update={"turn_cost_cents": new_colony.turn_cost_cents + turn_cost_int}
+    )
+
+    # DB persistence. Single session/transaction — either both the
+    # GameSession mirror and the TurnLog land or neither does. The
+    # turn_logs unique (game_id, turn_number) constraint means re-running
+    # this node for the same pre-advance turn is a write error by design.
+    game_id_uuid = UUID(state["game_id"])
+    async with async_session_factory() as db:
+        gs = (
+            await db.execute(select(GameSession).where(GameSession.id == game_id_uuid))
+        ).scalar_one()
+        gs.state = new_colony.model_dump(mode="json")
+        gs.current_turn = new_colony.turn_number
+        gs.legitimacy = new_colony.legitimacy
+        gs.player_health = new_colony.player_health
+        gs.end_state = new_colony.end_state.value if new_colony.end_state is not None else None
+        gs.cost_cents = new_colony.turn_cost_cents
+        if new_colony.end_state is not None and gs.ended_at is None:
+            gs.ended_at = datetime.now(UTC)
+
+        current_event = state["current_event"]
+        log = TurnLog(
+            game_id=game_id_uuid,
+            # Pre-advance turn — the turn that JUST completed.
+            turn_number=colony_state.turn_number,
+            event=current_event.model_dump(mode="json") if current_event else {},
+            proposals=[p.model_dump(mode="json") for p in state.get("proposals", [])],
+            chosen={"chosen_proposal_id": state.get("player_choice")},
+            agent_responses=[
+                {"agent_id": str(aid), "text": txt}
+                for aid, txt in (state.get("debate_per_agent_text") or {}).items()
+            ],
+            autonomous_actions=[
+                tc.model_dump(mode="json") for tc in (state.get("autonomous_tool_calls") or [])
+            ],
+            narration=state.get("narration"),
+            state_snapshot=new_colony.model_dump(mode="json"),
+            turn_cost_cents=turn_cost_int,
+        )
+        db.add(log)
+        await db.commit()
+
+    return {
+        "colony_state": new_colony,
+        "is_run_over": new_colony.end_state is not None,
     }

@@ -1,8 +1,14 @@
-"""Unit tests for the three pre-pause LangGraph nodes.
+"""Unit tests for the eight LangGraph nodes (Tasks 4.4 + 4.5).
+
+Pre-pause (Task 4.4): generate_event, agent_debate, apply_tool_calls.
+Post-pause (Task 4.5): resolve, autonomous_actions, check_deaths,
+narrate_turn, advance_turn.
 
 Covers invariants #5 (three `cache_control: ephemeral` breakpoints on the
 system blocks) and #6 (one Haiku call per debate regardless of alive
 count). All Anthropic traffic is mocked via `respx` at the HTTPX layer.
+DB-touching tests (advance_turn) call `_require_db()` and skip when
+Postgres is unreachable, matching the pattern in test_game_router.py.
 """
 
 from __future__ import annotations
@@ -12,12 +18,25 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+import pytest_asyncio
 import respx
 from httpx import Response
+from sqlalchemy import text
 
 from app.agent.anthropic_client import cost_cents_of
-from app.agent.constants import MODEL_HAIKU
-from app.agent.nodes import agent_debate, apply_tool_calls, generate_event
+from app.agent.constants import MAX_COST_CENTS_PER_TURN, MODEL_HAIKU
+from app.agent.nodes import (
+    AUTONOMOUS_TOOL_NAMES,
+    advance_turn,
+    agent_debate,
+    apply_tool_calls,
+    autonomous_actions,
+    check_deaths,
+    generate_event,
+    narrate_turn,
+    resolve,
+)
+from app.database import async_session_factory
 from app.game.schemas import (
     Agent,
     ColonyState,
@@ -25,12 +44,14 @@ from app.game.schemas import (
     DecisionRef,
     Event,
     EventOrigin,
+    Proposal,
+    ProposalFlavor,
     Quadrant,
     Resource,
     SeedPayload,
     ToolCall,
 )
-from tests.conftest import fake_haiku_response
+from tests.conftest import fake_haiku_response, fake_sonnet_response
 
 # The AsyncAnthropic SDK hits this URL; verified via the probe recommended
 # in the task brief (AsyncAnthropic(api_key=...).base_url is
@@ -426,3 +447,496 @@ async def test_apply_tool_calls_caps_proposals_at_3():
     assert len(result["proposals"]) == 3
     # All four should still show up as validated tool calls on the engine log.
     assert len(result["applied_tool_calls"]) == 4
+
+
+# ---------------------------------------------------------------------------
+# resolve (Task 4.5)
+# ---------------------------------------------------------------------------
+
+
+def _make_proposal(
+    *,
+    pid: str = "p_dom",
+    flavor: ProposalFlavor = ProposalFlavor.DOMINANT,
+    proposer_id: UUID | None = None,
+    tool_calls_on_pick: list[ToolCall] | None = None,
+) -> Proposal:
+    return Proposal(
+        id=pid,
+        proposed_by_agent_id=proposer_id,
+        flavor=flavor,
+        name=f"Proposal {pid}",
+        description=f"Description for {pid}.",
+        effects_preview=[],
+        tool_calls_on_pick=tool_calls_on_pick or [],
+    )
+
+
+def _make_event(*, severity: int = 3, event_id: str = "evt_x") -> Event:
+    return Event(
+        id=event_id,
+        category="political",
+        title="Test event",
+        body="A thing happened.",
+        severity=severity,
+        origin=EventOrigin.NATURAL,
+    )
+
+
+async def test_resolve_finds_picked_proposal_and_appends_event_log():
+    colony = make_colony_state(turn=2)
+    proposals = [
+        _make_proposal(pid="p_a", flavor=ProposalFlavor.DOMINANT),
+        _make_proposal(pid="p_b", flavor=ProposalFlavor.MORAL),
+        _make_proposal(pid="p_c", flavor=ProposalFlavor.WILDCARD),
+    ]
+    event = _make_event(severity=2, event_id="evt_mild")  # no seed scheduling
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": proposals,
+        "player_choice": "p_b",
+        "current_event": event,
+    }
+    result = await resolve(state)
+
+    new_colony: ColonyState = result["colony_state"]
+    assert len(new_colony.event_log) == len(colony.event_log) + 1
+    last = new_colony.event_log[-1]
+    assert last.chosen_proposal_id == "p_b"
+    assert last.event.id == "evt_mild"
+    assert last.turn_number == colony.turn_number
+
+
+async def test_resolve_raises_on_unknown_player_choice():
+    colony = make_colony_state(turn=2)
+    proposals = [_make_proposal(pid="p_a")]
+    event = _make_event(severity=2)
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": proposals,
+        "player_choice": "does_not_exist",
+        "current_event": event,
+    }
+    with pytest.raises(ValueError):
+        await resolve(state)
+
+
+async def test_resolve_applies_flavor_legitimacy_shift():
+    colony = make_colony_state(turn=2)
+    base_legit = colony.legitimacy
+    event = _make_event(severity=2)  # no seeding
+
+    # MORAL: +2
+    moral_state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": [_make_proposal(pid="p_m", flavor=ProposalFlavor.MORAL)],
+        "player_choice": "p_m",
+        "current_event": event,
+    }
+    r = await resolve(moral_state)
+    assert r["colony_state"].legitimacy == base_legit + 2
+
+    # WILDCARD: -3
+    wild_state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": [_make_proposal(pid="p_w", flavor=ProposalFlavor.WILDCARD)],
+        "player_choice": "p_w",
+        "current_event": event,
+    }
+    r = await resolve(wild_state)
+    assert r["colony_state"].legitimacy == base_legit - 3
+
+    # DOMINANT: unchanged
+    dom_state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": [_make_proposal(pid="p_d", flavor=ProposalFlavor.DOMINANT)],
+        "player_choice": "p_d",
+        "current_event": event,
+    }
+    r = await resolve(dom_state)
+    assert r["colony_state"].legitimacy == base_legit
+
+
+async def test_resolve_schedules_consequence_seed_on_severe_event():
+    colony = make_colony_state(turn=2)
+    pre_seed_count = len(colony.consequence_seeds)
+    event = _make_event(severity=4, event_id="evt_severe")
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": [_make_proposal(pid="p_a", flavor=ProposalFlavor.DOMINANT)],
+        "player_choice": "p_a",
+        "current_event": event,
+    }
+    result = await resolve(state)
+
+    new_seeds = result["colony_state"].consequence_seeds
+    assert len(new_seeds) == pre_seed_count + 1
+    scheduled = new_seeds[-1]
+    # fires_at should be clamped to max_turns but still > current turn.
+    assert scheduled.fires_at_turn > colony.turn_number
+    assert scheduled.fires_at_turn <= colony.max_turns
+    assert scheduled.payload.event_id == "aftermath_evt_severe"
+    # severity clamped at max(1, severity-1)
+    assert scheduled.payload.severity == 3
+
+
+async def test_resolve_does_not_schedule_seed_on_low_severity():
+    colony = make_colony_state(turn=2)
+    pre_seed_count = len(colony.consequence_seeds)
+    event = _make_event(severity=2, event_id="evt_low")
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "proposals": [_make_proposal(pid="p_a", flavor=ProposalFlavor.DOMINANT)],
+        "player_choice": "p_a",
+        "current_event": event,
+    }
+    result = await resolve(state)
+
+    assert len(result["colony_state"].consequence_seeds) == pre_seed_count
+
+
+# ---------------------------------------------------------------------------
+# autonomous_actions (Task 4.5)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_autonomous_actions_makes_one_anthropic_call():
+    colony = make_colony_state()  # 4 alive
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 0.0,
+    }
+    result = await autonomous_actions(state)
+
+    assert route.call_count == 1
+    assert "autonomous_tool_calls" in result
+    # Cost accumulates.
+    assert result["cost_cents_this_turn"] > 0.0
+
+
+async def test_autonomous_actions_skips_llm_when_no_alive_agents():
+    # Build a colony where every agent is dead.
+    dead_agents = [
+        make_alive_agent(name="A", quadrant=Quadrant.ACCOUNTANT, is_alive=False),
+        make_alive_agent(name="B", quadrant=Quadrant.OPERATOR, is_alive=False),
+        make_alive_agent(name="C", quadrant=Quadrant.CONSCIENCE, is_alive=False),
+        make_alive_agent(name="D", quadrant=Quadrant.CRUSADER, is_alive=False),
+    ]
+    colony = make_colony_state(agents=dead_agents)
+
+    # respx.mock is NOT used — if the node makes any HTTP call it will fail
+    # with an ImportError-free network error, surfacing the mistake. We also
+    # assert the shape of the returned dict.
+    with respx.mock():
+        route = respx.post(_ANTHROPIC_URL)
+        state: dict[str, Any] = {
+            "colony_state": colony,
+            "cost_cents_this_turn": 0.0,
+        }
+        result = await autonomous_actions(state)
+        assert route.call_count == 0
+
+    assert result == {"autonomous_tool_calls": []}
+
+
+@respx.mock
+async def test_autonomous_actions_filters_to_introspective_tools():
+    colony = make_colony_state()
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 0.0,
+    }
+    await autonomous_actions(state)
+
+    sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
+    sent_tool_names = {t["name"] for t in sent_body["tools"]}
+    assert sent_tool_names == set(AUTONOMOUS_TOOL_NAMES)
+    # Explicitly check that the player-visible tools are excluded.
+    assert "propose_action" not in sent_tool_names
+    assert "modify_resource" not in sent_tool_names
+    assert "modify_health" not in sent_tool_names
+
+
+# ---------------------------------------------------------------------------
+# check_deaths (Task 4.5)
+# ---------------------------------------------------------------------------
+
+
+async def test_check_deaths_flips_agent_is_alive():
+    # Agent at 0 health — check_deaths should mark is_alive=False.
+    agents = [
+        make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT),
+        make_alive_agent(name="Marko", quadrant=Quadrant.OPERATOR),
+        make_alive_agent(name="Irina", quadrant=Quadrant.CONSCIENCE),
+        make_alive_agent(name="Viktor", quadrant=Quadrant.CRUSADER),
+    ]
+    # Drop Marko to 0.
+    agents[1] = agents[1].model_copy(update={"health": 0})
+    colony = make_colony_state(agents=agents)
+
+    state: dict[str, Any] = {"colony_state": colony}
+    result = await check_deaths(state)
+
+    new_colony: ColonyState = result["colony_state"]
+    marko_new = next(a for a in new_colony.agents if a.name == "Marko")
+    assert marko_new.is_alive is False
+    # Others still alive.
+    others_alive = [a for a in new_colony.agents if a.name != "Marko"]
+    assert all(a.is_alive for a in others_alive)
+
+
+# ---------------------------------------------------------------------------
+# narrate_turn (Task 4.5)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_narrate_turn_skips_sonnet_when_over_budget():
+    colony = make_colony_state()
+    route = respx.post(_ANTHROPIC_URL)
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": float(MAX_COST_CENTS_PER_TURN) + 1.0,
+        "current_event": _make_event(),
+    }
+    result = await narrate_turn(state)
+
+    assert route.call_count == 0
+    assert "narration" in result
+    assert "Colony stands" in result["narration"]
+
+
+@respx.mock
+async def test_narrate_turn_calls_sonnet_when_under_budget():
+    colony = make_colony_state()
+    narration_text = "The wall held. Nadia counted the rations twice."
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=fake_sonnet_response(narration_text))
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 1.0,
+        "current_event": _make_event(),
+    }
+    result = await narrate_turn(state)
+
+    assert route.call_count == 1
+    assert result["narration"] == narration_text
+    # Cost accumulates.
+    assert result["cost_cents_this_turn"] > 1.0
+
+
+@respx.mock
+async def test_narrate_turn_falls_back_on_api_error():
+    colony = make_colony_state()
+    respx.post(_ANTHROPIC_URL).mock(return_value=Response(500, json={"error": "boom"}))
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 1.0,
+        "current_event": _make_event(),
+    }
+    # Should not raise; templated fallback instead.
+    result = await narrate_turn(state)
+
+    assert "narration" in result
+    assert "Colony stands" in result["narration"]
+    # No cost accumulation on error.
+    assert "cost_cents_this_turn" not in result
+
+
+# ---------------------------------------------------------------------------
+# advance_turn (Task 4.5) — DB-touching; SKIP when Postgres unreachable
+# ---------------------------------------------------------------------------
+
+
+async def _require_db() -> None:
+    """Match the pattern in tests/test_game_router.py — SKIP, not FAIL."""
+    try:
+        async with async_session_factory() as s:
+            await s.execute(text("SELECT 1"))
+    except Exception as exc:  # pragma: no cover — env-dependent
+        pytest.skip(f"Postgres unreachable: {exc}")
+
+
+async def _ensure_auth_user(user_id: UUID, email: str) -> None:
+    async with async_session_factory() as s:
+        await s.execute(
+            text(
+                """
+                INSERT INTO auth.users (
+                    id, instance_id, aud, role, email, encrypted_password,
+                    email_confirmed_at, created_at, updated_at
+                )
+                VALUES (
+                    :id,
+                    '00000000-0000-0000-0000-000000000000'::uuid,
+                    'authenticated', 'authenticated', :email,
+                    '', now(), now(), now()
+                )
+                ON CONFLICT (id) DO NOTHING
+                """
+            ),
+            {"id": user_id, "email": email},
+        )
+        await s.execute(
+            text(
+                """
+                INSERT INTO profiles (id, display_name, total_runs, created_at)
+                VALUES (:id, :name, 0, now())
+                ON CONFLICT (id) DO UPDATE SET last_run_started_at = NULL, total_runs = 0
+                """
+            ),
+            {"id": user_id, "name": "Advance Turn Tester"},
+        )
+        await s.commit()
+
+
+async def _delete_auth_user(user_id: UUID) -> None:
+    async with async_session_factory() as s:
+        await s.execute(text("DELETE FROM auth.users WHERE id = :id"), {"id": user_id})
+        await s.commit()
+
+
+@pytest_asyncio.fixture
+async def persisted_colony():
+    """Create an auth user + profile + a game_sessions row via the service,
+    yield the ColonyState, and clean up via CASCADE on teardown."""
+    await _require_db()
+    from app.game.service import create_game_session
+
+    user_id = uuid4()
+    await _ensure_auth_user(user_id, f"advance_{user_id.hex[:8]}@outpost.local")
+    try:
+        async with async_session_factory() as db:
+            colony = await create_game_session(user_id=user_id, db=db)
+            await db.commit()
+        yield colony
+    finally:
+        await _delete_auth_user(user_id)
+
+
+async def test_advance_turn_persists_to_db_and_writes_turn_log(persisted_colony):
+    """Run advance_turn against a real game_sessions row and verify both
+    the scalar mirror on game_sessions and a turn_logs row are written."""
+    colony = persisted_colony
+    # Fabricate a current event + a resolved event on the log so the node
+    # has something plausible to write to turn_logs.
+    event = _make_event(severity=2, event_id="evt_adv")
+    proposal = _make_proposal(pid="p_adv", flavor=ProposalFlavor.DOMINANT)
+    colony = colony.model_copy(update={"current_event": event})
+
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [proposal],
+        "player_choice": "p_adv",
+        "debate_per_agent_text": {},
+        "autonomous_tool_calls": [],
+        "narration": "The snow held.",
+        "cost_cents_this_turn": 2.7,
+    }
+
+    result = await advance_turn(state)
+
+    # Engine advanced the turn.
+    new_colony: ColonyState = result["colony_state"]
+    assert new_colony.turn_number == colony.turn_number + 1
+
+    async with async_session_factory() as s:
+        row = (
+            await s.execute(
+                text(
+                    "SELECT current_turn, legitimacy, player_health, cost_cents"
+                    " FROM game_sessions WHERE id = :gid"
+                ),
+                {"gid": colony.game_id},
+            )
+        ).one()
+        assert row.current_turn == new_colony.turn_number
+        assert row.legitimacy == new_colony.legitimacy
+        assert row.player_health == new_colony.player_health
+        assert row.cost_cents == new_colony.turn_cost_cents
+
+        log_row = (
+            await s.execute(
+                text(
+                    "SELECT turn_number, narration, turn_cost_cents"
+                    " FROM turn_logs WHERE game_id = :gid"
+                ),
+                {"gid": colony.game_id},
+            )
+        ).one()
+        # Pre-advance turn number recorded.
+        assert log_row.turn_number == colony.turn_number
+        assert log_row.narration == "The snow held."
+        # Cost is rounded at write time.
+        assert log_row.turn_cost_cents == round(2.7)
+
+
+async def test_advance_turn_sets_is_run_over_when_end_state_set(persisted_colony):
+    """Force COLLAPSED by pinning turn_number at max_turns with low legitimacy."""
+    colony = persisted_colony
+    # Push the run to the turn limit with resources below thresholds.
+    drained_resources = {
+        rid: r.model_copy(update={"value": 0}) for rid, r in colony.resources.items()
+    }
+    event = _make_event(severity=1, event_id="evt_endgame")
+    colony = colony.model_copy(
+        update={
+            "turn_number": colony.max_turns,
+            "legitimacy": 5,
+            "resources": drained_resources,
+            "current_event": event,
+        }
+    )
+    # Persist this altered state back so advance_turn's DB read sees it.
+    async with async_session_factory() as s:
+        await s.execute(
+            text(
+                "UPDATE game_sessions SET current_turn = :t, legitimacy = :l, state = :st"
+                " WHERE id = :gid"
+            ),
+            {
+                "t": colony.turn_number,
+                "l": colony.legitimacy,
+                "st": json.dumps(colony.model_dump(mode="json")),
+                "gid": colony.game_id,
+            },
+        )
+        await s.commit()
+
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [],
+        "player_choice": None,
+        "debate_per_agent_text": {},
+        "autonomous_tool_calls": [],
+        "narration": None,
+        "cost_cents_this_turn": 0.0,
+    }
+
+    result = await advance_turn(state)
+
+    assert result["is_run_over"] is True
+    assert result["colony_state"].end_state is not None
