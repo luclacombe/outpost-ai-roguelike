@@ -2394,6 +2394,8 @@ Any gap → back to fix.
 
 - **`_pin_memory` deduped by `id()`.** Symptom: two agents pinning identical "died in turn 5" entries in the same tick — one call deduped, the other didn't. Root cause: Python interns short strings unpredictably; `id()` is not a stable identity for value equality. Fix: dedupe by `(turn, text)` tuple. File: `backend/app/game/engine.py` (Task 3.6 review).
 
+- **Over-broad `git add` silently deleted unrelated files.** Symptom: Task 3.2's two Supabase CLI game-table migrations (`20260424073634_create_game_tables.sql`, `20260424073655_enable_rls_game_sessions.sql`) disappeared from the tree between `78aaad1` (added them) and Phase 3 close — tests kept passing because the live DB kept the RLS from its earlier apply. Root cause: a subsequent commit's `git add` used a broad directory path that picked up both additions and deletions; the deletions weren't noticed because they didn't regress any test. Fix: the duplicate-DDL issue was going to be removed anyway, so the accidental delete didn't hurt — but the lesson stands. **Prefer `git add <explicit-path>` for every file; run `git diff --cached --stat` before committing multi-file work to confirm the staged set matches intent.** Files: `backend/supabase/migrations/` (commit `16034a5`).
+
 ---
 
 ## Scope Check (from writing-plans skill)
