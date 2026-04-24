@@ -19,8 +19,10 @@ CENTS_PER_MTOK_HAIKU_CACHE_WRITE = 125  # $1.25 / MTok (ephemeral write)
 CENTS_PER_MTOK_HAIKU_CACHE_READ = 10  # $0.10 / MTok (cache hit)
 CENTS_PER_MTOK_HAIKU_OUTPUT = 500  # $5.00 / MTok
 
-CENTS_PER_MTOK_SONNET_INPUT = 300  # $3.00 / MTok — verify
-CENTS_PER_MTOK_SONNET_OUTPUT = 1500  # $15.00 / MTok — verify
+CENTS_PER_MTOK_SONNET_INPUT = 300  # $3.00 / MTok
+CENTS_PER_MTOK_SONNET_CACHE_WRITE = 375  # $3.75 / MTok (input × 1.25, ephemeral 5m)
+CENTS_PER_MTOK_SONNET_CACHE_READ = 30  # $0.30 / MTok (input × 0.10)
+CENTS_PER_MTOK_SONNET_OUTPUT = 1500  # $15.00 / MTok
 
 # Budget rails per ARCHITECTURE §5.2.
 MAX_COST_CENTS_PER_TURN = 15  # ~$0.15; if exceeded, skip Sonnet narration.

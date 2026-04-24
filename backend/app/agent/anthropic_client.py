@@ -19,6 +19,8 @@ from .constants import (
     CENTS_PER_MTOK_HAIKU_CACHE_WRITE,
     CENTS_PER_MTOK_HAIKU_INPUT,
     CENTS_PER_MTOK_HAIKU_OUTPUT,
+    CENTS_PER_MTOK_SONNET_CACHE_READ,
+    CENTS_PER_MTOK_SONNET_CACHE_WRITE,
     CENTS_PER_MTOK_SONNET_INPUT,
     CENTS_PER_MTOK_SONNET_OUTPUT,
     MODEL_HAIKU,
@@ -69,14 +71,26 @@ async def call_sonnet(
 def cost_cents_of(response: Any, model: str) -> float:
     """Compute the cost of a completed `messages.create` call in cents.
 
-    Handles all four Anthropic token buckets:
-      * `cache_read_input_tokens`     — cache hit, cheapest.
-      * `cache_creation_input_tokens` — cache write, priced above fresh input.
-      * `input_tokens - cache_read - cache_creation` — fresh (uncached) input.
-      * `output_tokens`               — completion tokens.
+    Anthropic's `usage` object reports four disjoint token buckets:
+      * `input_tokens`                 — fresh (non-cached) input billable at
+                                         the standard input rate. CRITICAL:
+                                         this field already EXCLUDES cached
+                                         tokens; do not subtract `cache_*`
+                                         from it.
+      * `cache_read_input_tokens`      — cache-hit input, billed at ~10% of
+                                         standard input.
+      * `cache_creation_input_tokens`  — cache-write input, billed at ~125%
+                                         of standard input (5-min ephemeral).
+      * `output_tokens`                — completion tokens.
 
-    The cache fields are optional on `usage` — absent entirely (not `None`)
-    when caching was not used on the call. `getattr(..., 0)` handles both
+    Calibrated against an Anthropic dashboard delta on 2026-04-24: this
+    formula matched billed Haiku spend within 5% and Sonnet spend within
+    rounding on a 31-call run. See PLAN.md "Errors & Learnings" Phase 4
+    for the prior bug (subtracting cache tokens from `input_tokens`) which
+    caused 60-70% under-counting and produced negative-cost Sonnet calls.
+
+    `cache_*` fields are optional on `usage` — absent entirely (not `None`)
+    when caching was not used. `getattr(..., 0) or 0` handles both
     "attribute missing" and "attribute present but zero" uniformly.
     """
     u = response.usage
@@ -84,11 +98,10 @@ def cost_cents_of(response: Any, model: str) -> float:
     output_tokens: int = u.output_tokens
     cache_read: int = getattr(u, "cache_read_input_tokens", 0) or 0
     cache_creation: int = getattr(u, "cache_creation_input_tokens", 0) or 0
-    fresh_input = input_tokens - cache_read - cache_creation
 
     if model == MODEL_HAIKU:
         cents = (
-            fresh_input * CENTS_PER_MTOK_HAIKU_INPUT
+            input_tokens * CENTS_PER_MTOK_HAIKU_INPUT
             + cache_read * CENTS_PER_MTOK_HAIKU_CACHE_READ
             + cache_creation * CENTS_PER_MTOK_HAIKU_CACHE_WRITE
             + output_tokens * CENTS_PER_MTOK_HAIKU_OUTPUT
@@ -96,11 +109,11 @@ def cost_cents_of(response: Any, model: str) -> float:
         return cents / 1_000_000
 
     if model == MODEL_SONNET:
-        # Cache not used for narration in our plan, but account for it
-        # defensively in case that ever changes — fresh_input already
-        # subtracts any cache tokens, so we just apply the input rate.
         cents = (
-            fresh_input * CENTS_PER_MTOK_SONNET_INPUT + output_tokens * CENTS_PER_MTOK_SONNET_OUTPUT
+            input_tokens * CENTS_PER_MTOK_SONNET_INPUT
+            + cache_read * CENTS_PER_MTOK_SONNET_CACHE_READ
+            + cache_creation * CENTS_PER_MTOK_SONNET_CACHE_WRITE
+            + output_tokens * CENTS_PER_MTOK_SONNET_OUTPUT
         )
         return cents / 1_000_000
 
