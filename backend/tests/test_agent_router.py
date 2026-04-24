@@ -361,6 +361,47 @@ async def test_turn_happy_path_ends_with_proposals_ready(persisted_game, graph_p
 
 
 @respx.mock
+async def test_turn_double_post_short_circuits_to_paused_proposals(
+    persisted_game, graph_postgres
+) -> None:
+    """Double-POST /turn on an already-paused run re-emits the paused
+    proposals without making a second Anthropic call. Protects the
+    client reconnect/replay path (see app.agent.service docstring).
+    """
+    colony = persisted_game
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=_debate_haiku_body(colony.agents))
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": str(colony.user_id),
+        "email": "test@outpost.local",
+        "aud": "authenticated",
+    }
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            # First /turn runs the graph to pause.
+            async with c.stream("POST", f"/game/{colony.game_id}/turn") as resp:
+                first_frames = await _collect_stream(resp)
+            assert route.call_count == 1
+
+            # Second /turn should short-circuit — no additional Anthropic call.
+            async with c.stream("POST", f"/game/{colony.game_id}/turn") as resp:
+                second_frames = await _collect_stream(resp)
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert route.call_count == 1, "second /turn should not re-invoke the graph"
+
+    def _proposal_ids(frames: list[dict[str, Any]]) -> list[str]:
+        pr = next(f for f in frames if f["event"] == "proposals_ready")
+        return [p["id"] for p in pr["data"]["proposals"]]
+
+    assert _proposal_ids(first_frames) == _proposal_ids(second_frames)
+    assert second_frames[-1] == {"event": "done", "data": _DONE_SENTINEL}
+
+
+@respx.mock
 async def test_decide_409_when_not_paused(persisted_game, graph_postgres) -> None:
     """/decide before /turn → 409 `not_paused`. No SSE body."""
     colony = persisted_game
