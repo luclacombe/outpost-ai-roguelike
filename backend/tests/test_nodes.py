@@ -310,8 +310,18 @@ async def test_agent_debate_accumulates_cost_cents():
 
 
 @respx.mock
-async def test_agent_debate_sends_3_cache_control_breakpoints():
-    """Invariant #5: three ephemeral cache_control breakpoints on system."""
+async def test_agent_debate_cache_control_layout():
+    """Invariant #5: cache_control placement must make the cached prefix
+    cross-turn stable. Concretely: the LAST system block must have
+    cache_control, and run-stable content (preamble + personas) must live
+    in system while per-turn colony_state lives in the user message.
+
+    Background: Anthropic only persists a cache entry at the LAST
+    cache_control breakpoint in the request. Earlier cache_control markers
+    don't create their own durable entries. If the last breakpoint sits
+    on a per-turn block, every turn invalidates the cache. We observed
+    this empirically in Phase 4 — see PLAN.md "Errors & Learnings" Phase 4.
+    """
     colony = make_colony_state()
     event = Event(
         id="evt_y",
@@ -339,13 +349,22 @@ async def test_agent_debate_sends_3_cache_control_breakpoints():
     assert route.call_count == 1
     sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
     system_blocks = sent_body["system"]
-    ephemeral_count = sum(
-        1
-        for block in system_blocks
-        if isinstance(block, dict) and block.get("cache_control") == {"type": "ephemeral"}
+    # System has exactly 2 blocks: preamble + personas, both cached.
+    assert len(system_blocks) == 2, (
+        f"expected 2 system blocks (preamble, personas), got {len(system_blocks)}"
     )
-    assert ephemeral_count == 3, (
-        f"expected 3 ephemeral cache_control breakpoints, got {ephemeral_count}"
+    # Both system blocks have ephemeral cache_control — crucially, the LAST one
+    # (personas) must, because that's the only block that actually persists
+    # a cache entry Anthropic-side.
+    for i, block in enumerate(system_blocks):
+        assert block.get("cache_control") == {"type": "ephemeral"}, (
+            f"system block {i} missing ephemeral cache_control"
+        )
+    # Colony state content must flow through the user message, not system.
+    user_content = sent_body["messages"][0]["content"]
+    assert "<colony_state>" in user_content, (
+        "colony_state rendering must live in the user message so the last "
+        "system cache_control (on personas) points at run-stable content"
     )
 
 

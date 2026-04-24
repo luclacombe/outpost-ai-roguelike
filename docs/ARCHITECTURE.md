@@ -593,35 +593,53 @@ Each of the above has a corresponding Postgres table:
 
 ### 5.1 Caching layout
 
-Every Anthropic call structures its system prompt as **three** cache-control
-breakpoints (stable-to-volatile). Anthropic caps the cache_control breakpoint
-count at 4 per request; we use 3 with one spare.
+Every Haiku call ships two system blocks plus a user message. `cache_control:
+{"type": "ephemeral"}` sits on both system blocks, with the runtime cache
+entry anchored on the last one (personas). Per-turn colony state lives in the
+user message, not system.
 
 ```
+Tools:
+  [implicitly cached with system prefix] 10 tool schemas                  (~2300 tok)
+
 System:
-  [cached — static, never invalidates within TTL] Preamble + tool rules  (~900 tok)
-  [cached — per-run stable] 4 personas concatenated (id, role, axes, tic) (~1500 tok)
-  [cached — per-turn] Colony state: resources, legitimacy, player_health,
-                       per-agent memories + grievance + relationships     (~800 tok)
+  [cache_control — static, never invalidates within TTL]
+      Preamble + game rules + tool contract + voice constraints           (~1500 tok)
+  [cache_control — per-run stable; this is the LAST cache_control]
+      4 personas concatenated: id, name, role, archetype, axes, tic        (~700 tok)
 
 User (not cached):
-  Current event + response instructions                                  (~400 tok)
+  Colony state snapshot: resources, legitimacy, player_health,
+      per-agent memories + grievance + relationships                       (~500 tok)
+  + Current event + response instructions                                  (~150 tok)
 ```
 
-The preamble and persona blocks are stable for the entire run (9 reads per
-10-turn run, 1 write). The colony-state block invalidates every turn but is
-still cache-hit within the turn by the second and third LLM calls
-(debate → autonomous → narrate).
+**Why two breakpoints and not three.** Anthropic only persists a cache entry
+at the LAST `cache_control` in the request; earlier markers are lookup hints
+only. If the last cache_control sits on a per-turn block (first design), the
+cache writes a fresh entry every turn and never reads from prior turns — we
+measured this: `cache_creation_input_tokens` grew each turn while
+`cache_read_input_tokens` stayed at 0. Moving colony state to the user message
+and putting the last cache_control on personas (run-stable) makes the entry
+match across turns. The cumulative prefix through the last cache_control is
+~4600 tokens, above Haiku 4.5's 4096-token minimum cacheable length.
 
-**Per-agent memories live in the colony-state block, not the persona block.**
-Inlining memories into personas would invalidate the per-run cache every turn
-when a new memory is appended — dropping expected cache hit rate from 85–90%
-to roughly 40–50% on input tokens. See §3.7 for the block layout and
+**Per-agent memories live in the colony-state text (user message), not the
+persona block.** Inlining memories into personas would mutate the persona
+block every turn and defeat cache stability even at the right breakpoint
+position. See §3.7 for the block layout and
 `backend/app/agent/prompts.build_colony_state_block`.
 
+**Minimum cacheable prefix gotcha.** Haiku 4.5 requires ≥4096 cumulative
+tokens through the last cache_control. Below that, Anthropic silently skips
+caching and returns 0 for both `cache_creation_input_tokens` and
+`cache_read_input_tokens` — no error. If you trim the preamble or personas,
+re-measure via `client.messages.count_tokens(...)` and confirm the cumulative
+still clears 4096 before merging.
+
 Expected cache hit rate after turn 2: **85–90%** of input tokens. Verified in
-`tests/integration/test_full_run.py` via a wrapped `cost_cents_of` that records
-`cache_read_input_tokens` per call.
+`tests/integration/test_full_run.py` via a wrapped `cost_cents_of` that
+records `cache_read_input_tokens` per call.
 
 ### 5.2 Cost-control constants
 

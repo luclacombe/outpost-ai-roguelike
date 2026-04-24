@@ -43,25 +43,40 @@ response into `(per_agent_text, tool_calls)`.
 - Unknown agent names, malformed XML, malformed JSON, invalid UUIDs → logged at
   WARNING, skipped. The parser never raises on bad model output.
 
-## Cache layout (3 breakpoints)
+## Cache layout (2 breakpoints + colony state in user message)
 
-Three `cache_control: {"type": "ephemeral"}` blocks per request; user message is
-not cached.
+Two `cache_control: {"type": "ephemeral"}` blocks per Haiku request, both in
+`system`. Colony state goes in the user message, not a system block.
 
-| Block | What | Invalidates | TTL |
-|---|---|---|---|
-| preamble | game rules + tool rules | never (build from constants) | 5 min rolling |
-| personas | 4 advisors: id, name, role, axes, verbal_tic | never within a run | 5 min rolling |
-| colony_state | resources, legitimacy, player_health, per-agent memories/grievance/relationships/health | every turn | 5 min rolling |
+| Position | What | Invalidates |
+|---|---|---|
+| system[0] | preamble: game rules, tool contract, voice | never (module constant) |
+| system[1] | personas: 4 advisors' id/name/role/axes/verbal_tic | never within a run |
+| user message | colony_state (resources, legitimacy, player_health, per-agent memories/grievance/relationships) + current event + instructions | every turn |
 
-**Memories live in the colony-state block, not the persona block.** Putting
-per-turn memories inside personas would invalidate the persona cache every
-turn, dropping hit rate from ~85% to ~40%. See
-`prompts.build_colony_state_block` for placement and ARCHITECTURE §3.7 for
-rationale.
+**The last system block MUST be run-stable and MUST carry `cache_control`.**
+Anthropic only persists a cache entry at the LAST cache_control breakpoint in
+the request — earlier markers don't create their own durable entries. If the
+last cache_control sits on a per-turn block (what we tried first), every turn
+writes a fresh cache entry and nothing ever reads. Keeping the cache_control
+on personas (run-stable) and pushing volatile content into the user message
+is what unlocks cross-turn cache hits.
 
-Anthropic caps cache_control at 4 breakpoints per request; we use 3 with room to
-spare. Expected hit rate after turn 2: 85–90% on input tokens.
+**Minimum cacheable prefix (Haiku 4.5): 4096 tokens cumulative through the
+last cache_control.** The preamble + personas + tool schemas clear this with
+headroom (~4600 tokens). If you trim the preamble, re-measure via
+`client.messages.count_tokens(...)` and confirm cumulative tokens through
+the last cc are still >4096. Dropping below silently skips caching and
+returns 0 in both `cache_creation_input_tokens` and `cache_read_input_tokens`.
+
+**Memories live in the rendered colony-state text (user message), not the
+personas block.** Putting per-turn memories inside personas would mutate the
+personas block's content every turn and break cache stability even if it sat
+at the right cache_control position.
+
+Expected hit rate after turn 2: 85–90% on input tokens. Verified by
+`tests/integration/test_full_run.py`'s wrapped `cost_cents_of` that records
+`cache_read_input_tokens` per call.
 
 ## Cost accounting
 

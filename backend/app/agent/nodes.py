@@ -140,12 +140,17 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     event = state["current_event"]
     alive_agents = [a for a in colony_state.agents if a.is_alive]
 
+    # Cache layout: preamble + personas in system with cache_control on the
+    # LAST block (personas). Colony state moves into the user message — it
+    # changes every turn, so keeping it out of the cached prefix is what
+    # lets Anthropic actually hit the cache on turn 2+. See Phase 4 learnings
+    # in docs/PLAN.md for the empirical finding that drove this.
     system_blocks = [
         build_preamble_block(),
         build_personas_block(alive_agents),
-        build_colony_state_block(colony_state),
     ]
-    user_message = build_debate_user_message(event)
+    colony_state_text = build_colony_state_block(colony_state)["text"]
+    user_message = f"{colony_state_text}\n\n{build_debate_user_message(event)}"
 
     response = await call_haiku(
         system_blocks,
@@ -280,10 +285,12 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     if not alive_agents:
         return {"autonomous_tool_calls": []}
 
+    # Same cache layout as agent_debate — see that node's comment. Colony
+    # state sits in the user message so the last cache_control in system
+    # lands on the run-stable personas block.
     system_blocks = [
         build_preamble_block(),
         build_personas_block(alive_agents),
-        build_colony_state_block(colony_state),
     ]
 
     # Prefer the Sonnet narration summary if the narrate node already ran;
@@ -301,7 +308,8 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
             summary = f"Turn {colony_state.turn_number}: decision resolved."
     summary = summary[:300]
 
-    user_message = build_autonomous_user_message(summary)
+    colony_state_text = build_colony_state_block(colony_state)["text"]
+    user_message = f"{colony_state_text}\n\n{build_autonomous_user_message(summary)}"
 
     autonomous_tools = [t for t in AGENT_TOOL_SCHEMAS if t["name"] in AUTONOMOUS_TOOL_NAMES]
 
