@@ -81,9 +81,7 @@ async def _ensure_auth_user(user_id: uuid.UUID, email: str) -> None:
 
 async def _delete_auth_user(user_id: uuid.UUID) -> None:
     async with async_session_factory() as s:
-        await s.execute(
-            text("DELETE FROM auth.users WHERE id = :id"), {"id": user_id}
-        )
+        await s.execute(text("DELETE FROM auth.users WHERE id = :id"), {"id": user_id})
         await s.commit()
 
 
@@ -125,10 +123,7 @@ async def test_create_session_creates_row(client, seeded_user) -> None:
         ).scalar_one()
         profile_last = (
             await s.execute(
-                text(
-                    "SELECT last_run_started_at, total_runs FROM profiles"
-                    " WHERE id = :u"
-                ),
+                text("SELECT last_run_started_at, total_runs FROM profiles WHERE id = :u"),
                 {"u": seeded_user},
             )
         ).one()
@@ -199,8 +194,10 @@ async def test_create_session_daily_gate_race_condition(seeded_user) -> None:
     """Fire two near-simultaneous POSTs via asyncio.gather. The atomic
     conditional UPDATE on profiles guarantees exactly one winner."""
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c1, \
-               AsyncClient(transport=transport, base_url="http://test") as c2:
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as c1,
+        AsyncClient(transport=transport, base_url="http://test") as c2,
+    ):
         # Both clients use the same stubbed user (single-user race).
         app.dependency_overrides[get_current_user] = lambda: {
             "sub": str(seeded_user),
@@ -217,8 +214,7 @@ async def test_create_session_daily_gate_race_condition(seeded_user) -> None:
 
     statuses = sorted([r1.status_code, r2.status_code])
     assert statuses == [201, 429], (
-        f"expected one 201 + one 429, got {statuses}: "
-        f"r1={r1.text!r} r2={r2.text!r}"
+        f"expected one 201 + one 429, got {statuses}: r1={r1.text!r} r2={r2.text!r}"
     )
     losing = r1 if r1.status_code == 429 else r2
     assert losing.json()["detail"]["error"]["code"] == "daily_gate_exceeded"
@@ -274,9 +270,7 @@ async def test_get_session_other_user_404(client, seeded_user) -> None:
         }
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as c:
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
                 resp = await c.get(f"/game/{game_id}")
         finally:
             # Restore the default test-user override so the fixture teardown

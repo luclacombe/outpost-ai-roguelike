@@ -39,7 +39,9 @@ AGENT_ID = uuid.UUID("cccccccc-0000-0000-0000-000000000003")
 
 
 def _minimal_resource(value: int = 50, max_val: int = 100) -> Resource:
-    return Resource(id="fuel", name="Fuel", icon="🛢", max=max_val, critical_threshold=20, value=value)
+    return Resource(
+        id="fuel", name="Fuel", icon="🛢", max=max_val, critical_threshold=20, value=value
+    )
 
 
 def _minimal_agent(game_id: uuid.UUID = GAME_ID) -> Agent:
@@ -109,8 +111,14 @@ def test_colony_state_roundtrip():
 
 def test_colony_state_roundtrip_with_nested_objects():
     """Roundtrip with consequence seeds, proposals, and tool calls."""
-    tc = ToolCall(name="modify_resource", caller_id=AGENT_ID, args={"resource_id": "fuel", "delta": -5, "reason": "storm"})
-    seed_payload = SeedPayload(event_id="evt-consequence", severity=4, category="weather", description="Storm aftermath")
+    tc = ToolCall(
+        name="modify_resource",
+        caller_id=AGENT_ID,
+        args={"resource_id": "fuel", "delta": -5, "reason": "storm"},
+    )
+    seed_payload = SeedPayload(
+        event_id="evt-consequence", severity=4, category="weather", description="Storm aftermath"
+    )
     dec_ref = DecisionRef(turn_number=1, event_id="evt-001", chosen_proposal_id="prop-a")
     seed = ConsequenceSeed(
         game_id=GAME_ID,
@@ -131,12 +139,14 @@ def test_colony_state_roundtrip_with_nested_objects():
         tool_calls_on_pick=[tc],
     )
     state = _minimal_colony()
-    state = state.model_copy(update={
-        "consequence_seeds": [seed],
-        "turn_proposals": [proposal],
-        "turn_tool_calls": [tc],
-        "end_state": EndState.ENDURED,
-    })
+    state = state.model_copy(
+        update={
+            "consequence_seeds": [seed],
+            "turn_proposals": [proposal],
+            "turn_tool_calls": [tc],
+            "end_state": EndState.ENDURED,
+        }
+    )
     dumped = json.loads(state.model_dump_json())
     reloaded = ColonyState.model_validate(dumped)
     assert reloaded.end_state == EndState.ENDURED

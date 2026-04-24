@@ -133,8 +133,12 @@ def _minimal_archetypes() -> list[AdvisorArchetype]:
 def _minimal_resources() -> list[ResourceDef]:
     return [
         ResourceDef(
-            id=f"res_{i}", name=f"Res {i}", icon="i",
-            starting=50, max=100, critical_threshold=20,
+            id=f"res_{i}",
+            name=f"Res {i}",
+            icon="i",
+            starting=50,
+            max=100,
+            critical_threshold=20,
         )
         for i in range(5)
     ]
@@ -203,10 +207,12 @@ def _make_seed_event(sev: int, seed_id: UUID | None = None) -> Event:
 
 
 def test_seeded_events_take_priority() -> None:
-    setting = _setting_with_events([
-        _category(cid="natural_a", severity=2, min_turn=1),
-        _forced_escalation_category(),
-    ])
+    setting = _setting_with_events(
+        [
+            _category(cid="natural_a", severity=2, min_turn=1),
+            _forced_escalation_category(),
+        ]
+    )
     state = _colony(turn_number=6)
     seeded = [_make_seed_event(sev=3)]
 
@@ -217,10 +223,12 @@ def test_seeded_events_take_priority() -> None:
 
 
 def test_seed_priority_picks_highest_severity() -> None:
-    setting = _setting_with_events([
-        _category(cid="natural_a"),
-        _forced_escalation_category(),
-    ])
+    setting = _setting_with_events(
+        [
+            _category(cid="natural_a"),
+            _forced_escalation_category(),
+        ]
+    )
     state = _colony(turn_number=6)
     low = _make_seed_event(sev=2)
     high = _make_seed_event(sev=5)
@@ -237,10 +245,12 @@ def test_seed_priority_picks_highest_severity() -> None:
 
 
 def test_forced_escalation_fires_in_window() -> None:
-    setting = _setting_with_events([
-        _category(cid="natural_a", severity=2, min_turn=1),
-        _forced_escalation_category(),
-    ])
+    setting = _setting_with_events(
+        [
+            _category(cid="natural_a", severity=2, min_turn=1),
+            _forced_escalation_category(),
+        ]
+    )
     state = _colony(turn_number=9)
 
     # Probability is 1.0 at turn 9 — any rng produces the forced event.
@@ -269,8 +279,12 @@ def test_forced_escalation_fires_exactly_once_in_run() -> None:
     # Healthy colony so wealth-scaling stays consistent.
     resources = {
         r.id: Resource(
-            id=r.id, name=r.name, icon=r.icon,
-            value=r.max, max=r.max, critical_threshold=r.critical_threshold,
+            id=r.id,
+            name=r.name,
+            icon=r.icon,
+            value=r.max,
+            max=r.max,
+            critical_threshold=r.critical_threshold,
         )
         for r in setting.resources
     }
@@ -289,9 +303,7 @@ def test_forced_escalation_fires_exactly_once_in_run() -> None:
             event = select_event(state, setting, rng)
             event_log.append(_resolved(turn, event))
 
-        forced_count = sum(
-            1 for r in event_log if r.event.origin is EventOrigin.FORCED_ESCALATION
-        )
+        forced_count = sum(1 for r in event_log if r.event.origin is EventOrigin.FORCED_ESCALATION)
         assert forced_count == 1, (
             f"trial {trial}: expected exactly 1 forced_escalation, got {forced_count}"
         )
@@ -315,12 +327,20 @@ def test_cooldown_prevents_severity_5_back_to_back() -> None:
     # already fired so rule 2 doesn't trigger on this test turn (rule 2
     # bypasses the cooldown — we're targeting the rule-3 filter here).
     prev_event = Event(
-        id="prev:1", category="sev5_a", title="t", body="b",
-        severity=5, origin=EventOrigin.NATURAL,
+        id="prev:1",
+        category="sev5_a",
+        title="t",
+        body="b",
+        severity=5,
+        origin=EventOrigin.NATURAL,
     )
     already_forced = Event(
-        id="fe:1", category="forced_escalation_test", title="t", body="b",
-        severity=5, origin=EventOrigin.FORCED_ESCALATION,
+        id="fe:1",
+        category="forced_escalation_test",
+        title="t",
+        body="b",
+        severity=5,
+        origin=EventOrigin.FORCED_ESCALATION,
     )
     log = [_resolved(turn=4, event=prev_event), _resolved(turn=3, event=already_forced)]
     state = _colony(turn_number=5, event_log=log)
@@ -341,9 +361,7 @@ def test_min_turn_filters_pool() -> None:
 
     for seed in range(50):
         result = select_event(state, setting, random.Random(seed))
-        assert result.category != "locked", (
-            f"seed {seed}: min_turn=5 category fired on turn 2"
-        )
+        assert result.category != "locked", f"seed {seed}: min_turn=5 category fired on turn 2"
 
 
 def test_can_kill_agent_blocked_before_turn_4() -> None:
@@ -424,11 +442,13 @@ def test_wealth_scaling_boosts_high_severity() -> None:
 
 
 def test_selection_is_deterministic_with_same_rng() -> None:
-    setting = _setting_with_events([
-        _category(cid="alpha", weight=2.0, severity=2, min_turn=1),
-        _category(cid="beta", weight=1.0, severity=3, min_turn=1),
-        _forced_escalation_category(),
-    ])
+    setting = _setting_with_events(
+        [
+            _category(cid="alpha", weight=2.0, severity=2, min_turn=1),
+            _category(cid="beta", weight=1.0, severity=3, min_turn=1),
+            _forced_escalation_category(),
+        ]
+    )
     state = _colony(turn_number=2)
 
     a = select_event(state, setting, random.Random(42))
@@ -446,10 +466,7 @@ def test_selection_is_deterministic_with_same_rng() -> None:
 def test_empty_pool_returns_respite_fallback() -> None:
     # Every real event gated behind a future min_turn; only forced_escalation
     # (excluded from natural selection) is present otherwise.
-    categories = [
-        _category(cid=f"future_{i}", severity=2, min_turn=99)
-        for i in range(5)
-    ]
+    categories = [_category(cid=f"future_{i}", severity=2, min_turn=99) for i in range(5)]
     categories.append(_forced_escalation_category())
     setting = _setting_with_events(categories)
     state = _colony(turn_number=2)
@@ -468,8 +485,12 @@ def test_empty_pool_returns_respite_fallback() -> None:
 
 def test_has_forced_escalation_fired_detects_prior() -> None:
     fe_event = Event(
-        id="fe:1", category="forced_escalation_test", title="t", body="b",
-        severity=5, origin=EventOrigin.FORCED_ESCALATION,
+        id="fe:1",
+        category="forced_escalation_test",
+        title="t",
+        body="b",
+        severity=5,
+        origin=EventOrigin.FORCED_ESCALATION,
     )
     state = _colony(turn_number=6, event_log=[_resolved(turn=5, event=fe_event)])
 

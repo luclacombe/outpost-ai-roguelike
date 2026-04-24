@@ -29,7 +29,14 @@ def _minimal_valid_setting_dict() -> dict:
         "palette_accent": "#1a2b3c",
         "narrative_voice": "Terse and plain.",
         "resources": [
-            {"id": f"res_{i}", "name": f"Res {i}", "icon": "icon", "starting": 50, "max": 100, "critical_threshold": 20}
+            {
+                "id": f"res_{i}",
+                "name": f"Res {i}",
+                "icon": "icon",
+                "starting": 50,
+                "max": 100,
+                "critical_threshold": 20,
+            }
             for i in range(5)
         ],
         "advisor_archetypes": [
@@ -146,7 +153,8 @@ def test_archetypes_cover_all_quadrants(setting_id: str):
 def test_forced_escalation_event_present_per_setting(setting_id: str):
     setting = load_setting(setting_id)
     forced = [
-        e for e in setting.event_categories
+        e
+        for e in setting.event_categories
         if e.id.startswith("forced_escalation_") or "forced_escalation" in e.tags
     ]
     assert forced, (
@@ -155,8 +163,12 @@ def test_forced_escalation_event_present_per_setting(setting_id: str):
     )
     e = forced[0]
     assert e.severity == 5, f"{setting_id}: forced escalation severity must be 5, got {e.severity}"
-    assert e.min_turn >= 4, f"{setting_id}: forced escalation min_turn must be >= 4, got {e.min_turn}"
-    assert e.can_kill_agent is True, f"{setting_id}: forced escalation must have can_kill_agent=True"
+    assert e.min_turn >= 4, (
+        f"{setting_id}: forced escalation min_turn must be >= 4, got {e.min_turn}"
+    )
+    assert e.can_kill_agent is True, (
+        f"{setting_id}: forced escalation must have can_kill_agent=True"
+    )
     assert e.weight == 10.0, f"{setting_id}: forced escalation weight must be 10.0, got {e.weight}"
 
 

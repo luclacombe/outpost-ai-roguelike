@@ -57,8 +57,12 @@ def _agent(health: int = 100, is_alive: bool = True) -> Agent:
 
 def _resource(rid: str = "fuel", value: int = 100, max_: int = 100) -> Resource:
     return Resource(
-        id=rid, name=rid.capitalize(), icon="X",
-        value=value, max=max_, critical_threshold=20,
+        id=rid,
+        name=rid.capitalize(),
+        icon="X",
+        value=value,
+        max=max_,
+        critical_threshold=20,
     )
 
 
@@ -104,8 +108,12 @@ def _minimal_archetypes() -> list[AdvisorArchetype]:
 def _minimal_resources() -> list[ResourceDef]:
     return [
         ResourceDef(
-            id=f"res_{i}", name=f"Res {i}", icon="i",
-            starting=50, max=100, critical_threshold=20,
+            id=f"res_{i}",
+            name=f"Res {i}",
+            icon="i",
+            starting=50,
+            max=100,
+            critical_threshold=20,
         )
         for i in range(5)
     ]
@@ -137,7 +145,10 @@ def _fe_category() -> EventCategory:
     return _category(
         cid="forced_escalation_test",
         tags=["forced_escalation", "moral"],
-        severity=5, min_turn=5, can_kill_agent=True, weight=10.0,
+        severity=5,
+        min_turn=5,
+        can_kill_agent=True,
+        weight=10.0,
     )
 
 
@@ -213,12 +224,16 @@ def test_validate_pool_rejects_multiple_forced_escalation() -> None:
     fe_a = _category(
         cid="forced_escalation_a",
         tags=["forced_escalation"],
-        severity=5, min_turn=5, can_kill_agent=True,
+        severity=5,
+        min_turn=5,
+        can_kill_agent=True,
     )
     fe_b = _category(
         cid="forced_escalation_b",
         tags=["forced_escalation"],
-        severity=5, min_turn=5, can_kill_agent=True,
+        severity=5,
+        min_turn=5,
+        can_kill_agent=True,
     )
     setting = _setting_with([fe_a, fe_b])
     errors = validate_event_pool_for_setting(setting)
@@ -359,9 +374,7 @@ def test_apply_floors_resource_drop_against_malicious_huge_delta() -> None:
 
 
 def test_wealth_scale_factor_pristine() -> None:
-    resources = {
-        f"r{i}": _resource(rid=f"r{i}", value=100, max_=100) for i in range(3)
-    }
+    resources = {f"r{i}": _resource(rid=f"r{i}", value=100, max_=100) for i in range(3)}
     agents = [_agent(health=100), _agent(health=100)]
     state = _colony(resources=resources, agents=agents)
 
@@ -369,9 +382,7 @@ def test_wealth_scale_factor_pristine() -> None:
 
 
 def test_wealth_scale_factor_catastrophic() -> None:
-    resources = {
-        f"r{i}": _resource(rid=f"r{i}", value=0, max_=100) for i in range(3)
-    }
+    resources = {f"r{i}": _resource(rid=f"r{i}", value=0, max_=100) for i in range(3)}
     agents = [_agent(health=0, is_alive=False)]
     state = _colony(resources=resources, agents=agents)
 
@@ -390,9 +401,7 @@ def test_wealth_scale_factor_empty_resources_neutral() -> None:
 
 
 def test_wealth_scale_factor_midgame_balanced() -> None:
-    resources = {
-        f"r{i}": _resource(rid=f"r{i}", value=50, max_=100) for i in range(3)
-    }
+    resources = {f"r{i}": _resource(rid=f"r{i}", value=50, max_=100) for i in range(3)}
     agents = [_agent(health=50), _agent(health=50)]
     state = _colony(resources=resources, agents=agents)
     # res_stab=0.5, agent_stab=0.5 => raw = 0.5 + 0.375 + 0.375 = 1.25

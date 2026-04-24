@@ -176,7 +176,7 @@ def test_modify_resource_invalid_records_rejection_reason() -> None:
 @pytest.mark.parametrize(
     "start,delta,expected",
     [
-        (10, -50, 0),   # clamps at 0
+        (10, -50, 0),  # clamps at 0
         (90, 50, 100),  # clamps at 100
         (50, -20, 30),  # normal
     ],
@@ -214,9 +214,9 @@ def test_modify_health_agent_clamps_at_100() -> None:
 @pytest.mark.parametrize(
     "start,delta,expected",
     [
-        (0, -3, 0),    # clamps at 0
-        (9, 3, 10),    # clamps at 10
-        (5, 2, 7),     # normal
+        (0, -3, 0),  # clamps at 0
+        (9, 3, 10),  # clamps at 10
+        (5, 2, 7),  # normal
     ],
 )
 def test_adjust_grievance_clamps(start: int, delta: int, expected: int) -> None:
@@ -884,7 +884,7 @@ def test_pin_memory_dedupes_same_death_tag() -> None:
 @pytest.mark.parametrize(
     "bold_sum,expected",
     [
-        (0.5, EndState.OUSTED),   # strict >, so exactly 0.5 fails KILLED
+        (0.5, EndState.OUSTED),  # strict >, so exactly 0.5 fails KILLED
         (0.51, EndState.KILLED),  # just over
     ],
 )

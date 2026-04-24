@@ -53,8 +53,7 @@ def test_generate_run_different_seeds_differ() -> None:
 
     names_differ = [a.name for a in s1.agents] != [a.name for a in s2.agents]
     axes_differ = any(
-        (a1.ethics, a1.temperament, a1.loyalty)
-        != (a2.ethics, a2.temperament, a2.loyalty)
+        (a1.ethics, a1.temperament, a1.loyalty) != (a2.ethics, a2.temperament, a2.loyalty)
         for a1, a2 in zip(s1.agents, s2.agents, strict=True)
     )
     assert names_differ or axes_differ
@@ -153,8 +152,8 @@ def test_generate_run_agents_have_verbal_tics(setting_id: str) -> None:
 def test_generate_run_agents_have_portrait_seeds(setting_id: str) -> None:
     state = generate_run(user_id=USER_ID, setting_id=setting_id, seed=SEED)
     seeds = [a.portrait_seed for a in state.agents]
-    assert all(seeds)                          # all non-empty
-    assert len(set(seeds)) == len(seeds)       # all unique
+    assert all(seeds)  # all non-empty
+    assert len(set(seeds)) == len(seeds)  # all unique
 
 
 @pytest.mark.parametrize("setting_id", LAUNCH_SETTINGS)
@@ -226,8 +225,8 @@ def test_generate_run_loyalty_independently_rolled() -> None:
         pos = sum(a.loyalty > 0 for a in agents)
         neg = sum(a.loyalty < 0 for a in agents)
         total = len(agents)
-        assert pos / total >= 0.2, f"{quadrant}: loyalty pos ratio {pos/total}"
-        assert neg / total >= 0.2, f"{quadrant}: loyalty neg ratio {neg/total}"
+        assert pos / total >= 0.2, f"{quadrant}: loyalty pos ratio {pos / total}"
+        assert neg / total >= 0.2, f"{quadrant}: loyalty neg ratio {neg / total}"
 
 
 # ---------------------------------------------------------------------------
