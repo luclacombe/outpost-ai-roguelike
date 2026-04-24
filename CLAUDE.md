@@ -193,7 +193,7 @@ Design docs under `docs/` (SPEC, ARCHITECTURE, PLAN, research/) are loaded on de
 
 ## Known risks (full catalog in ARCHITECTURE §17)
 
-- Supabase HS256 JWT deprecation trend — keep project on HS256 signing; plan JWKS fallback
+- Supabase HS256 JWT deprecation — resolved in Phase 2: `decode_supabase_jwt` dispatches on header `alg` and verifies ES256/RS256 via JWKS (`app/auth/jwks.py`); HS256 remains the fallback for legacy projects. Project can flip to asymmetric signing without code changes.
 - 5-min cache TTL may miss real player pacing — measure in Phase 4; fall back to 1-hour tier if needed
 - Turn latency 9-24s from serialized LLM calls — mitigated by SSE streaming; measured in Phase 5
 - SSE + token refresh mid-run — frontend must re-fetch token per request, reconnect via `thread_id` on 401

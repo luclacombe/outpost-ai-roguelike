@@ -72,11 +72,13 @@ Use `settings.FOO` directly; do not re-read `os.environ` in feature code.
 - Adding a new Pydantic v1 `@validator` — use `@field_validator` (v2 semantics).
 - Using the Supabase client for game-state queries — SQLAlchemy async + psycopg3 only. `supabase-py` is reserved for auth admin.
 - `pytest.raises(Exception)` — use the specific class.
-- Trusting a local-Supabase access token to verify the auth flow end-to-end. Modern Supabase CLI signs with ES256; our `decode_supabase_jwt` runs HS256. For E2E, craft an HS256 token with the project's `SUPABASE_JWT_SECRET` matching the Supabase payload shape. The long-term fix (JWKS fallback) is tracked as a known risk.
+- Assuming tokens are HS256. `decode_supabase_jwt` dispatches on the header `alg`: HS256 uses the symmetric secret, ES256/RS256 resolves via the project's JWKS endpoint (cached 5 min). Do not widen the algorithm whitelist beyond `{HS256, ES256, RS256}` without a threat-model review — the per-branch algorithm restriction is what blocks alg-confusion attacks.
+- Pre-warming the PyJWKClient eagerly at import. The JWKS fetch is lazy; constructing `settings` at import must not depend on network reachability. If startup latency on the first asymmetric token becomes an issue, pre-warm inside the FastAPI `lifespan` hook, not at module import.
 
 ## Auth & dependency composition
 
 - `app.dependencies.get_current_user` is the only auth gate. It returns the raw Supabase JWT claim dict — feature routers pull `user["sub"]` and wrap with `UUID(...)` themselves. Do not introduce a `CurrentUser` Pydantic model unless more than one router needs extra derived fields; the claims dict keeps the dependency honest.
+- `decode_supabase_jwt` accepts HS256 (legacy symmetric secret) *and* ES256/RS256 (JWKS). `app/auth/jwks.py` owns the PyJWKClient singleton pointed at `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`. Tests can monkeypatch `PyJWKClient.get_signing_key_from_jwt`; see `test_auth_service.py::test_decode_es256_via_jwks` for the pattern. The real-Supabase integration test (`test_integration_supabase_jwks.py`) is marked `integration` and skipped unless `SUPABASE_ANON_KEY` is in the env.
 - `app.dependencies.get_db` yields a short-lived `AsyncSession`. Routers are responsible for `await db.commit()` when they mutate. Never re-use a session across requests.
 - `bearer_scheme = HTTPBearer(auto_error=True)` returns 403 on missing/malformed `Authorization`; bad-but-present tokens surface 401 from `decode_supabase_jwt`. Tests assert `status_code in (401, 403)` to cover both.
 - Tests stub auth by overriding `get_current_user` in the `client` fixture. The stub `sub` is a real UUID (`00000000-0000-0000-0000-000000000001`) because routers call `UUID(sub)` — a placeholder string breaks the route before it reaches the assertion.
