@@ -41,70 +41,58 @@ def _agent_by_id(state: ColonyState, agent_id: UUID) -> Agent | None:
     return None
 
 
+_PIN_PREFIX = "died in turn "
+MEMORY_CAP = 10
+
+
 def _is_pinned_memory(entry: str) -> bool:
-    """Death memories are pinned (never evicted by FIFO)."""
-    return entry.startswith("died in turn ")
+    """Death memories are pinned (never evicted by FIFO preference)."""
+    return entry.startswith(_PIN_PREFIX)
+
+
+def _evict_to_cap(memory: list[str], newly_added_index: int, oldest_first: bool) -> list[str]:
+    """Trim memory down to MEMORY_CAP, evicting the oldest non-pinned entry first.
+
+    Never evicts the item at newly_added_index. Falls back to evicting the
+    oldest pinned entry when all other slots are pinned.
+    oldest_first=True  → oldest non-pinned is the smallest index (append layout)
+    oldest_first=False → oldest non-pinned is the largest index (prepend layout)
+    """
+    if len(memory) <= MEMORY_CAP:
+        return memory
+
+    non_pinned = [i for i, e in enumerate(memory) if i != newly_added_index and not _is_pinned_memory(e)]
+    if non_pinned:
+        evict_idx = non_pinned[0] if oldest_first else non_pinned[-1]
+    else:
+        # All other slots are pinned — evict the oldest pinned that is not the new entry.
+        candidates = [i for i in range(len(memory)) if i != newly_added_index]
+        evict_idx = candidates[0] if oldest_first else candidates[-1]
+
+    out = list(memory)
+    out.pop(evict_idx)
+    return out
 
 
 def _pin_memory(memory: list[str], new_entry: str) -> list[str]:
-    """Prepend new_entry as a pinned memory. FIFO eviction applies only to non-pinned tail.
+    """Prepend new_entry at the head and cap to MEMORY_CAP.
 
-    The result is: [new_entry, ...pinned, ...non-pinned (evicted if total > 10)]
+    Dedupes: if new_entry already exists in memory, return memory unchanged.
+    Evicts the oldest (highest-indexed) non-pinned entry first.
     """
-    # Separate existing entries into pinned head entries and non-pinned tail.
-    # Pinned entries are those that start with "died in turn ".
-    # Strategy: new_entry goes at head; then we reconstruct the list keeping the
-    # cap at 10, evicting oldest non-pinned entries first.
+    if new_entry in memory:
+        return memory
     combined = [new_entry, *memory]
-    if len(combined) <= 10:
-        return combined
-
-    # Need to evict.  Find non-pinned entries from oldest (end) to newest.
-    pinned = [e for e in combined if _is_pinned_memory(e)]
-    non_pinned = [e for e in combined if not _is_pinned_memory(e)]
-
-    # Evict from the tail of non_pinned until total fits.
-    target_non_pinned = 10 - len(pinned)
-    if target_non_pinned < 0:
-        target_non_pinned = 0
-    non_pinned = non_pinned[:target_non_pinned]
-
-    # Reconstruct: new pinned entry first (it IS pinned because it starts
-    # with "died in turn "), then remaining entries in original relative order.
-    # Re-merge preserving original ordering of non-new entries.
-    result: list[str] = []
-    # Rebuild from combined, keeping only entries that survived eviction.
-    surviving_non_new = set()
-    for e in non_pinned:
-        surviving_non_new.add(id(e))
-
-    # Walk combined: first entry is new_entry (always kept), rest filter by survival.
-    result.append(combined[0])  # new_entry always kept
-    for e in combined[1:]:
-        if _is_pinned_memory(e) or id(e) in surviving_non_new:
-            result.append(e)
-
-    return result
+    return _evict_to_cap(combined, newly_added_index=0, oldest_first=False)
 
 
 def _append_memory(memory: list[str], new_entry: str) -> list[str]:
-    """Append new_entry to memory with FIFO cap at 10 (never evicts pinned).
+    """FIFO-append new_entry at the tail and cap to MEMORY_CAP.
 
-    Used for non-death memories (speak_to_agent, remember).
-    New entry is appended at the end; oldest non-pinned entry is evicted if over cap.
+    Never drops the new entry. Evicts the oldest (lowest-indexed) non-pinned entry first.
     """
     combined = [*memory, new_entry]
-    if len(combined) <= 10:
-        return combined
-
-    # Evict oldest non-pinned entries from the start of the list.
-    # Walk from index 0 forward; remove the first non-pinned entry.
-    for i, entry in enumerate(combined):
-        if not _is_pinned_memory(entry):
-            combined.pop(i)
-            break
-
-    return combined
+    return _evict_to_cap(combined, newly_added_index=len(combined) - 1, oldest_first=True)
 
 
 def _replace_agent(state: ColonyState, updated: Agent) -> ColonyState:
@@ -298,7 +286,7 @@ def check_deaths(state: ColonyState) -> ColonyState:
     for i, agent in enumerate(updated_agents):
         if agent.health <= 0 and agent.is_alive:
             death_tag = f"died in turn {state.turn_number}"
-            death_tags.append((agent.id, death_tag))  # type: ignore[arg-type]
+            death_tags.append(death_tag)
             # Mark dead, pin death memory to their own memory first.
             new_memory = _pin_memory(agent.memory, death_tag)
             updated_agents[i] = agent.model_copy(
@@ -310,7 +298,7 @@ def check_deaths(state: ColonyState) -> ColonyState:
         for i, agent in enumerate(updated_agents):
             if agent.is_alive:
                 current_memory = updated_agents[i].memory
-                for _dead_id, death_tag in death_tags:
+                for death_tag in death_tags:
                     current_memory = _pin_memory(current_memory, death_tag)
                 updated_agents[i] = updated_agents[i].model_copy(
                     update={"memory": current_memory}
@@ -419,8 +407,7 @@ def advance_turn(state: ColonyState) -> ColonyState:
         }
     )
 
-    end = compute_end_state(partial)
-    new_end_state = end if (end is not None and partial.end_state is None) else partial.end_state
+    new_end_state = compute_end_state(partial)
 
     # Clear per-turn fields; preserve event_log and consequence_seeds.
     return partial.model_copy(

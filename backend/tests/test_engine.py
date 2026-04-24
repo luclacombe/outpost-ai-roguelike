@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.game.engine import (
+    _append_memory,
+    _pin_memory,
     advance_turn,
     apply_tool_call,
     apply_tool_calls,
@@ -441,17 +443,17 @@ def test_check_deaths_healthy_player_not_killed() -> None:
     assert new_state.end_state is None
 
 
-def test_check_deaths_already_dead_agent_not_re_pinned() -> None:
-    """Idempotency: already-dead agents should not accumulate duplicate memories."""
-    dead = _agent(health=0, alive=False)
-    dead = dead.model_copy(update={"memory": ["died in turn 1"]})
-    state = _colony(agents=[dead], turn_number=3)
-    new_state = check_deaths(state)
-    # health is already 0 and is_alive is already False → should not double-process.
-    updated = next(a for a in new_state.agents if a.id == dead.id)
-    death_memories = [m for m in updated.memory if m.startswith("died in turn")]
-    # Should only have the one original pinned memory (not re-pinned).
-    assert len(death_memories) == 1
+def test_check_deaths_cross_call_idempotent() -> None:
+    """Calling check_deaths twice in the same turn does not accumulate
+    duplicate 'died in turn N' memories on survivors."""
+    dead = _agent(name="Dead", health=0)  # alive=True going in; will die
+    alive = _agent(name="Alive")
+    state = _colony(agents=[dead, alive], turn_number=5)
+    s1 = check_deaths(state)
+    s2 = check_deaths(s1)
+    survivor = next(a for a in s2.agents if a.id == alive.id)
+    death_msgs = [m for m in survivor.memory if m == "died in turn 5"]
+    assert len(death_msgs) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -528,16 +530,31 @@ def test_resolve_coup_no_accomplices_ousted() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_initiate_coup_via_apply_tool_call() -> None:
+def test_initiate_coup_via_apply_tool_call_ousted() -> None:
     initiator_id = uuid4()
     accomplice_id = uuid4()
-    # Use moderate boldness → expect OUSTED, not KILLED.
+    # legitimacy=60 forbids KILLED regardless of grievance/boldness.
     initiator = _agent(id=initiator_id, grievance=9, temperament=0.0)
     accomplice = _agent(id=accomplice_id, grievance=9, temperament=0.0)
     state = _colony(agents=[initiator, accomplice], legitimacy=60)
     tc = _tc("initiate_coup", {}, caller_id=initiator_id)
     new_state = apply_tool_call(state, tc)
-    assert new_state.end_state in (EndState.OUSTED, EndState.KILLED)
+    assert new_state.end_state == EndState.OUSTED  # legitimacy=60 forbids KILLED
+    assert len(new_state.turn_tool_calls) == 1
+    assert new_state.turn_tool_calls[0].name == "initiate_coup"
+    assert new_state.turn_tool_calls[0].rejection_reason is None
+
+
+def test_initiate_coup_via_apply_tool_call_killed() -> None:
+    initiator_id = uuid4()
+    accomplice_id = uuid4()
+    # All conditions for KILLED: both grievance >= 9, total_boldness > 0.5, legitimacy < 15.
+    initiator = _agent(id=initiator_id, grievance=10, temperament=0.6)
+    accomplice = _agent(id=accomplice_id, grievance=10, temperament=0.6)
+    state = _colony(agents=[initiator, accomplice], legitimacy=5)
+    tc = _tc("initiate_coup", {}, caller_id=initiator_id)
+    new_state = apply_tool_call(state, tc)
+    assert new_state.end_state == EndState.KILLED
 
 
 # ---------------------------------------------------------------------------
@@ -795,3 +812,85 @@ def test_engine_clamps_extreme_delta_on_hand_forged_tc() -> None:
     rejected = new_state.turn_tool_calls[0]
     assert rejected.rejection_reason == "delta_out_of_range"
     assert new_state.player_health == 100  # unchanged
+
+
+# ---------------------------------------------------------------------------
+# adjust_own_grievance
+# ---------------------------------------------------------------------------
+
+
+def test_adjust_own_grievance_applies_to_caller() -> None:
+    caller = _agent(grievance=3)
+    state = _colony(agents=[caller])
+    tc = ToolCall(
+        name="adjust_own_grievance",
+        caller_id=caller.id,
+        args={"delta": 2, "reason": "regret"},
+    )
+    new_state = apply_tool_call(state, tc)
+    updated = next(a for a in new_state.agents if a.id == caller.id)
+    assert updated.grievance == 5
+
+
+def test_adjust_own_grievance_clamps_at_10() -> None:
+    caller = _agent(grievance=9)
+    state = _colony(agents=[caller])
+    tc = ToolCall(
+        name="adjust_own_grievance",
+        caller_id=caller.id,
+        args={"delta": 3, "reason": "over the limit"},
+    )
+    new_state = apply_tool_call(state, tc)
+    updated = next(a for a in new_state.agents if a.id == caller.id)
+    assert updated.grievance == 10
+
+
+def test_adjust_own_grievance_rejected_without_caller() -> None:
+    state = _colony(agents=[_agent()])
+    tc = ToolCall(
+        name="adjust_own_grievance",
+        caller_id=None,
+        args={"delta": 1, "reason": "engine"},
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.turn_tool_calls[-1].rejection_reason is not None
+
+
+# ---------------------------------------------------------------------------
+# Memory helper unit tests (Fix 1 regression + dedup)
+# ---------------------------------------------------------------------------
+
+
+def test_append_memory_never_drops_new_entry_when_all_slots_pinned() -> None:
+    """Pathological case: 10 pinned death entries — new entry must survive."""
+    pinned = [f"died in turn {i}" for i in range(10)]
+    result = _append_memory(pinned, "new observation")
+    assert "new observation" in result
+    assert len(result) == 10
+
+
+def test_pin_memory_dedupes_same_death_tag() -> None:
+    mem = ["died in turn 5", "other memory"]
+    result = _pin_memory(mem, "died in turn 5")
+    assert result == mem  # unchanged
+    assert result.count("died in turn 5") == 1
+
+
+# ---------------------------------------------------------------------------
+# resolve_coup — boldness strict inequality boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bold_sum,expected",
+    [
+        (0.5, EndState.OUSTED),   # strict >, so exactly 0.5 fails KILLED
+        (0.51, EndState.KILLED),  # just over
+    ],
+)
+def test_resolve_coup_boldness_strict_inequality(bold_sum: float, expected: EndState) -> None:
+    init = _agent(grievance=10, temperament=bold_sum / 2)
+    acc = _agent(grievance=10, temperament=bold_sum / 2)
+    state = _colony(agents=[init, acc], legitimacy=5)
+    new = resolve_coup(state, initiator_id=init.id)
+    assert new.end_state == expected
