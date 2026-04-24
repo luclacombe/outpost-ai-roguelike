@@ -50,8 +50,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -76,8 +75,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -101,8 +99,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -126,8 +123,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -150,8 +146,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -174,8 +169,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -198,8 +192,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -221,8 +214,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -243,8 +235,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },
@@ -267,8 +258,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "format": "uuid",
                     "description": (
-                        "UUID of the agent emitting this tool call. "
-                        "Omit if emitted by the engine."
+                        "UUID of the agent emitting this tool call. Omit if emitted by the engine."
                     ),
                 },
             },

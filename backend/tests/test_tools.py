@@ -48,12 +48,8 @@ def test_each_schema_has_required_fields() -> None:
         assert schema.get("additionalProperties") is False, (
             f"{name}: additionalProperties must be False"
         )
-        assert isinstance(schema.get("properties"), dict), (
-            f"{name}: properties must be a dict"
-        )
-        assert isinstance(schema.get("required"), list), (
-            f"{name}: required must be a list"
-        )
+        assert isinstance(schema.get("properties"), dict), f"{name}: properties must be a dict"
+        assert isinstance(schema.get("required"), list), f"{name}: required must be a list"
 
 
 def test_every_required_arg_is_declared_in_properties() -> None:
@@ -98,9 +94,7 @@ def test_modify_resource_rejects_additional_properties() -> None:
 def test_descriptions_non_empty_and_single_line() -> None:
     for tool in AGENT_TOOL_SCHEMAS:
         desc = tool["description"]
-        assert len(desc) >= 30, (
-            f"{tool['name']}: description too short ({len(desc)} chars)"
-        )
+        assert len(desc) >= 30, f"{tool['name']}: description too short ({len(desc)} chars)"
         assert "\n" not in desc, f"{tool['name']}: description must be single-line"
 
 
@@ -117,9 +111,7 @@ def test_caller_agent_id_present_in_all_tools() -> None:
         props = tool["input_schema"]["properties"]
         required = tool["input_schema"]["required"]
 
-        assert "caller_agent_id" in props, (
-            f"{name}: missing caller_agent_id in properties"
-        )
+        assert "caller_agent_id" in props, f"{name}: missing caller_agent_id in properties"
         field = props["caller_agent_id"]
         assert field.get("type") == "string", (
             f"{name}: caller_agent_id must be type 'string', got {field.get('type')!r}"
