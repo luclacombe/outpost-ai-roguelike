@@ -46,6 +46,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "array",
                     "items": {"type": "string"},
                 },
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["name", "description", "flavor"],
             "additionalProperties": False,
@@ -64,6 +72,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "resource_id": {"type": "string"},
                 "delta": {"type": "integer", "minimum": -50, "maximum": 50},
                 "reason": {"type": "string", "maxLength": 200},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["resource_id", "delta", "reason"],
             "additionalProperties": False,
@@ -81,6 +97,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "target_id": {"type": "string"},
                 "delta": {"type": "integer", "minimum": -100, "maximum": 100},
                 "reason": {"type": "string", "maxLength": 200},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["target_id", "delta", "reason"],
             "additionalProperties": False,
@@ -98,6 +122,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "target_id": {"type": "string"},
                 "delta": {"type": "integer", "minimum": -3, "maximum": 3},
                 "reason": {"type": "string", "maxLength": 200},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["target_id", "delta", "reason"],
             "additionalProperties": False,
@@ -114,6 +146,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "target_id": {"type": "string"},
                 "message": {"type": "string", "maxLength": 300},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["target_id", "message"],
             "additionalProperties": False,
@@ -130,6 +170,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "target_id": {"type": "string"},
                 "delta": {"type": "integer", "minimum": -3, "maximum": 3},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["target_id", "delta"],
             "additionalProperties": False,
@@ -146,6 +194,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "delta": {"type": "integer", "minimum": -3, "maximum": 3},
                 "reason": {"type": "string", "maxLength": 200},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["delta", "reason"],
             "additionalProperties": False,
@@ -161,6 +217,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "fact": {"type": "string", "maxLength": 200},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["fact"],
             "additionalProperties": False,
@@ -174,7 +238,16 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
         ),
         "input_schema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
+            },
             "required": [],
             "additionalProperties": False,
         },
@@ -190,6 +263,14 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
             "properties": {
                 "decision_id": {"type": "string"},
                 "legitimacy_bonus": {"type": "integer", "minimum": 1, "maximum": 5},
+                "caller_agent_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": (
+                        "UUID of the agent emitting this tool call. "
+                        "Omit if emitted by the engine."
+                    ),
+                },
             },
             "required": ["decision_id", "legitimacy_bonus"],
             "additionalProperties": False,

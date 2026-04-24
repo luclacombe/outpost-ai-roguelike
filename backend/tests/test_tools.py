@@ -108,3 +108,25 @@ def test_propose_action_flavor_enum_values() -> None:
     schema = _get("propose_action")["input_schema"]
     flavor = schema["properties"]["flavor"]
     assert flavor.get("enum") == ["DOMINANT", "MORAL", "WILDCARD"]
+
+
+def test_caller_agent_id_present_in_all_tools() -> None:
+    """Every agent-callable tool must declare caller_agent_id as an optional string/uuid."""
+    for tool in AGENT_TOOL_SCHEMAS:
+        name = tool["name"]
+        props = tool["input_schema"]["properties"]
+        required = tool["input_schema"]["required"]
+
+        assert "caller_agent_id" in props, (
+            f"{name}: missing caller_agent_id in properties"
+        )
+        field = props["caller_agent_id"]
+        assert field.get("type") == "string", (
+            f"{name}: caller_agent_id must be type 'string', got {field.get('type')!r}"
+        )
+        assert field.get("format") == "uuid", (
+            f"{name}: caller_agent_id must have format 'uuid', got {field.get('format')!r}"
+        )
+        assert "caller_agent_id" not in required, (
+            f"{name}: caller_agent_id must NOT be in required (engine calls omit it)"
+        )
