@@ -1,0 +1,363 @@
+id: desert_outpost_v1
+name: Carmine Junction
+
+palette_accent: "#8c4a4a"
+
+lore: |
+  The truck stop on Route 9 had a name before the collapse. Now it's called
+  Carmine Junction because the soil here is the color of old blood and because
+  the people who settled it needed to call it something. The well works. The
+  fuel pumps do not. The highway runs east and west and people come from both
+  directions, some of them with things to trade and some of them with other
+  plans.
+
+  You took the job because someone had to hold it. The shelter holds eighteen
+  if no one complains about the beds. The water is clean, which puts you above
+  most of what's left. There is a locked room in the back that the previous
+  owner said not to open. The mechanic opened it on the second day. Neither of
+  them has said what was inside.
+
+narrative_voice: |
+  American Southwest gothic. Short sentences. The weather is always present —
+  heat, dust, the specific quality of light at dusk. People do not explain
+  themselves; they act. Violence is not telegraphed; it arrives. Moral weight
+  comes from what is not said. Reference McCarthy's cadence: no quotation marks
+  for dialogue when the prose can carry it.
+
+resources:
+  - id: water
+    name: Water
+    icon: drop
+    starting: 70
+    max: 100
+    critical_threshold: 20
+
+  - id: food
+    name: Food
+    icon: grain
+    starting: 60
+    max: 100
+    critical_threshold: 20
+
+  - id: ammunition
+    name: Ammunition
+    icon: bullet
+    starting: 50
+    max: 100
+    critical_threshold: 15
+
+  - id: shelter
+    name: Shelter
+    icon: roof
+    starting: 80
+    max: 100
+    critical_threshold: 20
+
+  - id: morale
+    name: Morale
+    icon: spark
+    starting: 65
+    max: 100
+    critical_threshold: 15
+
+advisor_archetypes:
+  - quadrant: ACCOUNTANT
+    role_name: Trader
+    name_pool:
+      - Sol
+      - Marguerite
+      - Eli
+      - Rosa
+      - Connie
+      - Wade
+    description_template: |
+      Keeps the ledger. Knows what every item in the stockroom cost and what
+      it can fetch on the road. Does not trade sentiment; trades things.
+      The calculus is not cold — it is just honest.
+    verbal_tic: Quotes prices from memory mid-sentence, as if market value is always relevant.
+    portrait_options:
+      clothing_color:
+        - "5c4030"
+        - "4a3020"
+      hair_color:
+        - "b09070"
+        - "907050"
+        - "c8a880"
+
+  - quadrant: OPERATOR
+    role_name: Sheriff
+    name_pool:
+      - Jackson
+      - Nadine
+      - Cal
+      - Desiree
+      - Hector
+    description_template: |
+      Ex-soldier. Keeps order at Carmine Junction the same way he kept it
+      in the field: by establishing what he will and will not tolerate early,
+      and enforcing it consistently. Does not enjoy it. Does not stop.
+    verbal_tic: Refers to everyone by last name or rank equivalent; first names mean something is wrong.
+    portrait_options:
+      clothing_color:
+        - "4a3c2c"
+        - "3a2c1c"
+      hair_color:
+        - "3a2c20"
+        - "6a5a40"
+        - "2a2018"
+
+  - quadrant: CONSCIENCE
+    role_name: Doctor
+    name_pool:
+      - Elena
+      - Tobias
+      - Patience
+      - Samuel
+      - Luz
+    description_template: |
+      Was a teacher until the school closed. Learned medicine from a manual
+      and practice. Believes the body tells the truth when people won't.
+      Keeps faith in something she has not named.
+    verbal_tic: Quotes scripture fragments from memory, not to preach — to locate the situation in something older.
+    portrait_options:
+      clothing_color:
+        - "5c5040"
+        - "4a4030"
+      hair_color:
+        - "e0d0b0"
+        - "c0b090"
+        - "a09070"
+
+  - quadrant: CRUSADER
+    role_name: Mechanic
+    name_pool:
+      - Dex
+      - Mireille
+      - Ruben
+      - Angie
+      - Colt
+    description_template: |
+      Keeps things running. Believes in fixing what is broken, even when
+      fixing it is not wise. Has opinions about the road and the people
+      on it that are not always welcome.
+    verbal_tic: Frames every problem as a broken machine — asks what the fault is before assuming the cause.
+    portrait_options:
+      clothing_color:
+        - "5c4830"
+        - "4a3820"
+      hair_color:
+        - "7a6858"
+        - "5a4838"
+        - "8a7868"
+
+event_categories:
+  - id: raider_probe
+    weight: 2.5
+    tags: [external, security]
+    severity: 3
+    min_turn: 1
+    prompt_template: |
+      Three vehicles stopped on the highway a kilometer out. They've been
+      sitting there two hours. No one has approached. The sheriff says it's
+      a numbers count — they're seeing how many people you have. The trader
+      says they might be waiting for nightfall.
+    choice_templates:
+      - Send a small armed party to make contact and read intent.
+      - Fortify and wait; engaging on their terms is their advantage.
+      - Light everything up at night — make the junction look well-staffed.
+    can_kill_agent: false
+
+  - id: desperate_stranger
+    weight: 2.0
+    tags: [external, moral]
+    severity: 2
+    min_turn: 1
+    prompt_template: |
+      A woman arrives alone with a child, no vehicle, no trade goods. She
+      walked eleven miles from what she says used to be a settlement. She
+      needs water, food, and a safe night. She cannot pay. She will not leave.
+    choice_templates:
+      - Take her in; you do not turn people away who have children.
+      - Offer water and food at the perimeter, but not shelter inside.
+      - Ask hard questions first; the road sends all kinds.
+    can_kill_agent: false
+
+  - id: well_integrity
+    weight: 2.0
+    tags: [resource, structural]
+    severity: 4
+    min_turn: 2
+    prompt_template: |
+      The mechanic found a crack in the well casing seventeen feet down.
+      It's not failing today. In dry season heat like this, the mechanic gives
+      it three weeks. Repair requires concrete mix and two days of work. You
+      have the concrete. You do not have two days to spare the mechanic.
+    choice_templates:
+      - Start the repair now; water is non-negotiable.
+      - Patch it temporarily and plan a full repair when the road quiets.
+      - Ask the mechanic to monitor and wait until the crack progresses.
+    can_kill_agent: false
+
+  - id: road_medical_emergency
+    weight: 1.8
+    tags: [medical, external]
+    severity: 3
+    min_turn: 1
+    prompt_template: |
+      A truck stops with a man in the bed, badly injured. The doctor says
+      gunshot, not recent. The man is coherent enough to say that the people
+      who shot him are looking for him. He says he has something worth trading
+      if you help him. The sheriff says he wants to know what, exactly, is
+      being traded.
+    choice_templates:
+      - Treat him and ask questions after; the medicine comes before the politics.
+      - Treat him in exchange for information about what is coming down the road.
+      - Tell him the junction does not take on other people's wars.
+    can_kill_agent: false
+
+  - id: old_world_salvage
+    weight: 1.5
+    tags: [resource, external]
+    severity: 2
+    min_turn: 2
+    prompt_template: |
+      The mechanic found a distribution warehouse three miles east — mostly
+      looted, but there is a back storeroom with sealed cases. Whatever is
+      in them is worth the trip. The road between here and there is exposed
+      and the three vehicles from two days ago have not been accounted for.
+    choice_templates:
+      - Send a full armed team; take the risk for the reward.
+      - Send two people, fast, with minimal exposure time.
+      - Wait until the road situation resolves.
+    can_kill_agent: false
+
+  - id: water_trade_offer
+    weight: 1.3
+    tags: [external, resource]
+    severity: 2
+    min_turn: 2
+    prompt_template: |
+      A caravan offers a significant amount of fuel and ammunition in trade
+      for water access rights — not ownership, just a guaranteed three-day
+      stop per month, priority fill. The trader says it is a good deal. The
+      sheriff says it brings traffic you cannot always control.
+    choice_templates:
+      - Accept the trade; resources matter more than foot traffic risk.
+      - Negotiate for a one-time trade only, no ongoing arrangement.
+      - Decline; guaranteed traffic is a liability in the current situation.
+    can_kill_agent: false
+
+  - id: shelter_overcrowding
+    weight: 1.5
+    tags: [crew, morale]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      The junction is at capacity and two more groups have arrived in the
+      last 48 hours. Some of them are staying longer than they said. The
+      doctor says tempers are shortening. The trader says three people
+      stole from the communal stores last night.
+    choice_templates:
+      - Enforce departure; everyone who came for a night stays for one night.
+      - Expand capacity — work the problem, not the symptom.
+      - Identify the thieves and make the consequence public.
+    can_kill_agent: false
+
+  - id: fever_road
+    weight: 1.8
+    tags: [medical, resource]
+    severity: 4
+    min_turn: 3
+    prompt_template: |
+      The doctor is seeing the same presentation in four travelers: high fever,
+      confusion, rash on the forearms. She does not know what it is. She knows
+      it is contagious and that two of the junction's regular crew have been
+      in contact with the travelers for 48 hours.
+    choice_templates:
+      - Isolate immediately and treat with what supplies remain.
+      - Send the travelers on; you cannot quarantine the road.
+      - Ask the doctor to buy time with triage while you source additional medicine.
+    can_kill_agent: false
+
+  - id: moral_test_refugee
+    weight: 1.5
+    tags: [moral, external]
+    severity: 3
+    min_turn: 3
+    prompt_template: |
+      A group of eight people is asking for shelter. They are not dangerous.
+      They have almost nothing. Taking them in would strain water and food
+      for the next two weeks. Turning them away means the road. Two of them
+      are children. The doctor is watching you.
+    choice_templates:
+      - Take them in; the junction stands for something or it stands for nothing.
+      - Offer them water and safe passage to the next settlement, but not beds.
+      - Accept the children and make arrangements for the adults separately.
+    can_kill_agent: false
+
+  - id: mechanic_repair_gamble
+    weight: 1.3
+    tags: [resource, morale]
+    severity: 2
+    min_turn: 2
+    prompt_template: |
+      The mechanic says she can get one of the fuel pumps running again.
+      Parts cost is half your remaining mechanical spares. If it works,
+      the junction has a trading advantage that could last months. If it
+      fails, those spares are gone and the well pump is now the only thing
+      between you and manual water carry.
+    choice_templates:
+      - Let her try; the upside justifies the risk.
+      - Tell her to hold the spares for the well pump.
+      - Ask her to find a lower-cost approach first.
+    can_kill_agent: false
+
+  - id: junction_politics
+    weight: 1.2
+    tags: [crew, political]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      Three of the longer-term residents are talking about formalizing the
+      junction — rules, a council, a claim on the land. The sheriff thinks
+      it would help. The trader thinks it would invite the wrong kind of
+      attention from groups that don't respect councils. You are the current
+      authority, and this conversation is about whether you stay that way.
+    choice_templates:
+      - Back the formalization; structure is protection.
+      - Oppose it; authority without arms is just a target.
+      - Stay neutral and let it resolve without your weight behind either side.
+    can_kill_agent: false
+
+  - id: night_visitor
+    weight: 1.5
+    tags: [security, information]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      Someone was in the fuel storage room at 02:30. The door was locked.
+      Nothing was taken. The only things that were touched were the records —
+      the inventory logs and the water-usage sheets from the past two weeks.
+      Someone wanted to know what you have.
+    choice_templates:
+      - Find out who among the current residents had access and means.
+      - Change all lock codes and increase the watch rotation.
+      - Put out that the records are fabricated and watch who reacts.
+    can_kill_agent: false
+
+  - id: forced_escalation_carmine
+    weight: 10.0
+    tags: [forced_escalation, security, moral]
+    severity: 5
+    min_turn: 5
+    prompt_template: |
+      The three vehicles are back. Seven armed. They want water access and
+      three days' food stores. Not trade — terms. They know your water table
+      depth, your head count, and your ammunition figure. Someone told them.
+      You have four hours before dark. The sheriff is outside with two people
+      and a rifle. The doctor is watching the children in the back room.
+    choice_templates:
+      - Negotiate; buying time is not the same as giving ground.
+      - Call their bluff; an armed junction in daylight is not easy pickings.
+      - Find out who gave them your numbers before making any other move.
+    can_kill_agent: true

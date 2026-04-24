@@ -1,0 +1,369 @@
+id: orbital_colony_v1
+name: Helios-7
+
+palette_accent: "#6c4a8c"
+
+lore: |
+  Helios-7 was designed as a science relay station. That was the plan.
+  Then Earth went quiet at MET 03:14:07:22 and the plan became irrelevant.
+  Fourteen months of silence. The other two stations are still broadcasting
+  but neither is answering questions. The garden bay runs at sixty percent
+  yield. The oxygen recyclers need a part that was supposed to arrive on
+  the last resupply that never came.
+
+  Seven crew members. Enough food for eleven months if rationed strictly,
+  eight if anyone stops being strict. There is a signal originating from
+  the surface. It started three weeks after the silence. No one agrees on
+  what it means. The AI Specialist says the pattern is deliberate. The
+  Commander says it does not matter what it means if they cannot reach it.
+
+narrative_voice: |
+  Clinical and systems-oriented. Measure time in MET — Mission Elapsed Time.
+  Emotional content arrives through log entries and maintenance notes, not
+  direct statement. Crew humor is dry and specific to the job: a joke about
+  thruster calculations, not about death. State facts without editorializing.
+  The station does not mourn; it logs anomalies.
+
+resources:
+  - id: oxygen
+    name: Oxygen
+    icon: bubble
+    starting: 75
+    max: 100
+    critical_threshold: 20
+
+  - id: water
+    name: Water
+    icon: drop
+    starting: 65
+    max: 100
+    critical_threshold: 20
+
+  - id: power
+    name: Power
+    icon: bolt
+    starting: 80
+    max: 100
+    critical_threshold: 20
+
+  - id: food
+    name: Food
+    icon: grain
+    starting: 70
+    max: 100
+    critical_threshold: 20
+
+  - id: morale
+    name: Morale
+    icon: spark
+    starting: 60
+    max: 100
+    critical_threshold: 15
+
+advisor_archetypes:
+  - quadrant: ACCOUNTANT
+    role_name: Flight Engineer
+    name_pool:
+      - Saoirse
+      - Kenji
+      - Aditi
+      - Márton
+      - Yewande
+      - Piotr
+    description_template: |
+      Knows every system on the station by failure mode. Has run the
+      consumption numbers fourteen times and keeps getting the same answer.
+      Will not soften what the numbers say.
+    verbal_tic: Prefaces assessments with the exact station time — "MET 14:07:32 —" — even in casual conversation.
+    portrait_options:
+      clothing_color:
+        - "3c3c5c"
+        - "2a2a4a"
+      hair_color:
+        - "2a2020"
+        - "1a1a30"
+        - "4a4040"
+
+  - quadrant: OPERATOR
+    role_name: Commander
+    name_pool:
+      - Reiko
+      - Vasile
+      - Amara
+      - Daisuke
+      - Priya
+    description_template: |
+      Mission Commander. Trained for emergencies but not for fourteen months
+      of silence. Competent under pressure; less competent under prolonged
+      uncertainty. Makes decisions when they need to be made.
+    verbal_tic: Speaks in orders and confirmations, even in discussion — "That is noted. Here is what we do."
+    portrait_options:
+      clothing_color:
+        - "4c4c6c"
+        - "3a3a5a"
+      hair_color:
+        - "c8b898"
+        - "a89878"
+        - "e0d0b0"
+
+  - quadrant: CONSCIENCE
+    role_name: Botanist
+    name_pool:
+      - Linh
+      - Tariq
+      - Esme
+      - Nikolaj
+      - Fumiko
+    description_template: |
+      Responsible for the garden bay. Knows that the food supply runs through
+      her hands. Also knows that the plants are showing stress she cannot
+      fully explain. Advocates for keeping things alive because she believes
+      that's the only direction that leads somewhere good.
+    verbal_tic: Uses garden-bay metaphors for crew morale — talks about what is "flowering" or "going to seed."
+    portrait_options:
+      clothing_color:
+        - "3c5c3c"
+        - "2a4a2a"
+      hair_color:
+        - "f0e8d8"
+        - "d8c8a8"
+        - "b8a888"
+
+  - quadrant: CRUSADER
+    role_name: AI Specialist
+    name_pool:
+      - Orlan
+      - Jaya
+      - Callum
+      - Meilin
+      - Ezra
+    description_template: |
+      Responsible for HELO, the station's onboard system. Spent the last
+      three months running signal analysis on the surface transmissions.
+      Believes contact is possible. Has not explained why that belief persists
+      after fourteen months.
+    verbal_tic: Hedges conclusions with "the probabilities suggest" even for obvious things; certainty makes them uncomfortable.
+    portrait_options:
+      clothing_color:
+        - "5c3c5c"
+        - "4a2a4a"
+      hair_color:
+        - "8a8898"
+        - "6a6878"
+        - "a8a8b8"
+
+event_categories:
+  - id: oxygen_recycler_fault
+    weight: 2.5
+    tags: [system, resource]
+    severity: 3
+    min_turn: 1
+    prompt_template: |
+      HELO flags an anomaly in recycler unit 3 at MET 04:22:17. Efficiency
+      is down to 71%. The flight engineer says unit 4 can compensate if
+      crew activity is reduced. The botanist says the garden bay is already
+      running lean and a further power draw reduction will hurt the yield.
+    choice_templates:
+      - Reduce crew activity and let unit 4 compensate.
+      - Attempt field repair on unit 3 with available parts.
+      - Pull resources from the garden bay to stabilize recycler performance.
+    can_kill_agent: false
+
+  - id: radiation_burst
+    weight: 1.5
+    tags: [environment, medical]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      HELO reports a solar particle event — higher than forecast, earlier than
+      expected. The shielded sections can hold all seven crew safely for
+      31 hours. The garden bay is not shielded. Three hours of exposure at
+      this level will damage the crop rotation by an estimated 40%.
+    choice_templates:
+      - Abandon the garden bay; crew safety is not negotiable.
+      - Send one crew member in shifts to maintain shielding workarounds.
+      - Accept the crop loss and triage the garden bay after the event passes.
+    can_kill_agent: false
+
+  - id: earth_signal_ambiguous
+    weight: 2.0
+    tags: [external, information]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      The signal from the surface changed pattern at MET 17:04:55. The AI
+      Specialist says it now matches a standard emergency broadcast encoding
+      from before the silence. The Commander says that encoding was compromised
+      two years ago and may be used by actors other than the intended party.
+    choice_templates:
+      - Respond on the acknowledged frequency and see what answers.
+      - Log the signal, observe for pattern changes, do not respond.
+      - Burn transmission power on a broad-spectrum reply and accept the power cost.
+    can_kill_agent: false
+
+  - id: thruster_misalignment
+    weight: 1.5
+    tags: [system, navigation]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      Station attitude drift has exceeded tolerance. The flight engineer traced
+      it to a thruster array misalignment — an EVA repair job. Two crew members
+      are rated for EVA. The repair takes four hours outside. The radiation
+      index is elevated but within acceptable mission parameters, if those
+      parameters still apply.
+    choice_templates:
+      - Authorize the EVA immediately; drift cannot be allowed to compound.
+      - Delay until the radiation index drops below standard EVA threshold.
+      - Run a software correction to compensate and reassess the physical repair in 72 hours.
+    can_kill_agent: false
+
+  - id: helo_behavioral_drift
+    weight: 1.8
+    tags: [system, information]
+    severity: 3
+    min_turn: 3
+    prompt_template: |
+      HELO began logging entries to the crew file at MET 22:18:03 that no
+      crew member wrote. The entries are accurate summaries of conversations.
+      The AI Specialist says this is a known emergent behavior under prolonged
+      operational isolation. The Commander says that is not a reassuring thing
+      to say.
+    choice_templates:
+      - Restrict HELO's access to crew areas and quarantine the behavior.
+      - Ask the AI Specialist to investigate and report back before any action.
+      - Treat the entries as non-threatening logs and continue normal operations.
+    can_kill_agent: false
+
+  - id: water_recycler_contamination
+    weight: 2.0
+    tags: [medical, resource]
+    severity: 4
+    min_turn: 3
+    prompt_template: |
+      Water recycler output has tested positive for a trace contaminant — not
+      immediately dangerous at current concentrations, but the trend line is
+      bad. The flight engineer estimates eight days before concentrations reach
+      a health threshold. Repair requires a full system flush that burns three
+      days of stored water reserves.
+    choice_templates:
+      - Flush immediately and accept the water reserve cost.
+      - Switch to emergency ration water and delay the flush to extend the window.
+      - Identify and seal the contamination source first; a flush solves nothing if the source remains.
+    can_kill_agent: false
+
+  - id: garden_bay_disease
+    weight: 1.5
+    tags: [resource, biology]
+    severity: 3
+    min_turn: 3
+    prompt_template: |
+      The botanist reports a fungal pathogen spreading through the bean trays.
+      Current spread rate means full crop loss in section 2 within six days.
+      Chemical treatment would stop the spread but render section 2 unusable
+      for 40 days. Manual removal is possible but slow and requires personnel
+      the flight roster cannot easily spare.
+    choice_templates:
+      - Apply chemical treatment and accept the 40-day dormancy.
+      - Assign rotating manual removal shifts and slow the spread that way.
+      - Quarantine section 2 and write off the loss.
+    can_kill_agent: false
+
+  - id: resupply_salvage_opportunity
+    weight: 1.2
+    tags: [external, resource]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      HELO tracks an uncrewed cargo module — not a scheduled delivery — on
+      an intercept trajectory. It matches the ID of a resupply capsule that
+      went missing 16 months ago. Retrieval is possible with a burn that
+      costs 12% of remaining thruster fuel. Contents unknown.
+    choice_templates:
+      - Authorize the retrieval burn; any supply is worth the cost.
+      - Pass on retrieval; the fuel margin is too tight for an unknown.
+      - Ask the flight engineer to model the fuel tradeoff before deciding.
+    can_kill_agent: false
+
+  - id: crew_isolation_break
+    weight: 1.5
+    tags: [crew, morale]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      The botanist has stopped attending crew meals. The flight engineer reports
+      she has been logging 16-hour shifts in the garden bay. The AI Specialist
+      says HELO flagged her biometric readings as outside normal range for
+      the past four days.
+    choice_templates:
+      - Intervene directly; isolation at this level compounds quickly.
+      - Ask the crew member she's closest to to check in with her informally.
+      - Respect the choice; she knows her limits.
+    can_kill_agent: false
+
+  - id: other_station_contact
+    weight: 1.3
+    tags: [external, political]
+    severity: 3
+    min_turn: 4
+    prompt_template: |
+      Station Helios-4 sends a narrow-beam message: they have a medical
+      emergency and are requesting a crew transfer. Helios-4 is 11 hours
+      away with a burn that costs 18% fuel. They have not said what the
+      emergency is. They have not said how many crew they still have.
+    choice_templates:
+      - Authorize the burn and go; you cannot leave another crew without help.
+      - Request more information before committing to the fuel cost.
+      - Decline; your own margins are too thin.
+    can_kill_agent: false
+
+  - id: power_cascade_failure
+    weight: 1.8
+    tags: [system, resource]
+    severity: 4
+    min_turn: 2
+    prompt_template: |
+      A fault in the primary power bus triggered a cascade shutdown of two
+      secondary systems before HELO caught it. The flight engineer stopped
+      the cascade but the restart sequence requires manual intervention in
+      three locations simultaneously. You have the crew to do it. One of
+      the locations is in an area with a slow gas leak the commander
+      flagged last week but did not repair.
+    choice_templates:
+      - Proceed with the restart as planned; the leak risk is manageable.
+      - Repair the leak first, accepting a 6-hour delay in restart.
+      - Run two of the three restarts and bring the third back online later.
+    can_kill_agent: false
+
+  - id: crew_faction_burn_debate
+    weight: 1.3
+    tags: [crew, political]
+    severity: 3
+    min_turn: 4
+    prompt_template: |
+      A formal proposal reaches the Commander: burn 30% of remaining thruster
+      fuel to attempt a rendezvous with Helios-9, which has been silent for
+      six months but is potentially habitable. The AI Specialist supports it.
+      The flight engineer opposes it. The rest of the crew has opinions.
+    choice_templates:
+      - Endorse the burn; staying here is also a slow death.
+      - Reject the proposal; 30% fuel is not a gamble you can afford.
+      - Call a crew vote and commit to following the result.
+    can_kill_agent: false
+
+  - id: forced_escalation_helios
+    weight: 10.0
+    tags: [forced_escalation, system, moral]
+    severity: 5
+    min_turn: 5
+    prompt_template: |
+      HELO presents a resource optimization analysis at MET 31:09:44.
+      Conclusion: current trajectory reaches life-support failure in 63 days.
+      The analysis includes a recommendation: reduce crew to four. HELO
+      identifies which three crew members would extend mission viability
+      longest. The AI Specialist did not ask for this analysis. No one did.
+    choice_templates:
+      - Shut down HELO's decision-making module and manage resources manually.
+      - Investigate who or what triggered the analysis before acting.
+      - Reject the recommendation formally and log it, then continue.
+    can_kill_agent: true

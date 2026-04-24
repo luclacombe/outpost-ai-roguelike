@@ -1,0 +1,354 @@
+id: arctic_station_v1
+name: Vorgrad Station
+
+palette_accent: "#4a6c8c"
+
+lore: |
+  Vorgrad Station was built in 1978 to monitor ice-sheet drift. It was
+  abandoned in 1992. Someone reactivated it eighteen months ago — the
+  paperwork says your government, but the funding trail disagrees. The
+  heating core is original Soviet engineering. So is the commissar.
+
+  Eight people came north. Three left before winter. The five who stayed
+  each had a reason that made sense at the time. The ice is two kilometers
+  thick beneath you. The nearest settlement is four hundred kilometers east.
+  Somewhere in the archive room there are files marked СЕКРЕТНО that no one
+  has opened yet. The station hums. The wind does not stop.
+
+narrative_voice: |
+  Cold, sparing prose. Short declarative sentences. Second-person address
+  to the Director. Cyrillic proper nouns where natural — station designations,
+  archive labels, equipment codes. Never sentimental. Occasionally dryly funny
+  in the way exhausted people are funny. The setting is not romantic; it is a
+  workplace that happens to be lethal.
+
+resources:
+  - id: fuel
+    name: Fuel
+    icon: flame
+    starting: 70
+    max: 100
+    critical_threshold: 20
+
+  - id: food
+    name: Food
+    icon: grain
+    starting: 60
+    max: 100
+    critical_threshold: 20
+
+  - id: warmth
+    name: Warmth
+    icon: thermometer
+    starting: 80
+    max: 100
+    critical_threshold: 20
+
+  - id: medicine
+    name: Medicine
+    icon: cross
+    starting: 50
+    max: 100
+    critical_threshold: 20
+
+  - id: morale
+    name: Morale
+    icon: spark
+    starting: 70
+    max: 100
+    critical_threshold: 15
+
+advisor_archetypes:
+  - quadrant: ACCOUNTANT
+    role_name: Quartermaster
+    name_pool:
+      - Vera
+      - Lukas
+      - Inga
+      - Pavel
+      - Astrid
+      - Evgeni
+    description_template: |
+      A former Soviet-corps quartermaster who has served in ice stations for
+      twelve winters. Tracks every gram of fuel and every calorie in the stores.
+      Believes waste is a moral failing.
+    verbal_tic: References the station logbook by date when making a point.
+    portrait_options:
+      clothing_color:
+        - "3c4f5c"
+        - "2a3a4a"
+      hair_color:
+        - "b0a090"
+        - "7a6a58"
+        - "c8bfb0"
+
+  - quadrant: OPERATOR
+    role_name: Commissar
+    name_pool:
+      - Marko
+      - Dmitri
+      - Alexei
+      - Vasil
+      - Oleg
+    description_template: |
+      Held authority at Vorgrad through the transition years. The original
+      commissar role is ceremonial now, but he does not treat it that way.
+      Gets things moving when discussion fails; sometimes gets them moving
+      in the wrong direction.
+    verbal_tic: Ends most sentences with "yes?" — not a question, a prompt for agreement.
+    portrait_options:
+      clothing_color:
+        - "4a3c30"
+        - "3a2c20"
+      hair_color:
+        - "2a2020"
+        - "6a5a48"
+        - "1a1410"
+
+  - quadrant: CONSCIENCE
+    role_name: Medic
+    name_pool:
+      - Irena
+      - Nadia
+      - Katrin
+      - Sigrid
+      - Marta
+    description_template: |
+      Station medic from Oslo, originally contracted for six months. Her
+      equipment is old. Her supplies are limited. She makes decisions about
+      bodies that the others don't want to think about.
+    verbal_tic: Frames every situation as a diagnosis — symptoms, prognosis, treatment.
+    portrait_options:
+      clothing_color:
+        - "5c6c4c"
+        - "4a5a3c"
+      hair_color:
+        - "f0e8d8"
+        - "c8b898"
+        - "e0d0b8"
+
+  - quadrant: CRUSADER
+    role_name: Radio Operator
+    name_pool:
+      - Yuri
+      - Benedikt
+      - Torsten
+      - Ilya
+      - Sven
+    description_template: |
+      Nominally responsible for communications. Actually responsible for
+      knowing things no one else knows. The radio hears more than it should.
+      So does he.
+    verbal_tic: Prefaces claims with "I heard on the radio that—" whether the radio is relevant or not.
+    portrait_options:
+      clothing_color:
+        - "5c4c3c"
+        - "4a3c2c"
+      hair_color:
+        - "8a7a68"
+        - "a89888"
+        - "6a5a48"
+
+event_categories:
+  - id: weather_blizzard
+    weight: 2.5
+    tags: [weather, resource]
+    severity: 3
+    min_turn: 1
+    prompt_template: |
+      A blizzard rolls in from the northeast. Visibility drops to three meters.
+      The station's exterior sensors report a pressure drop that signals at least
+      72 hours of storm. The heating core is running, but the wind load is
+      pulling warmth from the outer walls faster than the gauges expected.
+    choice_templates:
+      - Lock down all exterior work and burn fuel to hold temperature.
+      - Ration heat to non-essential sections, risk the outer labs cooling.
+      - Send someone outside to reinforce the insulation panels before conditions worsen.
+    can_kill_agent: false
+
+  - id: equipment_failure
+    weight: 2.0
+    tags: [equipment, resource]
+    severity: 2
+    min_turn: 1
+    prompt_template: |
+      The water reclamation pump seized during the night shift. The secondary
+      system can cover basic needs but not showers, not the lab humidifiers,
+      not the boiler feed. Repair requires parts you may or may not have.
+    choice_templates:
+      - Strip parts from a non-critical system to fix the pump.
+      - Run on secondary until resupply, accepting the morale cost.
+      - Ask the radio operator to improvise a repair with what's on hand.
+    can_kill_agent: false
+
+  - id: radio_contact
+    weight: 1.5
+    tags: [external, information]
+    severity: 2
+    min_turn: 2
+    prompt_template: |
+      A signal comes in on the emergency frequency. A research team two hundred
+      kilometers out says they have a badly injured man and their sled is
+      broken. They're asking for extraction. Your fuel reserves are already tight.
+    choice_templates:
+      - Attempt extraction; the moral cost of leaving them is too high.
+      - Relay their position to the regional authority and hope for the best.
+      - Tell them you cannot help and close the channel.
+    can_kill_agent: false
+
+  - id: ice_quake
+    weight: 1.5
+    tags: [environment, structural]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      A sub-glacial tremor runs through the station at 03:00. No injuries, but
+      a support strut in Corridor B cracked. The quartermaster says it's cosmetic.
+      The medic says she can hear the building settle differently than yesterday.
+    choice_templates:
+      - Evacuate Corridor B and reinforce immediately, at significant resource cost.
+      - Monitor the crack with sensors and respond if it worsens.
+      - Ignore it; the station has survived forty winters.
+    can_kill_agent: false
+
+  - id: frozen_stranger
+    weight: 1.8
+    tags: [external, moral]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      Someone is at the outer door. They came on foot. They will not say from
+      where. Their papers are real but their story has gaps. They need warmth,
+      food, and three days to recover. After that, they say, they will leave.
+    choice_templates:
+      - Take them in fully; you do not turn people away in these conditions.
+      - Shelter them in the outer room with minimal access to the station proper.
+      - Ask hard questions before opening any door.
+    can_kill_agent: false
+
+  - id: soviet_archive_find
+    weight: 1.2
+    tags: [information, political]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      The quartermaster found a sealed box in the sub-basement labeled
+      СЕКРЕТНО — an old Soviet classification. Inside: personnel files,
+      maps of ice-cover monitoring sites, and something that looks like a
+      list of names with dates beside them. Two of the names are still alive.
+    choice_templates:
+      - Open the files and share the contents with the crew.
+      - Secure the files and report their existence to the regional authority.
+      - Destroy them; old secrets do more harm than good up here.
+    can_kill_agent: false
+
+  - id: infection_outbreak
+    weight: 1.8
+    tags: [medical, resource]
+    severity: 4
+    min_turn: 3
+    prompt_template: |
+      Three crew members are showing the same symptoms: fever, joint pain,
+      confusion at night. The medic has a working diagnosis. Treatment requires
+      medicine you have in limited supply. If you use it, you're exposed if
+      someone else gets sick.
+    choice_templates:
+      - Treat all three immediately and accept the supply risk.
+      - Isolate and treat only the most severe case; ration the rest.
+      - Ask the medic to delay treatment and try to identify the source first.
+    can_kill_agent: false
+
+  - id: fuel_leak
+    weight: 2.0
+    tags: [equipment, resource]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      The commissar found a slow fuel leak in the secondary tank line. It is
+      not dangerous — yet. Patching it requires shutting the heating system
+      down for four hours. Temperature in the station will drop eight degrees.
+      The medic says the sick crew member cannot take eight degrees.
+    choice_templates:
+      - Patch it now; the leak will cost more fuel the longer it runs.
+      - Move the sick crew member and run the patch anyway.
+      - Improvise a temporary seal and schedule a proper repair when weather allows.
+    can_kill_agent: false
+
+  - id: foreign_patrol
+    weight: 1.3
+    tags: [external, political]
+    severity: 3
+    min_turn: 3
+    prompt_template: |
+      A military patrol from an unspecified state arrives at the perimeter.
+      They are polite. They have questions about the station's satellite
+      uplink logs. They say they will return for the answers in 48 hours.
+    choice_templates:
+      - Cooperate fully; you have nothing to hide.
+      - Stall politely while the radio operator scrubs the logs.
+      - Refuse access and radio your government contact immediately.
+    can_kill_agent: false
+
+  - id: internal_feud
+    weight: 1.5
+    tags: [crew, morale]
+    severity: 2
+    min_turn: 3
+    prompt_template: |
+      The commissar and the medic have not spoken in two days. The cause is
+      unclear but the effect is visible: crew members are picking sides. The
+      quartermaster says it's interfering with the shift schedule.
+    choice_templates:
+      - Pull them both in and force a resolution.
+      - Let it burn out; intervening makes it political.
+      - Reassign their shared duties to reduce contact.
+    can_kill_agent: false
+
+  - id: hunting_party_returns
+    weight: 1.2
+    tags: [resource, external]
+    severity: 2
+    min_turn: 2
+    prompt_template: |
+      The supply run came back with less than planned: ice conditions, a broken
+      sled runner, one team member with a sprained wrist. They did find a cache
+      of old equipment that might be salvageable. The quarter master wants to
+      know what to do with it.
+    choice_templates:
+      - Salvage everything and sort it later.
+      - Prioritize the most valuable items; leave the rest.
+      - Give the team a rest day before deciding anything.
+    can_kill_agent: false
+
+  - id: generator_overload
+    weight: 1.5
+    tags: [equipment, resource]
+    severity: 3
+    min_turn: 2
+    prompt_template: |
+      The main generator is running at 94% capacity. The commissar says it
+      can take another week at this load. The medic found a footnote in the
+      maintenance manual that says the maximum safe continuous load is 85%.
+      If the generator fails, the station goes dark.
+    choice_templates:
+      - Cut non-essential power use immediately.
+      - Trust the commissar's field experience; the manual is twenty years old.
+      - Run diagnostic checks before making any decision.
+    can_kill_agent: false
+
+  - id: forced_escalation_vorgrad
+    weight: 10.0
+    tags: [forced_escalation, political, moral]
+    severity: 5
+    min_turn: 5
+    prompt_template: |
+      A coded message arrives addressed to the commissar by his old rank. The
+      message instructs him to transmit the full coordinates of Vorgrad Station
+      and its crew manifest to an unverified external party by morning. He has
+      not shown it to you. The radio operator found it in the queue.
+      Two crew members are asleep. One has a weapon. You have hours.
+    choice_templates:
+      - Confront the commissar directly and demand to know who sent the message.
+      - Remove the commissar from communications access before he can comply.
+      - Let it go; you do not know what the commissar knows, and acting rashly costs everything.
+    can_kill_agent: true
