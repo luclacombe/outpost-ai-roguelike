@@ -96,7 +96,7 @@ advisor_archetypes:
       Mission Commander. Trained for emergencies but not for fourteen months
       of silence. Competent under pressure; less competent under prolonged
       uncertainty. Makes decisions when they need to be made.
-    verbal_tic: Speaks in orders and confirmations, even in discussion — "That is noted. Here is what we do."
+    verbal_tic: Speaks in orders and confirmations even in discussion, quoting back what was said before pivoting to action.
     portrait_options:
       clothing_color:
         - "4c4c6c"

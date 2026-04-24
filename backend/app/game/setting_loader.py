@@ -27,6 +27,7 @@ SETTINGS_DIR = Path(__file__).parent / "settings"
 
 _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 
 
 class ResourceDef(BaseModel):
@@ -68,6 +69,13 @@ class AdvisorArchetype(BaseModel):
     description_template: str
     verbal_tic: Annotated[str, Field(max_length=200)]
     portrait_options: dict[str, list[str]]
+
+    @field_validator("verbal_tic")
+    @classmethod
+    def _verbal_tic_is_single_sentence(cls, v: str) -> str:
+        if len(_SENTENCE_SPLIT.split(v.strip())) > 1:
+            raise ValueError("verbal_tic must be a single sentence")
+        return v
 
     @field_validator("name_pool")
     @classmethod

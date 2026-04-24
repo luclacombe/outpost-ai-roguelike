@@ -312,7 +312,7 @@ event_categories:
     prompt_template: |
       The supply run came back with less than planned: ice conditions, a broken
       sled runner, one team member with a sprained wrist. They did find a cache
-      of old equipment that might be salvageable. The quarter master wants to
+      of old equipment that might be salvageable. The quartermaster wants to
       know what to do with it.
     choice_templates:
       - Salvage everything and sort it later.

@@ -145,14 +145,19 @@ def test_archetypes_cover_all_quadrants(setting_id: str):
 @pytest.mark.parametrize("setting_id", sorted(ALL_SETTING_IDS))
 def test_forced_escalation_event_present_per_setting(setting_id: str):
     setting = load_setting(setting_id)
-    has_forced = any(
-        e.id.startswith("forced_escalation_") or "forced_escalation" in e.tags
-        for e in setting.event_categories
-    )
-    assert has_forced, (
+    forced = [
+        e for e in setting.event_categories
+        if e.id.startswith("forced_escalation_") or "forced_escalation" in e.tags
+    ]
+    assert forced, (
         f"{setting_id}: no event with id starting 'forced_escalation_' "
         "or tagged 'forced_escalation'"
     )
+    e = forced[0]
+    assert e.severity == 5, f"{setting_id}: forced escalation severity must be 5, got {e.severity}"
+    assert e.min_turn >= 4, f"{setting_id}: forced escalation min_turn must be >= 4, got {e.min_turn}"
+    assert e.can_kill_agent is True, f"{setting_id}: forced escalation must have can_kill_agent=True"
+    assert e.weight == 10.0, f"{setting_id}: forced escalation weight must be 10.0, got {e.weight}"
 
 
 # ---------------------------------------------------------------------------
@@ -227,3 +232,11 @@ def test_schema_rejects_can_kill_event_before_turn_4():
     }
     with pytest.raises(ValidationError):
         Setting.model_validate(d)
+
+
+def test_verbal_tic_multi_sentence_rejected():
+    """verbal_tic spanning two sentences → ValidationError."""
+    bad = _minimal_valid_setting_dict()
+    bad["advisor_archetypes"][0]["verbal_tic"] = "One sentence. Second sentence."
+    with pytest.raises(ValidationError):
+        Setting.model_validate(bad)
