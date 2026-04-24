@@ -437,3 +437,47 @@ def test_colony_player_health_bounds():
     base["player_health"] = 101
     with pytest.raises(ValidationError):
         ColonyState.model_validate(base)
+    base["player_health"] = -1
+    with pytest.raises(ValidationError):
+        ColonyState.model_validate(base)
+
+
+def test_agent_relationships_value_out_of_range_rejected():
+    """relationship scores outside -10..10 must raise ValidationError."""
+    from uuid import uuid4
+
+    other_id = uuid4()
+    with pytest.raises(ValidationError):
+        Agent(
+            id=AGENT_ID,
+            game_id=GAME_ID,
+            name="Nadia",
+            role="Quartermaster",
+            archetype_quadrant=Quadrant.ACCOUNTANT,
+            ethics=0.8,
+            temperament=-0.5,
+            loyalty=0.6,
+            portrait_seed="nadia-seed",
+            health=90,
+            morale=75,
+            grievance=2,
+            is_alive=True,
+            relationships={other_id: 11},
+        )
+    with pytest.raises(ValidationError):
+        Agent(
+            id=AGENT_ID,
+            game_id=GAME_ID,
+            name="Nadia",
+            role="Quartermaster",
+            archetype_quadrant=Quadrant.ACCOUNTANT,
+            ethics=0.8,
+            temperament=-0.5,
+            loyalty=0.6,
+            portrait_seed="nadia-seed",
+            health=90,
+            morale=75,
+            grievance=2,
+            is_alive=True,
+            relationships={other_id: -11},
+        )

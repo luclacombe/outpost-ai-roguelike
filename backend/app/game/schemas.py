@@ -221,6 +221,16 @@ class Agent(BaseModel):
     relationships: dict[uuid.UUID, int] = Field(default_factory=dict)  # -10..+10
     transformation: Transformation | None = None
 
+    @field_validator("relationships")
+    @classmethod
+    def relationships_values_in_range(cls, v: dict[uuid.UUID, int]) -> dict[uuid.UUID, int]:
+        for agent_id, score in v.items():
+            if not (-10 <= score <= 10):
+                raise ValueError(
+                    f"relationship score for {agent_id} is {score!r}; must be between -10 and 10"
+                )
+        return v
+
     # Prompt engineering
     verbal_tic: str = ""  # populated by the generator (Task 3.9); empty until then
 
