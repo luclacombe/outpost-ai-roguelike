@@ -30,6 +30,7 @@ from app.game.schemas import (
     SeedPayload,
     ToolCall,
 )
+from tests.conftest import fake_haiku_response
 
 # The AsyncAnthropic SDK hits this URL; verified via the probe recommended
 # in the task brief (AsyncAnthropic(api_key=...).base_url is
@@ -118,44 +119,6 @@ def make_colony_state(
         turn_proposals=[],
         turn_tool_calls=[],
     )
-
-
-def fake_haiku_response(
-    *,
-    text_xml: str = "",
-    tool_uses: list[dict[str, Any]] | None = None,
-    usage_overrides: dict[str, int] | None = None,
-) -> dict[str, Any]:
-    """Build a JSON body shaped like an Anthropic messages.create result."""
-    content: list[dict[str, Any]] = []
-    if text_xml:
-        content.append({"type": "text", "text": text_xml})
-    for tu in tool_uses or []:
-        content.append(
-            {
-                "type": "tool_use",
-                "id": tu.get("id", "toolu_" + uuid4().hex[:8]),
-                "name": tu["name"],
-                "input": tu["input"],
-            }
-        )
-
-    usage = {
-        "input_tokens": 1200,
-        "output_tokens": 400,
-        "cache_read_input_tokens": 800,
-        "cache_creation_input_tokens": 0,
-    }
-    usage.update(usage_overrides or {})
-    return {
-        "id": "msg_" + uuid4().hex[:8],
-        "type": "message",
-        "role": "assistant",
-        "model": MODEL_HAIKU,
-        "content": content,
-        "stop_reason": "end_turn",
-        "usage": usage,
-    }
 
 
 def _fake_response_for_cost(usage_fields: dict[str, int]) -> Any:
