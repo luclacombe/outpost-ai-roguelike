@@ -69,6 +69,8 @@ Use `settings.FOO` directly; do not re-read `os.environ` in feature code.
 ## Anti-patterns
 
 - Writing business logic in route handlers. Handlers parse inputs, call a service, return.
+- Raising `HTTPException` inside a `StreamingResponse` body generator. Once iteration starts, status + headers are already flushed — the exception surfaces as a task-group error, not a clean 4xx JSON response. Split services into a `prepare_<verb>(...)` that runs pre-stream checks (and raises) and a streaming generator that assumes preconditions are met. Router calls `prepare_` synchronously, then hands the resulting dict to the generator. Pattern: `app/agent/service.py::prepare_turn`/`prepare_decide`.
+- Relying on FastAPI lifespan in tests. `httpx.ASGITransport` does NOT run `lifespan`, so anything the `lifespan` hook attaches to `app.state` (e.g. `app.state.graph` in `main.py`) is unset in-process. Tests that hit routes depending on `app.state.X` need a fixture that sets it directly (see `tests/test_agent_router.py::graph_memory`/`graph_postgres`).
 - Adding a new Pydantic v1 `@validator` — use `@field_validator` (v2 semantics).
 - Using the Supabase client for game-state queries — SQLAlchemy async + psycopg3 only. `supabase-py` is reserved for auth admin.
 - `pytest.raises(Exception)` — use the specific class.

@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.checkpointer import open_checkpointer
 from app.agent.graph import build_graph
+from app.agent.router import router as agent_router
 from app.auth.router import router as auth_router
 from app.config import settings
 from app.game.router import router as game_router
@@ -54,6 +55,7 @@ app.middleware("http")(log_requests)
 
 app.include_router(auth_router)
 app.include_router(game_router)
+app.include_router(agent_router)
 
 
 @app.get("/health")
