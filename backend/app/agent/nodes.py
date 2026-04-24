@@ -25,6 +25,7 @@ import random
 from datetime import UTC, datetime
 from uuid import UUID
 
+import anthropic
 from sqlalchemy import select
 
 from app.agent.anthropic_client import call_haiku, call_sonnet, cost_cents_of
@@ -61,6 +62,18 @@ AUTONOMOUS_TOOL_NAMES: frozenset[str] = frozenset(
         "back_leader",
     }
 )
+
+# Fail fast at import if a name in the whitelist isn't a real tool — catches
+# a tool rename or deletion in tools.py that would otherwise silently drop
+# the tool from the autonomous phase.
+_known_tool_names = {t["name"] for t in AGENT_TOOL_SCHEMAS}
+_unknown = AUTONOMOUS_TOOL_NAMES - _known_tool_names
+if _unknown:
+    raise RuntimeError(
+        f"AUTONOMOUS_TOOL_NAMES references unknown tools: {sorted(_unknown)}. "
+        "Update nodes.py or tools.py."
+    )
+del _known_tool_names, _unknown
 
 # Legitimacy shifts applied in `resolve` based on the picked proposal's
 # flavor. Applied directly on ColonyState via `model_copy` — see the
@@ -365,7 +378,7 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
 
     try:
         response = await call_sonnet(system_blocks, user_message, max_tokens=500)
-    except Exception as exc:  # noqa: BLE001 — any SDK failure should not crash the graph
+    except anthropic.APIError as exc:
         logger.warning("narrate_turn: Sonnet call failed (%s); using fallback", exc)
         return {"narration": fallback}
 
