@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -57,19 +57,15 @@ class Resource(BaseModel):
     id: str
     name: str
     icon: str
-    # max declared before value so that the field_validator on value can read it
+    value: int
     max: int
     critical_threshold: int
-    value: int
 
-    @field_validator("value")
-    @classmethod
-    def value_within_bounds(cls, v: int, info: Any) -> int:
-        data = info.data
-        max_val = data.get("max")
-        if max_val is not None and not (0 <= v <= max_val):
-            raise ValueError(f"value {v!r} must be between 0 and max ({max_val})")
-        return v
+    @model_validator(mode="after")
+    def _value_within_bounds(self) -> Resource:
+        if not (0 <= self.value <= self.max):
+            raise ValueError(f"value {self.value} must be within [0, {self.max}]")
+        return self
 
 
 class Transformation(BaseModel):
@@ -168,7 +164,8 @@ class ConsequenceSeed(BaseModel):
             return v
         written = data.get("written_at_turn")
         fires = data.get("fires_at_turn")
-        if written is not None and fires is not None and v is not None and not (written <= v < fires):
+        if written is not None and fires is not None and v is not None \
+                and not (written <= v < fires):
             raise ValueError(
                 f"foreshadow_turn ({v}) must satisfy written_at_turn <= foreshadow_turn"
                 f" < fires_at_turn (range: [{written}, {fires}))"
@@ -240,7 +237,7 @@ class Decision(BaseModel):
 
     turn_number: int
     event_id: str
-    choices_offered: list[Proposal]  # exactly 3
+    choices_offered: Annotated[list[Proposal], Field(min_length=3, max_length=3)]
     chosen: DecisionRef
     effects_applied: list[ToolCall]
     seeds_written: list[UUID]

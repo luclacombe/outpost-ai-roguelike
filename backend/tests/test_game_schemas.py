@@ -14,6 +14,7 @@ from app.game.schemas import (
     Agent,
     ColonyState,
     ConsequenceSeed,
+    Decision,
     DecisionRef,
     EndState,
     Event,
@@ -480,4 +481,37 @@ def test_agent_relationships_value_out_of_range_rejected():
             grievance=2,
             is_alive=True,
             relationships={other_id: -11},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 10: Decision.choices_offered cardinality
+# ---------------------------------------------------------------------------
+
+
+def _minimal_proposal(pid: str) -> Proposal:
+    return Proposal(
+        id=pid,
+        proposed_by_agent_id=None,
+        flavor=ProposalFlavor.WILDCARD,
+        name="Option",
+        description="Do something.",
+        effects_preview=[],
+        tool_calls_on_pick=[],
+    )
+
+
+def test_decision_choices_offered_requires_exactly_3():
+    """Decision with 2 proposals must raise ValidationError (spec §7.3)."""
+    dec_ref = DecisionRef(turn_number=1, event_id="evt-001", chosen_proposal_id="p1")
+    with pytest.raises(ValidationError):
+        Decision(
+            turn_number=1,
+            event_id="evt-001",
+            choices_offered=[_minimal_proposal("p1"), _minimal_proposal("p2")],
+            chosen=dec_ref,
+            effects_applied=[],
+            seeds_written=[],
+            grievance_shifts={},
+            legitimacy_cost=0,
         )
