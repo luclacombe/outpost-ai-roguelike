@@ -22,7 +22,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.game.schemas import Event, ProposalFlavor, Quadrant
+from app.game.schemas import EndState, Event, ProposalFlavor, Quadrant
 
 
 class GameSessionCreateRequest(BaseModel):
@@ -94,3 +94,8 @@ class GameSessionResponse(BaseModel):
     started_at: datetime
     current_event: Event | None = None
     turn_proposals: list[ProposalPublic] = []
+    # `end_state` is None while the run is live; one of ENDURED / COLLAPSED /
+    # OUSTED / KILLED once the run terminates. The frontend uses this to drive
+    # the dashboard's "ended" footer; navigating back to /run/<id> after a run
+    # closes should NOT offer a "Begin turn" affordance.
+    end_state: EndState | None = None

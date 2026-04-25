@@ -113,6 +113,7 @@ def _shape_response(
         started_at=datetime.now(UTC),
         current_event=state.current_event,
         turn_proposals=proposals,
+        end_state=state.end_state,
     )
 
 
