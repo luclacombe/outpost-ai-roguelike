@@ -131,10 +131,7 @@ export default function Landing() {
       </section>
 
       {/* ── Footer ────────────────────────────────────────────────── */}
-      <footer className="mt-auto flex flex-wrap items-center justify-between gap-4 border-t border-px-border pt-6 text-px-text-dim">
-        <p className="font-terminal text-base">
-          built for the patient. one cigarette&apos;s worth of dread per day.
-        </p>
+      <footer className="mt-auto flex flex-wrap items-center justify-end gap-4 border-t border-px-border pt-6 text-px-text-dim">
         <div className="flex gap-4 text-sm">
           <Link
             href="/about"
