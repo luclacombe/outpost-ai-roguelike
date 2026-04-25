@@ -49,7 +49,11 @@ export function ResourceBar({
   return (
     <div className="grid grid-cols-[60px_1fr_60px] items-center gap-2">
       <span className="flex items-center gap-1.5">
-        {icon ? (
+        {icon && [...icon].length === 1 ? (
+          // Pixel UI wants a single glyph here; word labels (e.g., "grain")
+          // shipped early in the setting YAMLs and would render verbatim.
+          // Drop silently rather than printing the word — the resource name
+          // already carries the meaning.
           <span aria-hidden className="font-terminal text-base text-px-text-dim">
             {icon}
           </span>

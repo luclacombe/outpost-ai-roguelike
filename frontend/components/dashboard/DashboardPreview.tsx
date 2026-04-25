@@ -127,6 +127,7 @@ export function DashboardPreview() {
             legitimacy={stream.legitimacy ?? DEV_GAME_STATE.legitimacy}
             onChoose={stream.submitChoice}
             onBeginTurn={stream.beginTurn}
+            onContinue={stream.continueAfterNarration}
           />
         </section>
       </div>

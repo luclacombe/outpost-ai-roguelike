@@ -109,6 +109,7 @@ export function DashboardShell({ initialState, initialToken }: Props) {
           legitimacy={stream.legitimacy ?? initialState.legitimacy}
           onChoose={stream.submitChoice}
           onBeginTurn={stream.beginTurn}
+          onContinue={stream.continueAfterNarration}
         />
       </section>
     </div>

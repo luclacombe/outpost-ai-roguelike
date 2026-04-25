@@ -25,35 +25,35 @@ narrative_voice: |
 resources:
   - id: fuel
     name: Fuel
-    icon: flame
+    icon: "▲"
     starting: 70
     max: 100
     critical_threshold: 20
 
   - id: food
     name: Food
-    icon: grain
+    icon: "◆"
     starting: 60
     max: 100
     critical_threshold: 20
 
   - id: warmth
     name: Warmth
-    icon: thermometer
+    icon: "✦"
     starting: 80
     max: 100
     critical_threshold: 20
 
   - id: medicine
     name: Medicine
-    icon: cross
+    icon: "✚"
     starting: 50
     max: 100
     critical_threshold: 20
 
   - id: morale
     name: Morale
-    icon: spark
+    icon: "♪"
     starting: 70
     max: 100
     critical_threshold: 15

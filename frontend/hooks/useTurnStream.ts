@@ -21,6 +21,7 @@ export type TurnPhase =
   | "idle"
   | "running"
   | "awaiting_choice"
+  | "awaiting_continue"
   | "submitting"
   | "advancing"
   | "ended"
@@ -40,6 +41,14 @@ export type TurnStreamState = {
   /** Most recent error surfaced to the UI; cleared by a successful action. */
   error: { code: string; message: string } | null;
   eventLog: EventLogEntry[];
+  // Narration "Continue" gate — when /decide's stream auto-advances past
+  // narration into the next turn's `proposals_ready`, we hold the new turn
+  // data in these slots until the player clicks Continue. Without the gate,
+  // narration disappears the moment the next event renders.
+  pendingEvent: EventPublic | null;
+  pendingProposals: ProposalPublic[];
+  pendingTurnNumber: number | null;
+  pendingLogEntry: EventLogEntry | null;
 };
 
 const INITIAL_STATE: TurnStreamState = {
@@ -55,6 +64,10 @@ const INITIAL_STATE: TurnStreamState = {
   endState: null,
   error: null,
   eventLog: [],
+  pendingEvent: null,
+  pendingProposals: [],
+  pendingTurnNumber: null,
+  pendingLogEntry: null,
 };
 
 type SeedOptions = {
@@ -116,6 +129,7 @@ export function useTurnStream(
 ): TurnStreamState & {
   beginTurn: () => Promise<void>;
   submitChoice: (proposalId: string) => Promise<void>;
+  continueAfterNarration: () => void;
 } {
   const [state, setState] = useState<TurnStreamState>(() => {
     // Mounted phase precedence: ended > awaiting_choice > idle.
@@ -304,7 +318,31 @@ export function useTurnStream(
     [decideUrl, consumeStream, handleEvent],
   );
 
-  return { ...state, beginTurn, submitChoice };
+  const continueAfterNarration = useCallback(() => {
+    setState((s) => promotePendingTurn(s));
+  }, []);
+
+  return { ...state, beginTurn, submitChoice, continueAfterNarration };
+}
+
+function promotePendingTurn(s: TurnStreamState): TurnStreamState {
+  if (s.phase !== "awaiting_continue" || s.pendingEvent === null) return s;
+  return {
+    ...s,
+    phase: "awaiting_choice",
+    currentEvent: s.pendingEvent,
+    proposals: s.pendingProposals,
+    turnNumber: s.pendingTurnNumber ?? s.turnNumber,
+    narration: null,
+    debateLines: [],
+    eventLog: s.pendingLogEntry
+      ? [...s.eventLog, s.pendingLogEntry]
+      : s.eventLog,
+    pendingEvent: null,
+    pendingProposals: [],
+    pendingTurnNumber: null,
+    pendingLogEntry: null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -359,17 +397,28 @@ export function applyEvent(
         event !== null &&
         s.currentEvent !== null &&
         s.currentEvent.id !== event.id;
-      const newLog =
+      const logEntry =
         event && !s.eventLog.some((e) => e.id === event.id)
-          ? [
-              ...s.eventLog,
-              {
-                id: event.id,
-                turn: evt.data.turn_number,
-                text: event.title.toLowerCase(),
-              },
-            ]
-          : s.eventLog;
+          ? {
+              id: event.id,
+              turn: evt.data.turn_number,
+              text: event.title.toLowerCase(),
+            }
+          : null;
+      // Continue gate: when narration is showing AND we're advancing to a
+      // genuinely new event, hold the new turn data in pending slots until
+      // the player clicks Continue. Otherwise the narration disappears the
+      // moment the next event renders.
+      if (isNewTurn && s.narration) {
+        return {
+          ...s,
+          phase: "awaiting_continue",
+          pendingEvent: event,
+          pendingProposals: evt.data.proposals,
+          pendingTurnNumber: evt.data.turn_number,
+          pendingLogEntry: logEntry,
+        };
+      }
       return {
         ...s,
         phase: "awaiting_choice",
@@ -378,7 +427,7 @@ export function applyEvent(
         proposals: evt.data.proposals,
         debateLines: isNewTurn ? [] : s.debateLines,
         narration: isNewTurn ? null : s.narration,
-        eventLog: newLog,
+        eventLog: logEntry ? [...s.eventLog, logEntry] : s.eventLog,
       };
     }
     case "run_over":

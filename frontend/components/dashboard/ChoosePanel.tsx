@@ -27,6 +27,7 @@ export type ChoosePhase =
   | "idle"
   | "running"
   | "awaiting_choice"
+  | "awaiting_continue"
   | "submitting"
   | "advancing"
   | "ended";
@@ -38,6 +39,7 @@ type Props = {
   phase: ChoosePhase;
   onChoose: (proposalId: string) => void;
   onBeginTurn: () => void;
+  onContinue?: () => void;
   onIssueOrder?: () => void;
   legitimacy?: number;
 };
@@ -48,6 +50,7 @@ export function ChoosePanel({
   phase,
   onChoose,
   onBeginTurn,
+  onContinue,
   onIssueOrder,
   legitimacy,
 }: Props) {
@@ -74,6 +77,21 @@ export function ChoosePanel({
         <p className="font-terminal text-base text-px-text-dim">
           The run is closed. The post-mortem is being assembled.
         </p>
+      </Footer>
+    );
+  }
+
+  if (phase === "awaiting_continue") {
+    return (
+      <Footer>
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-terminal text-base text-px-text-dim">
+            Read the aftermath. The next event waits.
+          </p>
+          <Button onClick={onContinue} size="lg" data-testid="continue-button">
+            Continue
+          </Button>
+        </div>
       </Footer>
     );
   }

@@ -26,7 +26,9 @@ export function EventLog({ entries }: Props) {
           <span className="shrink-0 text-px-accent">
             d{String(e.turn).padStart(2, "0")}
           </span>
-          <span className="truncate">{e.text}</span>
+          <span className="truncate" title={e.text}>
+            {e.text}
+          </span>
         </li>
       ))}
     </ol>
