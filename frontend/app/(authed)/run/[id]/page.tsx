@@ -49,6 +49,14 @@ export default async function RunPage({ params }: { params: Promise<Params> }) {
   const { id } = await params;
   const result = await loadGame(id);
 
+  // Closed runs route to the post-mortem instead of the dashboard. The
+  // dashboard's "ended" footer still exists as a fallback for the brief
+  // window between run termination and post-mortem aggregation completing,
+  // but the canonical landing for a finished run is /post-mortem/{id}.
+  if (result.ok && result.state.end_state !== null) {
+    redirect(`/post-mortem/${id}`);
+  }
+
   if (!result.ok) {
     if (result.status === 404) {
       redirect("/play");

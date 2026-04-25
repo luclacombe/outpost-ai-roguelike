@@ -1,0 +1,378 @@
+{
+  "game_id": "6ca9afae-f33f-4bb8-b6a7-9a353721a63d",
+  "setting_id": "arctic_station_v1",
+  "setting_name": "Vorgrad Station",
+  "end_state": "ENDURED",
+  "total_turns": 3,
+  "max_turns": 3,
+  "cost_cents": 18,
+  "started_at": "2026-04-25T14:42:22.103401Z",
+  "ended_at": "2026-04-25T15:02:22.103407Z",
+  "share_token": null,
+  "final_legitimacy": 42,
+  "final_player_health": 100,
+  "opening_line": "The crew burned through the reserve.",
+  "closing_line": "Marko stared at the ice.",
+  "agents": [
+    {
+      "id": "bd9c56df-6bd0-405b-9361-b833f491d51c",
+      "name": "Nadia Petrov",
+      "role": "Quartermaster",
+      "archetype_quadrant": "ACCOUNTANT",
+      "portrait_seed": "arctic_station_v1:Quartermaster:Nadia:a01",
+      "is_alive": true,
+      "final_grievance": 8,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+      "name": "Marko Vance",
+      "role": "Commissar",
+      "archetype_quadrant": "OPERATOR",
+      "portrait_seed": "arctic_station_v1:Commissar:Marko:b02",
+      "is_alive": true,
+      "final_grievance": 0,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+      "name": "Irena Kovac",
+      "role": "Medic",
+      "archetype_quadrant": "CONSCIENCE",
+      "portrait_seed": "arctic_station_v1:Medic:Irena:c03",
+      "is_alive": true,
+      "final_grievance": 7,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+      "name": "Yuri Sato",
+      "role": "Radio Operator",
+      "archetype_quadrant": "CRUSADER",
+      "portrait_seed": "arctic_station_v1:Radio Operator:Yuri:d04",
+      "is_alive": true,
+      "final_grievance": 0,
+      "final_health": 100,
+      "transformed": false
+    }
+  ],
+  "turns": [
+    {
+      "turn_number": 0,
+      "event": {
+        "id": "evt-0",
+        "title": "The heating core has sprung a leak.",
+        "body": "Core leak. Temp dropping fast.",
+        "category": "infrastructure",
+        "severity": 4,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "p0-a",
+          "name": "Full power",
+          "description": "Burn fuel hot. Patch core in three hours.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "effects_preview": [
+            "fuel −12",
+            "warmth +20"
+          ]
+        },
+        {
+          "id": "p0-b",
+          "name": "Infirmary first",
+          "description": "Reduced draw, six hours, infirmary kept warm.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "effects_preview": [
+            "fuel −8",
+            "medical +10"
+          ]
+        },
+        {
+          "id": "p0-c",
+          "name": "Bypass gamble",
+          "description": "Yuri rigs a partial bypass. Risky.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "effects_preview": [
+            "20% catastrophic on fail"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "p0-a",
+      "advisor_lines": [
+        {
+          "agent_id": "bd9c56df-6bd0-405b-9361-b833f491d51c",
+          "text": "The lab samples represent eight months of work."
+        },
+        {
+          "agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "text": "Samples won’t keep us warm."
+        },
+        {
+          "agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "text": "Elena’s lungs won’t take a cold night."
+        },
+        {
+          "agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "text": "Give me two hours of full power and I rig a bypass."
+        }
+      ],
+      "narration": "The crew burned through the reserve. By dawn the core held. Nadia did not speak at breakfast.",
+      "cost_cents": 5,
+      "legitimacy": 85,
+      "player_health": 100,
+      "resources": {
+        "fuel": 35
+      },
+      "agent_grievance": {
+        "bd9c56df-6bd0-405b-9361-b833f491d51c": 4,
+        "6f67cbf3-5a97-43c7-822f-8f1f72f090dc": 0,
+        "7f90bab4-88b9-4471-affa-88b3de9937f1": 2,
+        "b255396e-f06b-4b87-8243-0f3427fd0ee3": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": [
+        {
+          "id": "2b1df281-7d9e-41c2-82dd-e9dedb86fdff",
+          "written_at_turn": 0,
+          "fires_at_turn": 1,
+          "foreshadowed": true,
+          "fired": true,
+          "dormant": false,
+          "payload_summary": "The samples didn’t survive the night.",
+          "origin_event_title": "The heating core has sprung a leak."
+        },
+        {
+          "id": "af983db2-196d-449b-81b1-936002650612",
+          "written_at_turn": 0,
+          "fires_at_turn": 4,
+          "foreshadowed": false,
+          "fired": false,
+          "dormant": true,
+          "payload_summary": "Yuri remembers being passed over for the bypass call.",
+          "origin_event_title": "The heating core has sprung a leak."
+        }
+      ]
+    },
+    {
+      "turn_number": 1,
+      "event": {
+        "id": "evt-1",
+        "title": "The samples didn’t survive the night.",
+        "body": "Eight months of work crystallized in the freezer.",
+        "category": "morale",
+        "severity": 3,
+        "origin": "SEED_FIRED",
+        "origin_seed_id": "2b1df281-7d9e-41c2-82dd-e9dedb86fdff"
+      },
+      "proposals": [
+        {
+          "id": "p1-a",
+          "name": "Move on",
+          "description": "Pragmatic acceptance.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "effects_preview": [
+            "morale −2"
+          ]
+        },
+        {
+          "id": "p1-b",
+          "name": "A formal apology",
+          "description": "Apologize publicly to Nadia.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "effects_preview": [
+            "legitimacy +3"
+          ]
+        },
+        {
+          "id": "p1-c",
+          "name": "Promote Nadia",
+          "description": "Trade a title for grievance.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "effects_preview": [
+            "Nadia grievance −3"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "p1-a",
+      "advisor_lines": [
+        {
+          "agent_id": "bd9c56df-6bd0-405b-9361-b833f491d51c",
+          "text": "Eight months."
+        },
+        {
+          "agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "text": "It is what it is."
+        },
+        {
+          "agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "text": "A word would help."
+        },
+        {
+          "agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "text": "Or a title."
+        }
+      ],
+      "narration": "Nadia walked the perimeter alone. The samples stayed dead.",
+      "cost_cents": 4,
+      "legitimacy": 70,
+      "player_health": 100,
+      "resources": {
+        "fuel": 35
+      },
+      "agent_grievance": {
+        "bd9c56df-6bd0-405b-9361-b833f491d51c": 7,
+        "6f67cbf3-5a97-43c7-822f-8f1f72f090dc": 0,
+        "7f90bab4-88b9-4471-affa-88b3de9937f1": 3,
+        "b255396e-f06b-4b87-8243-0f3427fd0ee3": 0
+      },
+      "seeds_fired": [
+        {
+          "id": "2b1df281-7d9e-41c2-82dd-e9dedb86fdff",
+          "written_at_turn": 0,
+          "fires_at_turn": 1,
+          "foreshadowed": true,
+          "fired": true,
+          "dormant": false,
+          "payload_summary": "The samples didn’t survive the night.",
+          "origin_event_title": "The heating core has sprung a leak."
+        }
+      ],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 2,
+      "event": {
+        "id": "evt-2",
+        "title": "The radio picks up a foreign signal.",
+        "body": "A military frequency, encrypted, close.",
+        "category": "external_claims",
+        "severity": 4,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "p2-a",
+          "name": "Stay silent",
+          "description": "Keep listening, say nothing.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "effects_preview": [
+            "hidden until end"
+          ]
+        },
+        {
+          "id": "p2-b",
+          "name": "Tell the crew",
+          "description": "Honesty over secrecy.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "effects_preview": [
+            "morale −5",
+            "legitimacy +5"
+          ]
+        },
+        {
+          "id": "p2-c",
+          "name": "Reply",
+          "description": "Send a coded ping back.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "effects_preview": [
+            "unknown"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "p2-a",
+      "advisor_lines": [
+        {
+          "agent_id": "bd9c56df-6bd0-405b-9361-b833f491d51c",
+          "text": "You knew about this."
+        },
+        {
+          "agent_id": "6f67cbf3-5a97-43c7-822f-8f1f72f090dc",
+          "text": "I authorized it."
+        },
+        {
+          "agent_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+          "text": "You’re lying to your own crew."
+        },
+        {
+          "agent_id": "b255396e-f06b-4b87-8243-0f3427fd0ee3",
+          "text": "I can break their key in three hours."
+        }
+      ],
+      "narration": "Nadia and Irena ate at separate tables. Marko stared at the ice.",
+      "cost_cents": 9,
+      "legitimacy": 42,
+      "player_health": 100,
+      "resources": {
+        "fuel": 35
+      },
+      "agent_grievance": {
+        "bd9c56df-6bd0-405b-9361-b833f491d51c": 8,
+        "6f67cbf3-5a97-43c7-822f-8f1f72f090dc": 0,
+        "7f90bab4-88b9-4471-affa-88b3de9937f1": 7,
+        "b255396e-f06b-4b87-8243-0f3427fd0ee3": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": [
+        {
+          "id": "51a3c4ad-a553-48c4-a057-770343203951",
+          "written_at_turn": 2,
+          "fires_at_turn": 5,
+          "foreshadowed": true,
+          "fired": false,
+          "dormant": false,
+          "payload_summary": "The foreign transmitter pings again, louder.",
+          "origin_event_title": "The radio picks up a foreign signal."
+        }
+      ]
+    }
+  ],
+  "counterfactuals": {
+    "dormant_seeds": [
+      {
+        "id": "af983db2-196d-449b-81b1-936002650612",
+        "written_at_turn": 0,
+        "fires_at_turn": 4,
+        "foreshadowed": false,
+        "fired": false,
+        "dormant": true,
+        "payload_summary": "Yuri remembers being passed over for the bypass call.",
+        "origin_event_title": "The heating core has sprung a leak."
+      },
+      {
+        "id": "51a3c4ad-a553-48c4-a057-770343203951",
+        "written_at_turn": 2,
+        "fires_at_turn": 5,
+        "foreshadowed": true,
+        "fired": false,
+        "dormant": false,
+        "payload_summary": "The foreign transmitter pings again, louder.",
+        "origin_event_title": "The radio picks up a foreign signal."
+      }
+    ],
+    "near_miss_coups": [
+      {
+        "turn_number": 2,
+        "agent_a_id": "7f90bab4-88b9-4471-affa-88b3de9937f1",
+        "agent_b_id": "bd9c56df-6bd0-405b-9361-b833f491d51c",
+        "grievance_a": 7,
+        "grievance_b": 8
+      }
+    ],
+    "didnt_happen_transformations": []
+  }
+}

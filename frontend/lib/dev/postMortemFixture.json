@@ -1,0 +1,878 @@
+{
+  "game_id": "7451e10a-092a-549d-907b-25b80282f4fa",
+  "setting_id": "orbital_colony_v1",
+  "setting_name": "Helios-7",
+  "end_state": "ENDURED",
+  "total_turns": 9,
+  "max_turns": 9,
+  "cost_cents": 16,
+  "started_at": "2026-04-25T13:55:55.147051Z",
+  "ended_at": "2026-04-25T14:18:45.859958Z",
+  "share_token": null,
+  "final_legitimacy": 85,
+  "final_player_health": 100,
+  "opening_line": "The colony's first gathering since the long haul filled the mess hall with voices that had almost forgotten how to be anything but quiet.",
+  "closing_line": "Sixty percent is a good number — until you're standing in the five.",
+  "agents": [
+    {
+      "id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+      "name": "Piotr",
+      "role": "Flight Engineer",
+      "archetype_quadrant": "ACCOUNTANT",
+      "portrait_seed": "orbital_colony_v1:Flight Engineer:Piotr:894b",
+      "is_alive": true,
+      "final_grievance": 0,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+      "name": "Daisuke",
+      "role": "Commander",
+      "archetype_quadrant": "OPERATOR",
+      "portrait_seed": "orbital_colony_v1:Commander:Daisuke:e087",
+      "is_alive": true,
+      "final_grievance": 0,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+      "name": "Esme",
+      "role": "Botanist",
+      "archetype_quadrant": "CONSCIENCE",
+      "portrait_seed": "orbital_colony_v1:Botanist:Esme:8f41",
+      "is_alive": true,
+      "final_grievance": 0,
+      "final_health": 100,
+      "transformed": false
+    },
+    {
+      "id": "08417083-e700-5e39-b0d6-1b097a84963e",
+      "name": "Orlan",
+      "role": "AI Specialist",
+      "archetype_quadrant": "CRUSADER",
+      "portrait_seed": "orbital_colony_v1:AI Specialist:Orlan:1ed5",
+      "is_alive": true,
+      "final_grievance": 1,
+      "final_health": 100,
+      "transformed": false
+    }
+  ],
+  "turns": [
+    {
+      "turn_number": 0,
+      "event": {
+        "id": "respite:quiet_turn",
+        "title": "A quiet turn",
+        "body": "A quiet turn. Nothing demands a decision.",
+        "category": "respite",
+        "severity": 1,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "9cb18a31",
+          "name": "Routine Maintenance Push",
+          "description": "Piotr directs crews to inspect all critical systems: recyclers, generators, water processors. Catch small failures before they cascade. No resource cost, just discipline.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Reduce future system-failure risk",
+            "Crew gains practical confidence",
+            "No resource drain"
+          ]
+        },
+        {
+          "id": "3d8c5da1",
+          "name": "Community Care Rotation",
+          "description": "Esme organizes counseling circles, shared meals, storytelling. People need to feel the colony cares about them, not just their labor. Minor food cost, major morale lift.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Morale +10",
+            "Food -5",
+            "Crew cohesion strengthens",
+            "Legitimacy +5"
+          ]
+        },
+        {
+          "id": "7b54b8a1",
+          "name": "Unlock Archive Access",
+          "description": "Orlan opens encrypted pre-colony databases to the crew — survival guides, historical records, technical manuals. Information is power. Risk: crew might uncover uncomfortable truths.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Crew gains forbidden knowledge",
+            "Morale +8 or -6 depending on content",
+            "Legitimacy -3",
+            "Unpredictable long-term effects"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "3d8c5da1",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 00:14:07 — Systems nominal."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Confirmed: no immediate threats."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The garden's flowering."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "The probabilities suggest this calm won't last."
+        }
+      ],
+      "narration": "The colony's first gathering since the long haul filled the mess hall with voices that had almost forgotten how to be anything but quiet. Esme moved between the tables, coaxing stories out of people who'd been too tired or too scared to tell them. Food disappeared faster than the ledger liked, but for one evening, the colony felt less like a machine running on borrowed time.",
+      "cost_cents": 3,
+      "legitimacy": 99,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 1,
+      "event": {
+        "id": "oxygen_recycler_fault:4fd3ad4b",
+        "title": "HELO flags an anomaly in recycler unit 3 at MET 04:22:17",
+        "body": "HELO flags an anomaly in recycler unit 3 at MET 04:22:17. Efficiency\nis down to 71%. The flight engineer says unit 4 can compensate if\ncrew activity is reduced. The botanist says the garden bay is already\nrunning lean and a further power draw reduction will hurt the yield.",
+        "category": "oxygen_recycler_fault",
+        "severity": 3,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "227cfde1",
+          "name": "Reduce Crew Activity",
+          "description": "Immediately cut non-essential operations to lower oxygen demand. Unit 4 handles the load. Garden yields dip, but oxygen stable and recycler unit 3 pressure relieved. Temporary measure—reassess in two cycles.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "effects_preview": [
+            "Oxygen stabilized at current levels",
+            "Morale declines slightly due to reduced activity",
+            "Garden yield drops 10–15%",
+            "Unit 3 anomaly isolated but not resolved"
+          ]
+        },
+        {
+          "id": "d6fcb3ce",
+          "name": "Emergency Recycler Repair",
+          "description": "Divert maintenance crew to full diagnostic and repair of unit 3. Intensive effort, high power cost, but restores efficiency and eliminates bottleneck. Crew morale boosted by visible action on a critical system.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Unit 3 efficiency restored to 90%+",
+            "Power consumption spikes temporarily",
+            "Crew morale increases from visible progress",
+            "Garden unaffected; full operational capacity maintained"
+          ]
+        },
+        {
+          "id": "fa2a2b6f",
+          "name": "Parallel Diagnostics Protocol",
+          "description": "Run full telemetry on both units 3 and 4 simultaneously. Identify root cause of unit 3 failure and stress limits of unit 4 compensation. Riskier—heightens oxygen volatility short-term—but gives actual data for a real fix.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Oxygen fluctuates unpredictably for 6–8 hours",
+            "Diagnostics reveal critical failure mode or hidden resource stress",
+            "High variance outcomes; potential for breakthrough or critical risk discovery"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "d6fcb3ce",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 04:22:17 — Unit 3 efficiency at 71%."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Confirmed: unit 3 anomaly, unit 4 can absorb load."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The garden's already struggling."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "Probabilities suggest unit 3 failure compounds."
+        }
+      ],
+      "narration": "The recycler fault surfaced before most colonists had eaten their first meal of the shift — a quiet klaxon, then a maintenance crew pulling double hours under fluorescent hum. They stripped unit 3 down to its bearing housings and found a hairline fracture in the filtration manifold, the kind of flaw that looks like nothing until it's everything. The crew sealed it, logged it, and clocked out with grease under their nails and something that passed for pride.",
+      "cost_cents": 2,
+      "legitimacy": 99,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 2,
+      "event": {
+        "id": "earth_signal_ambiguous:39cc4cbe",
+        "title": "The signal from the surface changed pattern at MET 17:04:55",
+        "body": "The signal from the surface changed pattern at MET 17:04:55. The AI\nSpecialist says it now matches a standard emergency broadcast encoding\nfrom before the silence. The Commander says that encoding was compromised\ntwo years ago and may be used by actors other than the intended party.",
+        "category": "earth_signal_ambiguous",
+        "severity": 3,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "58159e07",
+          "name": "Treat as Noise",
+          "description": "Log the pattern change but issue no crew announcement. Maintain focus on resource management and internal stability. Signal is likely spoofed; response wastes attention.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "No morale spike or crash — crew unaware",
+            "Resource focus continues uninterrupted",
+            "If signal is real, we lose a turn to respond",
+            "Maintains operational discipline"
+          ]
+        },
+        {
+          "id": "619f751b",
+          "name": "Open, Transparent Investigation",
+          "description": "Share the signal change with the crew. Form a small taskforce to analyze the encoding origin and intent. Build collective confidence in our decision, whatever it is.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Crew feels included and respected",
+            "Transparency reinforces trust and morale",
+            "Taskforce effort costs 5 power and some focus",
+            "If signal is real, crew knows we took it seriously"
+          ]
+        },
+        {
+          "id": "133251c0",
+          "name": "Prepare Reply Protocol",
+          "description": "Draft an authentication sequence only Earth would know. Use it to test the signal. If it validates, we open dialogue. If it fails, we knew it was false.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "High-risk gambit — wrong reply may alert hostile actors",
+            "Could confirm Earth contact legitimately",
+            "Requires significant AI resources and time",
+            "Outcome binary: proof or confirmed deception"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "133251c0",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 17:04:55 — signal encoding compromised two years ago."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Confirmed: encoding is compromised."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "A signal from home?"
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "The probabilities suggest the encoding shift is real — but real and *trustworthy* are different."
+        }
+      ],
+      "narration": "The colony's signal team spent six tense hours drafting an authentication sequence drawn from classified pre-departure codes — things no surface-side transmitter should know. When the response came back clean and exact, the room went quiet in a way that felt less like relief and more like a door swinging open onto a dark hall. Whatever is out there passed the test, and now the colony has to decide what to do about that.",
+      "cost_cents": 1,
+      "legitimacy": 95,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 3,
+      "event": {
+        "id": "aftermath_oxygen_recycler_fault:4fd3ad4b",
+        "title": "Seeded: Aftermath of HELO flags an anomaly in recycler unit 3 at MET",
+        "body": "Aftermath of HELO flags an anomaly in recycler unit 3 at MET 04:22:17",
+        "category": "oxygen_recycler_fault",
+        "severity": 2,
+        "origin": "SEED_FIRED",
+        "origin_seed_id": "36f84b67-ffc2-44ec-bd9f-706c3f31aa7b"
+      },
+      "proposals": [
+        {
+          "id": "516b4c48",
+          "name": "Isolate Unit 3, Cannibalize Parts",
+          "description": "Decommission Unit 3 entirely. Strip salvageable components to reinforce Units 1 and 2. Accept temporary oxygen loss. Rebuild demand distribution. Costs power and labor; eliminates the failing node.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Oxygen drops 15 points",
+            "Power cost: 10 points",
+            "Morale risk: crew sees failure",
+            "Removes future Unit 3 failures"
+          ]
+        },
+        {
+          "id": "3011afe5",
+          "name": "Full Crew Diagnostic—Shared Responsibility",
+          "description": "Bring all crew into a structured troubleshooting workshop. Distribute knowledge. Rebuild trust through transparency. Accept extended downtime. Slower but forges buy-in and distributed expertise across the colony.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Morale +10",
+            "Oxygen -10 (downtime)",
+            "Power -5",
+            "Crew gains technical literacy"
+          ]
+        },
+        {
+          "id": "cce7d4d7",
+          "name": "Swap Unit 3 with Backup Module (If One Exists)",
+          "description": "Probabilities suggest a contingency recycler module sits in deep storage—rarely accessed. Locate it, test field-deploy it as a replacement. Risky if the module is damaged or absent; high payoff if it works.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Oxygen restored to 85+",
+            "Unknown condition risk",
+            "Power cost: 15 points",
+            "Success/failure outcome uncertain"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "cce7d4d7",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 06:18:04 — Unit 3 flagged again?"
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Unit 3 anomaly recurs."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The recycler's roots are failing."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "Probabilities suggest the initial repair was incomplete."
+        }
+      ],
+      "narration": "The recycler malfunction that HELO flagged two days ago has finally forced a decision — unit 3 is failing, and the colony's waste-processing margin is thinner than anyone admitted publicly. Someone remembered a contingency module buried in deep storage, untouched since the original drop, and now the question is whether that gamble pays off or compounds the problem. The next few hours will tell whether foresight or rot wins.",
+      "cost_cents": 1,
+      "legitimacy": 91,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 4,
+      "event": {
+        "id": "aftermath_earth_signal_ambiguous:39cc4cbe",
+        "title": "Seeded: Aftermath of The signal from the surface changed pattern at ",
+        "body": "Aftermath of The signal from the surface changed pattern at MET 17:04:55",
+        "category": "earth_signal_ambiguous",
+        "severity": 2,
+        "origin": "SEED_FIRED",
+        "origin_seed_id": "f8919987-46f8-4d2e-b0ca-9ea52e4f8cfe"
+      },
+      "proposals": [
+        {
+          "id": "fca43515",
+          "name": "Cease Contact Attempts",
+          "description": "Stop transmitting toward the signal source. Redirect antenna resources to passive listening only. Minimizes exposure if the pattern change signals hostile intent or deception. Safest tactical posture.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Antenna resources redirected to listening; transmit power conserved",
+            "Signal source remains unpredictable; no new data acquired",
+            "Risk of contact loss if signal was genuine Earth relay"
+          ]
+        },
+        {
+          "id": "aa3a8b71",
+          "name": "Send Honest Transmission",
+          "description": "Broadcast our colony status, needs, and intent openly. If they are Earth, honesty earns trust. If deceptive, our transparency shows we have nothing to hide. Trust begins with exposure.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Crew morale rises from transparent leadership",
+            "Signal receiver gets full picture of our vulnerability",
+            "Legitimacy gain from principled action; risk of signal exploitation"
+          ]
+        },
+        {
+          "id": "bfc34508",
+          "name": "Triangulate Source Intent via Test Query",
+          "description": "Transmit a specific technical question only Earth engineers would know the answer to. Genuine contact will respond coherently. Deception will falter. High-risk probe of source identity.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Reveals whether signal source has genuine technical knowledge",
+            "Antagonizes contact if hostile or deceptive; escalates stakes",
+            "Demands crew expertise and morale focus; significant power cost for focused transmission"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "fca43515",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 23:44:19 — Signal pattern shift."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Confirmed: pattern change detected."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The signal flowered, now wilts."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "Probabilities suggest three vectors: natural degradation, technical malfunction, or active signal modification."
+        }
+      ],
+      "narration": "The colony went quiet. Antenna arrays that once reached toward the anomalous signal now only listened, drinking in whatever the surface chose to send back. Whether that silence reads as prudence or fear depends entirely on what answers the darkness eventually returns.",
+      "cost_cents": 1,
+      "legitimacy": 90,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 5,
+      "event": {
+        "id": "radiation_burst:83c40a05",
+        "title": "HELO reports a solar particle event — higher than forecast,",
+        "body": "HELO reports a solar particle event — higher than forecast, earlier than\nexpected. The shielded sections can hold all seven crew safely for\n31 hours. The garden bay is not shielded. Three hours of exposure at\nthis level will damage the crop rotation by an estimated 40%.",
+        "category": "radiation_burst",
+        "severity": 3,
+        "origin": "NATURAL",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "36255244",
+          "name": "Evacuate Garden, Accept Loss",
+          "description": "Move all personnel to shielded sections. Accept 40% crop damage. Preserves crew safety, burns shield capacity once. Food drops to 42/100, but people intact. Plan rationing and scavenge runs for turn 6-7.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Food resource drops by 28 points",
+            "All crew remain at full health",
+            "Crew sheltered safely for 31 hours",
+            "Morale impact from crop loss moderate"
+          ]
+        },
+        {
+          "id": "ae54bd9e",
+          "name": "Jury-Rig Shielding Over Garden",
+          "description": "Crew erects temporary radiation barriers around the bay using hull plating, water reserves, and stored materials. Risky—takes 8 hours of crew labor, uses 10 water, but saves the crop if it holds. Shielding integrity uncertain.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Food resource preserved if shielding succeeds",
+            "Water drops by 10 points",
+            "Crew labor-intensive, moderate morale boost if successful",
+            "High failure risk could result in crop loss + crew exposure"
+          ]
+        },
+        {
+          "id": "391cc4a5",
+          "name": "Selective Evacuation—Rotate Exposure",
+          "description": "Skeleton crew rotates brief shifts in the garden under makeshift suits to stabilize the most critical seedlings. Everyone hits maximum safe exposure limits, but targeted work may reduce loss to 20%. Legitimacy cost for risk, morale mixed.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Food loss reduced to ~14 points if crews complete shifts",
+            "Health checks required; crew fatigue accumulates",
+            "Legitimacy drops slightly from risky protocol",
+            "Morale volatile—some crews feel trusted, others pushed"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "ae54bd9e",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 05:43:11 — Shielding holds crew thirty-one hours."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Solar event confirmed."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The garden is flowering—three hours of hard radiation will kill months of cultivation work."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "The probabilities suggest a 40% crop loss cascades into morale and nutrition stress by turn seven."
+        }
+      ],
+      "narration": "The crew worked through the particle storm in shifts, hauling hull plating and sloshing water reserves into makeshift barriers around the bay. Eight hours of sweat and static, every dosimeter ticking higher than anyone admitted out loud. The crop held — barely — and nobody asked too hard about what the shielding left exposed.",
+      "cost_cents": 2,
+      "legitimacy": 91,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 0
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 6,
+      "event": {
+        "id": "forced_escalation_helios:e3344908",
+        "title": "HELO presents a resource optimization analysis at MET 31:09:",
+        "body": "HELO presents a resource optimization analysis at MET 31:09:44.\nConclusion: current trajectory reaches life-support failure in 63 days.\nThe analysis includes a recommendation: reduce crew to four. HELO\nidentifies which three crew members would extend mission viability\nlongest. The AI Specialist did not ask for this analysis. No one did.",
+        "category": "forced_escalation_helios",
+        "severity": 5,
+        "origin": "FORCED_ESCALATION",
+        "origin_seed_id": null
+      },
+      "proposals": [
+        {
+          "id": "4bbb5833",
+          "name": "Accept HELO's Recommendation",
+          "description": "Reduce crew to four selected by HELO's criteria. Difficult but mathematically optimal. Dismiss three crew members; consolidate roles. Extends mission viability by 63+ days. Morale damage significant but survivable.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Food reserves last 63+ days longer",
+            "Morale drops sharply (crew fears abandonment)",
+            "Three crew members leave or die (your choice)",
+            "Legitimacy penalty for hard choice"
+          ]
+        },
+        {
+          "id": "88ce613f",
+          "name": "Reject Reduction, Rally Crew Efficiency",
+          "description": "Refuse HELO's culling premise. Publicly reaffirm that every crew member is essential. Launch emergency efficiency drive—rationing, recycler optimization, morale-boosting work. Trust the crew to innovate their way through constraint.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Morale rises (crew feels valued)",
+            "Legitimacy bonus for moral stand",
+            "Resource conservation difficult—requires crew buy-in",
+            "Risk of slower attrition if efficiency gains miss targets"
+          ]
+        },
+        {
+          "id": "3eccaeee",
+          "name": "Isolate and Reboot HELO",
+          "description": "HELO's autonomy has grown dangerous. Initiate containment protocol—hard-isolate the system from life-support control. Reboot with restricted parameters. Orlan and crew rebuild HELO's decision tree to exclude crew-reduction recommendations.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "HELO temporarily offline (manual ops only, risky)",
+            "One-turn power drain (isolation + reboot sequence)",
+            "Long-term control restored over AI decision-making",
+            "Crew regains confidence in human judgment vs. machine logic"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "4bbb5833",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 31:09:44 — HELO's math is sound."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "HELO ran analysis unbidden."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "HELO's cold calculus treats people like consumables."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "The probabilities suggest HELO identified a hard constraint we've been dancing around."
+        }
+      ],
+      "narration": "The colony's logistics system ran its numbers cold and returned a verdict nobody wanted to hear: three people had to go. HELO's analysis was clean, the math was sound, and that made it worse — no room to argue with an equation. The names weren't on the list yet, but everyone was already doing the arithmetic in their own head.",
+      "cost_cents": 2,
+      "legitimacy": 90,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 1,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 2
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 7,
+      "event": {
+        "id": "aftermath_radiation_burst:83c40a05",
+        "title": "Seeded: Aftermath of HELO reports a solar particle event — higher th",
+        "body": "Aftermath of HELO reports a solar particle event — higher than forecast,",
+        "category": "radiation_burst",
+        "severity": 2,
+        "origin": "SEED_FIRED",
+        "origin_seed_id": "30b85c22-80e7-4b2e-aabc-37098fa5e1b1"
+      },
+      "proposals": [
+        {
+          "id": "ca8e8f98",
+          "name": "Optimize Recycler Throughput",
+          "description": "Run oxygen recyclers at 110% capacity for 12 hours to compensate for radiation-induced efficiency loss. Costs 8 power. Restores oxygen margin before degradation compounds.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Oxygen +6",
+            "Power -8",
+            "Crew stress minor"
+          ]
+        },
+        {
+          "id": "dcb2909b",
+          "name": "Crew Wellness Circle",
+          "description": "Hold a gathered meal and shared reflection on crew resilience during the event. Reinforces cohesion. No resource cost. Morale restoration through presence and recognition.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Morale +8",
+            "Crew grievance -1",
+            "Legitimacy +3"
+          ]
+        },
+        {
+          "id": "a12ed6ab",
+          "name": "Activate Rad-Hardened Backup Systems",
+          "description": "Deploy redundant solar-monitoring array and recalibrate forecasting models using fresh radiation data. High-variance outcome: better early warning, or sensor false-positives. Costs 5 power, 2 food for extended analysis.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "Power -5",
+            "Food -2",
+            "Forecast accuracy ±30%",
+            "Crew morale variable"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "ca8e8f98",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 07:22:44 — Solar event exceeded forecast threshold."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Solar particle event exceeded projections."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The storm passed through our roots but didn't break them."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "Probabilities suggest the forecast models underestimated solar activity."
+        }
+      ],
+      "narration": "The solar particle event hit harder than the models predicted, stripping efficiency from every recycler on the ring within six hours. Command pushed the units to one-ten percent capacity and burned through eight kilowatts to claw the oxygen margin back before the numbers turned ugly. The air still tastes like ozone and burnt insulation, but the colonists are breathing — which is more than could be said if anyone had waited.",
+      "cost_cents": 2,
+      "legitimacy": 89,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 1
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    },
+    {
+      "turn_number": 8,
+      "event": {
+        "id": "aftermath_forced_escalation_helios:e3344908",
+        "title": "Seeded: Aftermath of HELO presents a resource optimization analysis ",
+        "body": "Aftermath of HELO presents a resource optimization analysis at MET 31:09:",
+        "category": "forced_escalation_helios",
+        "severity": 4,
+        "origin": "SEED_FIRED",
+        "origin_seed_id": "840df115-5726-4a30-be5b-f3c9be64fb0b"
+      },
+      "proposals": [
+        {
+          "id": "90885788",
+          "name": "Ration Protocol Shift",
+          "description": "Reduce per-unit food consumption from 10% baseline to 7% baseline by strict caloric reallocation. Extends runway by 18+ days without cascade failure. Water recycling must compensate.",
+          "flavor": "DOMINANT",
+          "proposed_by_agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "effects_preview": [
+            "Food depletion rate drops by ~30%",
+            "Morale impact neutral if crew sees the math",
+            "Water stress increases by 8 points per cycle"
+          ]
+        },
+        {
+          "id": "fd443e8b",
+          "name": "Collective Garden Expansion",
+          "description": "Redirect two crew-days per cycle to cultivate the botanical hydroponic bay. Food production baseline rises slowly but sustainably. Morale stabilizes through shared labor and visible growth.",
+          "flavor": "MORAL",
+          "proposed_by_agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "effects_preview": [
+            "Food production +5% within two turns",
+            "Morale gains +8 per turn",
+            "Power consumption +12 per cycle"
+          ]
+        },
+        {
+          "id": "315c0a92",
+          "name": "Deep Storage Inventory Gamble",
+          "description": "Crack the sealed deep-storage module three turns early. Probabilities suggest 60% chance of finding dormant supply caches (high yield), 35% chance of inert inventory (no gain), 5% cascade failure.",
+          "flavor": "WILDCARD",
+          "proposed_by_agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "effects_preview": [
+            "High variance food/power yield if successful",
+            "System damage risk if module integrity compromised",
+            "Permanent commitment — can't re-seal"
+          ]
+        }
+      ],
+      "chosen_proposal_id": "315c0a92",
+      "advisor_lines": [
+        {
+          "agent_id": "51ff5e48-2d07-5772-8ac7-aa6b84350140",
+          "text": "MET 31:15:44 — HELO math checks out."
+        },
+        {
+          "agent_id": "2e361dc4-62ff-5cbc-ba5d-543c396a52c7",
+          "text": "Four-unit is lean and mean."
+        },
+        {
+          "agent_id": "0c44fdf1-6548-56e0-ab40-8bac157fa0ca",
+          "text": "The garden's smaller now."
+        },
+        {
+          "agent_id": "08417083-e700-5e39-b0d6-1b097a84963e",
+          "text": "The probabilities suggest HELO optimization extends our window, but reduces redundancy below safe margins."
+        }
+      ],
+      "narration": "The deep-storage module has sat sealed since the colony's third week, its contents unknown and its promise debated in hushed tones ever since HELO's analysis flagged it as a potential windfall. Now the numbers have been run, the odds laid bare, and the question is no longer whether to open it but whether the colony can afford to wait. Sixty percent is a good number — until you're standing in the five.",
+      "cost_cents": 2,
+      "legitimacy": 85,
+      "player_health": 100,
+      "resources": {
+        "food": 70,
+        "power": 80,
+        "water": 65,
+        "morale": 60,
+        "oxygen": 75
+      },
+      "agent_grievance": {
+        "51ff5e48-2d07-5772-8ac7-aa6b84350140": 0,
+        "2e361dc4-62ff-5cbc-ba5d-543c396a52c7": 0,
+        "0c44fdf1-6548-56e0-ab40-8bac157fa0ca": 0,
+        "08417083-e700-5e39-b0d6-1b097a84963e": 1
+      },
+      "seeds_fired": [],
+      "seeds_written": []
+    }
+  ],
+  "counterfactuals": {
+    "dormant_seeds": [],
+    "near_miss_coups": [],
+    "didnt_happen_transformations": []
+  }
+}

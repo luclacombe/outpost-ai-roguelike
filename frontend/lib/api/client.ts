@@ -91,6 +91,107 @@ export type GameSessionResponse = {
 };
 
 // ---------------------------------------------------------------------------
+// Post-mortem shapes — mirrors backend/app/game/schemas_io.py PostMortem*
+// ---------------------------------------------------------------------------
+
+export type PostMortemAgent = {
+  id: string;
+  name: string;
+  role: string;
+  archetype_quadrant: Quadrant;
+  portrait_seed: string;
+  is_alive: boolean;
+  final_grievance: number;
+  final_health: number;
+  transformed: boolean;
+};
+
+export type PostMortemEvent = {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  severity: number;
+  origin: EventOrigin;
+  origin_seed_id: string | null;
+};
+
+export type PostMortemProposal = {
+  id: string;
+  name: string;
+  description: string;
+  flavor: ProposalFlavor;
+  proposed_by_agent_id: string | null;
+  effects_preview: string[];
+};
+
+export type PostMortemAdvisorLine = {
+  agent_id: string;
+  text: string;
+};
+
+export type PostMortemSeedRef = {
+  id: string;
+  written_at_turn: number;
+  fires_at_turn: number;
+  foreshadowed: boolean;
+  fired: boolean;
+  dormant: boolean;
+  payload_summary: string;
+  origin_event_title: string | null;
+};
+
+export type PostMortemTurn = {
+  turn_number: number;
+  event: PostMortemEvent;
+  proposals: PostMortemProposal[];
+  chosen_proposal_id: string;
+  advisor_lines: PostMortemAdvisorLine[];
+  narration: string | null;
+  cost_cents: number;
+  legitimacy: number;
+  player_health: number;
+  resources: Record<string, number>;
+  agent_grievance: Record<string, number>;
+  seeds_fired: PostMortemSeedRef[];
+  seeds_written: PostMortemSeedRef[];
+};
+
+export type PostMortemNearMissCoup = {
+  turn_number: number;
+  agent_a_id: string;
+  agent_b_id: string;
+  grievance_a: number;
+  grievance_b: number;
+};
+
+export type PostMortemCounterfactuals = {
+  dormant_seeds: PostMortemSeedRef[];
+  near_miss_coups: PostMortemNearMissCoup[];
+  didnt_happen_transformations: Record<string, unknown>[];
+};
+
+export type PostMortem = {
+  game_id: string;
+  setting_id: string;
+  setting_name: string;
+  end_state: EndState;
+  total_turns: number;
+  max_turns: number;
+  cost_cents: number;
+  started_at: string;
+  ended_at: string | null;
+  share_token: string | null;
+  final_legitimacy: number;
+  final_player_health: number;
+  opening_line: string | null;
+  closing_line: string | null;
+  agents: PostMortemAgent[];
+  turns: PostMortemTurn[];
+  counterfactuals: PostMortemCounterfactuals;
+};
+
+// ---------------------------------------------------------------------------
 // SSE event payloads — mirrors backend/app/agent/schemas_io.py docstring
 // ---------------------------------------------------------------------------
 

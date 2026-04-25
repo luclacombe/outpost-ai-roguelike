@@ -224,3 +224,51 @@ Pre-stream HTTP errors (4xx other than 401) get the same alert with the backend'
 ## shadcn re-theme status (Phase 7)
 
 All dashboard primitives so far hit Level 2 (CSS-var override only). No Level-3 copies needed yet. The Button's hardcoded `rounded-*` classes are already neutralized by `--radius: 0` on the token, so the pixel-art look survives without a local fork. Re-evaluate when adding `Dialog` / `Sheet` / `AlertDialog` (likely Level 3 on those — Phase 8 territory).
+
+---
+
+## Post-mortem routing (Phase 8)
+
+Two surfaces consume the same `PostMortemView`:
+
+| Route | Auth | Backend | Purpose |
+|---|---|---|---|
+| `(authed)/post-mortem/[id]` | bearer JWT | `GET /game/{id}/post-mortem` | Player-private view of their own runs. Mints a `share_token` on first view (idempotent), so the page can render a share button without a separate "create share link" step. |
+| `share/[token]` | none | `GET /game/share/{token}` | Public, unfurlable view linked from social shares. The token is path-positional auth — anyone holding the URL gets the run. No revocation in MVP. |
+
+**Why two routes, not one with optional auth.** The public route is reachable to crawlers (Twitter, Discord, Bluesky). The authed route's parent `(authed)/layout.tsx` enforces `getUser()` — a crawler hitting `/post-mortem/<id>` would 401. Keep the public surface explicitly public.
+
+**`/run/<id>` redirects to `/post-mortem/<id>` when `end_state !== null`.** The dashboard's "ended" footer is a fallback only for the brief window between run termination and post-mortem aggregation completing — the canonical landing for a finished run is the post-mortem.
+
+## OG image patterns (Phase 8)
+
+Co-located `opengraph-image.tsx` next to a public `page.tsx`. Two metadata exports gate behavior:
+
+```ts
+export const size = { width: 1200, height: 630 };
+export const contentType = "image/png";
+export const alt = "Outpost — shared run";
+```
+
+- `params` is a Promise in Next.js 16, even inside `opengraph-image.tsx`. Always `await params` — sync access logs a deprecation warning AND returns `undefined` for the property, which falls through to the fallback card.
+- **Width 1200 × 630 is the cross-platform safe default.** SPEC §11.3 calls for "compact square" but Twitter/Discord/Bluesky behavior with square images is uneven (Twitter crops centre, Bluesky may stretch). Wide-format unfurls predictably across all three.
+- **No external font loads.** Satori's default works for the share card. Adding a Google Font would slow the OG endpoint by a network round-trip per render.
+- **Inline styles only.** `tw=""` Tailwind support exists but every variant we'd want is one-off; prop styles keep the layout legible without a Tailwind context.
+- **Dev fallback tokens.** `/share/dev` and `/share/dev-rich` hydrate from `lib/dev/postMortemFixture.json` / `postMortemFixtureRich.json` so the OG image and share page can be iterated offline without the backend running. Gated by `NODE_ENV !== "production"`.
+
+## Post-mortem fixtures (Phase 8)
+
+Two static fixtures live under `lib/dev/`:
+
+- `postMortemFixture.json` — frozen API response from the Phase 7 exit run id `7451e10a-...`. ENDURED, no consequence_seeds, no near-miss coups. The truthful empty case for the Counterfactuals panel.
+- `postMortemFixtureRich.json` — synthesized 3-turn run inserted via the test scaffolding in `tests/test_post_mortem.py`'s pattern, then round-tripped through the real `build_post_mortem` aggregator. Has a fired seed, two dormant seeds, and a near-miss coup. The populated case.
+
+Both are real outputs from `app.game.post_mortem.build_post_mortem` — never hand-edited. Regenerate with the Python snippet at the top of each file's git history when the schema changes.
+
+The dev page at `app/dev/post-mortem/page.tsx` toggles between them via `?fixture=rich`.
+
+## SSE Continue gate (Phase 8 P1 fix)
+
+`useTurnStream`'s reducer holds the next turn's `proposals_ready` payload in `pendingEvent` / `pendingProposals` / `pendingTurnNumber` / `pendingLogEntry` slots when narration is showing AND the new event differs from the current one. The new phase `awaiting_continue` surfaces a Continue button via `ChoosePanel`; clicking it calls `continueAfterNarration()` which promotes pending → main slots and clears narration + debate.
+
+Without this gate, `/decide`'s SSE stream auto-advances past `narration` into the next turn's `proposals_ready` immediately, so the player has no time to absorb consequences. The pending-slot pattern keeps the rest of the reducer (turn_advanced, etc.) unaffected — the resolved turn's state changes still apply (legitimacy, cost), only the next event/proposals are gated.
