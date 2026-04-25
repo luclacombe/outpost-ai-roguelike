@@ -53,6 +53,9 @@ ignore = ["E501", "B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Default `pytest tests/` excludes the slow / costly markers. Run them
+# explicitly with `-m eval` or `-m integration`.
+addopts = "-m 'not eval and not integration'"
 markers = [
     "integration: real-LLM integration tests (slow, costs tokens)",
     "eval: simulated-game evaluation tests (slow, costs LLM tokens)",
