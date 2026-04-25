@@ -81,8 +81,12 @@
   --card-foreground: var(--px-text);
   --popover: var(--px-surface);
   --popover-foreground: var(--px-text);
-  --primary: var(--px-accent);
-  --primary-foreground: var(--px-text);
+  /* Primary CTA = high-contrast inversion (px-text on px-bg flipped to
+     px-text background). Accent variants live on `--accent` / setting-
+     borders. Decoupling the CTA from the per-setting accent keeps the
+     button at >10:1 contrast across all three settings. */
+  --primary: var(--px-text);
+  --primary-foreground: var(--px-bg);
   --secondary: var(--px-surface);
   --secondary-foreground: var(--px-text);
   --muted: var(--px-surface);
@@ -101,8 +105,8 @@
   --radius: 0px;
   --sidebar: var(--px-surface);
   --sidebar-foreground: var(--px-text);
-  --sidebar-primary: var(--px-accent);
-  --sidebar-primary-foreground: var(--px-text);
+  --sidebar-primary: var(--px-text);
+  --sidebar-primary-foreground: var(--px-bg);
   --sidebar-accent: var(--px-surface);
   --sidebar-accent-foreground: var(--px-text);
   --sidebar-border: var(--px-border);
