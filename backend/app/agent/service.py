@@ -32,6 +32,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.graph import thread_config
+from app.agent.observability import with_observability
 from app.agent.state import GameTurnState
 from app.game.exceptions import GameNotFound
 from app.game.schemas import Agent, ColonyState, Proposal
@@ -280,10 +281,21 @@ async def prepare_turn(
     graph = request.app.state.graph
     cfg = thread_config(str(game_id))
     _require_thread_id(cfg)
+    # Observability cfg carries Langfuse callbacks + metadata. State-read
+    # ops (`aget_state` / `aupdate_state`) intentionally use the bare cfg
+    # so they don't duplicate spans; streaming uses the enriched cfg.
+    stream_cfg = with_observability(
+        cfg,
+        game_id=str(game_id),
+        user_id=str(user_id),
+        setting_id=colony.setting_id,
+        turn_number=colony.turn_number,
+    )
 
     return {
         "graph": graph,
         "cfg": cfg,
+        "stream_cfg": stream_cfg,
         "colony": colony,
         "game_id": str(game_id),
         "user_id": str(user_id),
@@ -303,6 +315,7 @@ async def stream_turn(
     """
     graph = prepared["graph"]
     cfg = prepared["cfg"]
+    stream_cfg = prepared.get("stream_cfg", cfg)
     colony: ColonyState = prepared["colony"]
 
     # If the graph is already paused for this thread_id, short-circuit
@@ -325,7 +338,7 @@ async def stream_turn(
     agents_by_id = {a.id: a for a in colony.agents}
 
     async for frame in _stream_graph_updates(
-        graph, initial_state, cfg, pre_alive=pre_alive, agents_by_id=agents_by_id
+        graph, initial_state, stream_cfg, pre_alive=pre_alive, agents_by_id=agents_by_id
     ):
         yield frame
 
@@ -399,9 +412,19 @@ async def prepare_decide(
         )
 
     paused_colony: ColonyState = snapshot.values["colony_state"]
+    # Reuse the paused snapshot we already loaded — no second `aget_state`
+    # round-trip — to derive the metadata for Langfuse traces.
+    stream_cfg = with_observability(
+        cfg,
+        game_id=str(game_id),
+        user_id=str(user_id),
+        setting_id=paused_colony.setting_id,
+        turn_number=paused_colony.turn_number,
+    )
     return {
         "graph": graph,
         "cfg": cfg,
+        "stream_cfg": stream_cfg,
         "pre_alive": _alive_map(paused_colony.agents),
         "agents_by_id": {a.id: a for a in paused_colony.agents},
     }
@@ -420,15 +443,17 @@ async def stream_decide(
     """
     graph = prepared["graph"]
     cfg = prepared["cfg"]
+    stream_cfg = prepared.get("stream_cfg", cfg)
     pre_alive = prepared["pre_alive"]
     agents_by_id = prepared["agents_by_id"]
 
     # Write the player choice into the carried state, then resume by
     # streaming with `input=None` — LangGraph picks up where it paused.
+    # `aupdate_state` uses the bare cfg (state mutation, no LLM span).
     await graph.aupdate_state(cfg, {"player_choice": chosen_proposal_id})
 
     async for frame in _stream_graph_updates(
-        graph, None, cfg, pre_alive=pre_alive, agents_by_id=agents_by_id
+        graph, None, stream_cfg, pre_alive=pre_alive, agents_by_id=agents_by_id
     ):
         yield frame
 

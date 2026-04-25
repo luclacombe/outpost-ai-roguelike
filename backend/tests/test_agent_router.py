@@ -287,6 +287,60 @@ def test_sse_frame_helper_shape() -> None:
     assert done.endswith("\n\n")
 
 
+async def test_prepare_turn_wires_observability(
+    client, graph_memory, persisted_game, monkeypatch
+) -> None:
+    """`prepare_turn` returns a `stream_cfg` carrying Langfuse callbacks +
+    metadata when LANGFUSE_* keys are populated, while the bare `cfg`
+    keeps invariant-#12 thread_id discipline. Network-free: monkeypatches
+    the CallbackHandler to a fake.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from app.agent.service import prepare_turn
+    from app.config import settings as _settings
+
+    await _require_db()
+
+    fake_module = types.ModuleType("langfuse.langchain")
+    fake_module.CallbackHandler = MagicMock(name="CallbackHandler")  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langfuse.langchain", fake_module)
+    monkeypatch.setattr(_settings, "LANGFUSE_PUBLIC_KEY", "pk-test", raising=False)
+    monkeypatch.setattr(_settings, "LANGFUSE_SECRET_KEY", "sk-test", raising=False)
+
+    # Build a minimal Request that exposes app.state.graph (the fixture
+    # already attached the in-memory graph to app.state).
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/",
+        "headers": [],
+        "app": app,
+    }
+    request = Request(scope)
+
+    async with async_session_factory() as db:
+        prepared = await prepare_turn(
+            game_id=persisted_game.game_id,
+            user_id=TEST_USER_ID,
+            db=db,
+            request=request,
+        )
+
+    assert prepared["cfg"]["configurable"]["thread_id"] == str(persisted_game.game_id)
+    stream_cfg = prepared["stream_cfg"]
+    assert stream_cfg["configurable"]["thread_id"] == str(persisted_game.game_id)
+    assert "callbacks" in stream_cfg
+    assert len(stream_cfg["callbacks"]) == 1
+    md = stream_cfg["metadata"]
+    assert md["langfuse_session_id"] == f"outpost-run-{persisted_game.game_id}"
+    assert md["langfuse_user_id"] == str(TEST_USER_ID)
+
+
 async def test_turn_404_when_game_missing(client, graph_memory) -> None:
     """/turn with a game_id that doesn't exist (or isn't ours) → 404 with
     the standard error envelope. No SSE frame is ever emitted.
