@@ -47,6 +47,11 @@ htmlcov/
 # Logs
 *.log
 
+# Playwright MCP session artifacts + ad-hoc screenshots
+.playwright-mcp/
+phase*-*.png
+phase*-*.jpeg
+
 # Local model caches (sentence-transformers, etc.)
 .cache/
 
