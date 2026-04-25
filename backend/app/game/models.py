@@ -62,9 +62,7 @@ class GameSession(Base):
     )
     # NULL while running; set to ENDURED/COLLAPSED/OUSTED/KILLED on completion.
     end_state: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    cost_cents: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, server_default=sa.text("0")
-    )
+    cost_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default=sa.text("0"))
     # Populated on completion; used by public_read_shared_runs RLS policy.
     share_token: Mapped[str | None] = mapped_column(sa.Text, nullable=True, unique=True)
     started_at: Mapped[datetime] = mapped_column(
@@ -72,9 +70,7 @@ class GameSession(Base):
         nullable=False,
         server_default=sa.text("now()"),
     )
-    ended_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    ended_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         sa.Index("idx_game_sessions_user", "user_id"),
@@ -155,9 +151,7 @@ class TurnLog(Base):
         server_default=sa.text("now()"),
     )
 
-    __table_args__ = (
-        sa.UniqueConstraint("game_id", "turn_number", name="uq_turn_logs_game_turn"),
-    )
+    __table_args__ = (sa.UniqueConstraint("game_id", "turn_number", name="uq_turn_logs_game_turn"),)
 
 
 class ConsequenceSeed(Base):
@@ -185,13 +179,9 @@ class ConsequenceSeed(Base):
     foreshadow_turn: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     origin_decision: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    fired: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, server_default=sa.text("FALSE")
-    )
+    fired: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default=sa.text("FALSE"))
     dormant: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("FALSE")
     )
 
-    __table_args__ = (
-        sa.Index("idx_seeds_game_fires", "game_id", "fires_at_turn"),
-    )
+    __table_args__ = (sa.Index("idx_seeds_game_fires", "game_id", "fires_at_turn"),)

@@ -65,9 +65,7 @@ def validate_event_pool_for_setting(setting: Setting) -> list[str]:
     for category in setting.event_categories:
         # Rule 4: duplicate ids.
         if category.id in seen_ids:
-            errors.append(
-                f"{setting.id}: duplicate event category id {category.id!r}"
-            )
+            errors.append(f"{setting.id}: duplicate event category id {category.id!r}")
         seen_ids.add(category.id)
 
         # Rule 1: can_kill_agent requires min_turn >= 4.
@@ -82,9 +80,7 @@ def validate_event_pool_for_setting(setting: Setting) -> list[str]:
 
     # Rule 2: exactly one forced_escalation.
     if len(forced) == 0:
-        errors.append(
-            f"{setting.id}: no forced_escalation event found (rail: exactly 1)"
-        )
+        errors.append(f"{setting.id}: no forced_escalation event found (rail: exactly 1)")
     elif len(forced) > 1:
         errors.append(
             f"{setting.id}: expected exactly 1 forced_escalation event, "
@@ -97,8 +93,7 @@ def validate_event_pool_for_setting(setting: Setting) -> list[str]:
         fe = next(c for c in setting.event_categories if c.id == fe_id)
         if not fe.can_kill_agent:
             errors.append(
-                f"{setting.id}: forced_escalation event {fe_id!r} must have "
-                f"can_kill_agent=True"
+                f"{setting.id}: forced_escalation event {fe_id!r} must have can_kill_agent=True"
             )
         if fe.severity != 5:
             errors.append(
@@ -252,16 +247,12 @@ def wealth_scale_factor(state: ColonyState) -> float:
     - zero living agents: agent_stability = 0.0 (pushes toward floor).
     """
     if state.resources:
-        resource_stability = mean(
-            r.value / r.max for r in state.resources.values() if r.max > 0
-        )
+        resource_stability = mean(r.value / r.max for r in state.resources.values() if r.max > 0)
     else:
         resource_stability = 1.0
 
     live_agents = [a for a in state.agents if a.is_alive]
-    agent_stability = (
-        mean(a.health / 100.0 for a in live_agents) if live_agents else 0.0
-    )
+    agent_stability = mean(a.health / 100.0 for a in live_agents) if live_agents else 0.0
 
     raw = 0.5 + resource_stability * 0.75 + agent_stability * 0.75
     return max(_WEALTH_MIN, min(_WEALTH_MAX, raw))

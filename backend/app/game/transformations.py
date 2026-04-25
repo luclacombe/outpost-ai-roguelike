@@ -74,9 +74,9 @@ class TransformationCandidate:
     """A proposed, not-yet-applied transformation for a single agent."""
 
     agent_id: UUID
-    description: str               # short human-facing, e.g. "hardened by loss"
-    axis_shift: dict[str, float]   # keys: ethics/temperament/loyalty
-    trigger_reason: str            # short reason string for observability
+    description: str  # short human-facing, e.g. "hardened by loss"
+    axis_shift: dict[str, float]  # keys: ethics/temperament/loyalty
+    trigger_reason: str  # short reason string for observability
 
 
 # ---------------------------------------------------------------------------
@@ -192,15 +192,12 @@ def apply_transformation(
     target = state.agents[target_index]
     if target.transformation is not None:
         raise ValueError(
-            f"agent {agent_id!r} already has a transformation; "
-            f"transformations are once-per-run"
+            f"agent {agent_id!r} already has a transformation; transformations are once-per-run"
         )
 
     # Compute new axis values with clamping.
     new_ethics = _clamp_axis(target.ethics + candidate.axis_shift.get("ethics", 0.0))
-    new_temperament = _clamp_axis(
-        target.temperament + candidate.axis_shift.get("temperament", 0.0)
-    )
+    new_temperament = _clamp_axis(target.temperament + candidate.axis_shift.get("temperament", 0.0))
     new_loyalty = _clamp_axis(target.loyalty + candidate.axis_shift.get("loyalty", 0.0))
 
     transformation = Transformation(

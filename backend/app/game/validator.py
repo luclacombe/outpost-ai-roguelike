@@ -58,9 +58,7 @@ def _require_reason(args: dict[str, Any], max_len: int = 200) -> str | None:
     return None
 
 
-def _require_integer_delta(
-    args: dict[str, Any], lo: int, hi: int
-) -> tuple[int | None, str | None]:
+def _require_integer_delta(args: dict[str, Any], lo: int, hi: int) -> tuple[int | None, str | None]:
     """Return (delta, None) if valid, or (None, failure_reason)."""
     delta = args.get("delta")
     if delta is None or not isinstance(delta, int) or isinstance(delta, bool):
@@ -275,11 +273,7 @@ def _validate_initiate_coup(tc: ToolCall, state: ColonyState) -> ValidationResul
     if caller.grievance < 9:
         return _fail("grievance_too_low")
 
-    supporters = [
-        a
-        for a in state.agents
-        if a.is_alive and a.id != caller.id and a.grievance >= 7
-    ]
+    supporters = [a for a in state.agents if a.is_alive and a.id != caller.id and a.grievance >= 7]
     if not supporters:
         return _fail("no_faction_support")
 

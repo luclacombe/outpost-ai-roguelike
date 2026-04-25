@@ -76,9 +76,8 @@ def select_event(
 
     # Rule 2: forced escalation window.
     turn = state.turn_number
-    if (
-        _FORCED_WINDOW_START <= turn <= _FORCED_WINDOW_END
-        and not has_forced_escalation_fired(state)
+    if _FORCED_WINDOW_START <= turn <= _FORCED_WINDOW_END and not has_forced_escalation_fired(
+        state
     ):
         prob = forced_escalation_probability(turn)
         if rng.random() < prob:
@@ -96,8 +95,7 @@ def select_event(
 def has_forced_escalation_fired(state: ColonyState) -> bool:
     """True if any resolved event has origin=FORCED_ESCALATION."""
     return any(
-        resolved.event.origin is EventOrigin.FORCED_ESCALATION
-        for resolved in state.event_log
+        resolved.event.origin is EventOrigin.FORCED_ESCALATION for resolved in state.event_log
     )
 
 
@@ -119,6 +117,7 @@ def forced_escalation_probability(turn: int) -> float:
 
 def _pick_highest_severity_seed(events: list[Event]) -> Event:
     """Return the highest-severity seeded event; tiebreak on origin_seed_id."""
+
     def key(evt: Event) -> tuple[int, str]:
         # Negative severity so max-sort picks highest; origin_seed_id string
         # sorts lexicographically ascending (earliest wins on tie).
@@ -128,10 +127,7 @@ def _pick_highest_severity_seed(events: list[Event]) -> Event:
 
 
 def _is_forced_escalation_category(category: EventCategory) -> bool:
-    return (
-        category.id.startswith("forced_escalation")
-        or "forced_escalation" in category.tags
-    )
+    return category.id.startswith("forced_escalation") or "forced_escalation" in category.tags
 
 
 def _find_forced_escalation_category(setting: Setting) -> EventCategory | None:
@@ -153,9 +149,7 @@ def _last_event_severity(state: ColonyState) -> int | None:
     return latest.event.severity
 
 
-def _eligible_categories(
-    state: ColonyState, setting: Setting
-) -> list[EventCategory]:
+def _eligible_categories(state: ColonyState, setting: Setting) -> list[EventCategory]:
     """Filter the setting's event pool against all selection rules."""
     cooldown_blocks_sev5 = _last_event_severity(state) == _SEVERITY_COOLDOWN_THRESHOLD
 
@@ -196,9 +190,7 @@ def _weighted_pick(
     return rng.choices(eligible, weights=weights, k=1)[0]
 
 
-def _build_event(
-    category: EventCategory, rng: random.Random, origin: EventOrigin
-) -> Event:
+def _build_event(category: EventCategory, rng: random.Random, origin: EventOrigin) -> Event:
     """Materialise an Event from an EventCategory using the supplied rng.
 
     The id is made unique per-draw via a 32-bit hex token from the rng so the

@@ -50,9 +50,7 @@ class ResourceDef(BaseModel):
     @model_validator(mode="after")
     def _value_constraints(self) -> ResourceDef:
         if self.starting > self.max:
-            raise ValueError(
-                f"starting ({self.starting}) must be <= max ({self.max})"
-            )
+            raise ValueError(f"starting ({self.starting}) must be <= max ({self.max})")
         if not (0 <= self.critical_threshold <= self.max):
             raise ValueError(
                 f"critical_threshold ({self.critical_threshold}) must be in [0, {self.max}]"
@@ -138,9 +136,7 @@ class Setting(BaseModel):
     @classmethod
     def palette_accent_hex(cls, v: str) -> str:
         if not _HEX_COLOR.match(v):
-            raise ValueError(
-                f"palette_accent {v!r} must be lowercase 6-digit hex like #4a6c8c"
-            )
+            raise ValueError(f"palette_accent {v!r} must be lowercase 6-digit hex like #4a6c8c")
         return v
 
     @model_validator(mode="after")
@@ -175,10 +171,7 @@ def load_setting(setting_id: str) -> Setting:
     """
     path = SETTINGS_DIR / f"{setting_id}.yml"
     if not path.exists():
-        raise FileNotFoundError(
-            f"No setting file found for id {setting_id!r}. "
-            f"Expected: {path}"
-        )
+        raise FileNotFoundError(f"No setting file found for id {setting_id!r}. Expected: {path}")
     with path.open("r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
     return Setting.model_validate(raw)

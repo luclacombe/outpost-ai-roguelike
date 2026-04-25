@@ -107,8 +107,7 @@ async def create_game_session(
         update(Profile)
         .where(Profile.id == user_id)
         .where(
-            (Profile.last_run_started_at.is_(None))
-            | (Profile.last_run_started_at < today_midnight)
+            (Profile.last_run_started_at.is_(None)) | (Profile.last_run_started_at < today_midnight)
         )
         .values(
             last_run_started_at=now_utc,
@@ -123,9 +122,7 @@ async def create_game_session(
         # lazy-loaded attribute on the expired ORM instance triggers
         # an un-awaited SELECT under async SQLAlchemy.
         last = (
-            await db.execute(
-                select(Profile.last_run_started_at).where(Profile.id == user_id)
-            )
+            await db.execute(select(Profile.last_run_started_at).where(Profile.id == user_id))
         ).scalar_one_or_none()
         await db.rollback()
         if last is not None:
@@ -138,9 +135,7 @@ async def create_game_session(
         # when last_run_started_at IS NULL), but we handle it defensively
         # by falling through to the same error so callers see a
         # consistent 500 rather than silently proceeding.
-        raise RuntimeError(
-            f"profile for {user_id} is missing or in an inconsistent state"
-        )
+        raise RuntimeError(f"profile for {user_id} is missing or in an inconsistent state")
 
     # Seed derivation: callers (tests) can pin this; default is an epoch-
     # derived integer for a practically-unique stream per run.

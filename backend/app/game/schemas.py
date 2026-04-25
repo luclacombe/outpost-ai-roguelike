@@ -164,8 +164,12 @@ class ConsequenceSeed(BaseModel):
             return v
         written = data.get("written_at_turn")
         fires = data.get("fires_at_turn")
-        if written is not None and fires is not None and v is not None \
-                and not (written <= v < fires):
+        if (
+            written is not None
+            and fires is not None
+            and v is not None
+            and not (written <= v < fires)
+        ):
             raise ValueError(
                 f"foreshadow_turn ({v}) must satisfy written_at_turn <= foreshadow_turn"
                 f" < fires_at_turn (range: [{written}, {fires}))"
@@ -201,9 +205,9 @@ class Agent(BaseModel):
     archetype_quadrant: Quadrant
 
     # Personality axes (-1.0 = pole A, +1.0 = pole B)
-    ethics: Annotated[float, Field(ge=-1.0, le=1.0)]       # - pragmatist, + idealist
+    ethics: Annotated[float, Field(ge=-1.0, le=1.0)]  # - pragmatist, + idealist
     temperament: Annotated[float, Field(ge=-1.0, le=1.0)]  # - cautious, + bold
-    loyalty: Annotated[float, Field(ge=-1.0, le=1.0)]      # - individual, + collective
+    loyalty: Annotated[float, Field(ge=-1.0, le=1.0)]  # - individual, + collective
 
     portrait_seed: str  # stable, drives DiceBear output
 
@@ -255,17 +259,17 @@ class ColonyState(BaseModel):
     turn_number: int
     max_turns: int  # 8-12, chosen at run creation
 
-    resources: dict[str, Resource]    # {resource_id: Resource}
-    agents: list[Agent]               # includes dead (is_alive=False)
+    resources: dict[str, Resource]  # {resource_id: Resource}
+    agents: list[Agent]  # includes dead (is_alive=False)
     legitimacy: Annotated[int, Field(ge=0, le=100)]
     player_health: Annotated[int, Field(ge=0, le=100)]
 
     consequence_seeds: list[ConsequenceSeed]  # includes fired (.fired=True) and dormant
-    event_log: list[ResolvedEvent]            # one entry per completed turn
+    event_log: list[ResolvedEvent]  # one entry per completed turn
 
     current_event: Event | None
     turn_proposals: list[Proposal]
     turn_tool_calls: list[ToolCall]
-    turn_cost_cents: int = 0       # cumulative LLM cost for this run
+    turn_cost_cents: int = 0  # cumulative LLM cost for this run
 
     end_state: EndState | None = None  # None while run is active

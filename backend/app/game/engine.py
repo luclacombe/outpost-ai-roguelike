@@ -61,7 +61,9 @@ def _evict_to_cap(memory: list[str], newly_added_index: int, oldest_first: bool)
     if len(memory) <= MEMORY_CAP:
         return memory
 
-    non_pinned = [i for i, e in enumerate(memory) if i != newly_added_index and not _is_pinned_memory(e)]
+    non_pinned = [
+        i for i, e in enumerate(memory) if i != newly_added_index and not _is_pinned_memory(e)
+    ]
     if non_pinned:
         evict_idx = non_pinned[0] if oldest_first else non_pinned[-1]
     else:
@@ -300,9 +302,7 @@ def check_deaths(state: ColonyState) -> ColonyState:
                 current_memory = updated_agents[i].memory
                 for death_tag in death_tags:
                     current_memory = _pin_memory(current_memory, death_tag)
-                updated_agents[i] = updated_agents[i].model_copy(
-                    update={"memory": current_memory}
-                )
+                updated_agents[i] = updated_agents[i].model_copy(update={"memory": current_memory})
 
     new_state = state.model_copy(update={"agents": updated_agents})
 
@@ -332,9 +332,7 @@ def resolve_coup(state: ColonyState, initiator_id: UUID) -> ColonyState:
         return state  # should not happen post-validation
 
     co_conspirators = [
-        a
-        for a in state.agents
-        if a.is_alive and a.grievance >= 7 and a.id != initiator_id
+        a for a in state.agents if a.is_alive and a.grievance >= 7 and a.id != initiator_id
     ]
 
     total_boldness = initiator.temperament + sum(a.temperament for a in co_conspirators)
@@ -383,9 +381,7 @@ def compute_end_state(state: ColonyState) -> EndState | None:
 
     # 5. Turn limit reached.
     if state.turn_number >= state.max_turns:
-        all_resources_ok = all(
-            r.value >= r.critical_threshold for r in state.resources.values()
-        )
+        all_resources_ok = all(r.value >= r.critical_threshold for r in state.resources.values())
         if live_count >= 2 and all_resources_ok and state.legitimacy >= 20:
             return EndState.ENDURED
         return EndState.COLLAPSED

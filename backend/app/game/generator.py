@@ -32,9 +32,9 @@ MAX_TURNS = 12
 # loyalty is rolled independently per advisor.
 _QUADRANT_AXIS_BIAS: dict[Quadrant, dict[str, int]] = {
     Quadrant.ACCOUNTANT: {"ethics": -1, "temperament": -1},  # pragmatist + cautious
-    Quadrant.OPERATOR:   {"ethics": -1, "temperament": +1},  # pragmatist + bold
+    Quadrant.OPERATOR: {"ethics": -1, "temperament": +1},  # pragmatist + bold
     Quadrant.CONSCIENCE: {"ethics": +1, "temperament": -1},  # idealist + cautious
-    Quadrant.CRUSADER:   {"ethics": +1, "temperament": +1},  # idealist + bold
+    Quadrant.CRUSADER: {"ethics": +1, "temperament": +1},  # idealist + bold
 }
 
 # UUID namespace for agent.id derivation. NAMESPACE_URL chosen because the
@@ -86,9 +86,7 @@ def _build_agent(
     loyalty = _biased_roll(rng, 0)
 
     # Deterministic portrait seed: encodes every input a future restore needs.
-    portrait_seed = (
-        f"{setting_id}:{archetype.role_name}:{name}:{rng.getrandbits(16):04x}"
-    )
+    portrait_seed = f"{setting_id}:{archetype.role_name}:{name}:{rng.getrandbits(16):04x}"
     agent_id = uuid5(_AGENT_UUID_NAMESPACE, portrait_seed)
 
     return Agent(
