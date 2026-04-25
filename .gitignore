@@ -47,5 +47,8 @@ htmlcov/
 # Logs
 *.log
 
+# Local model caches (sentence-transformers, etc.)
+.cache/
+
 # Claude local overrides
 .claude/settings.local.json
