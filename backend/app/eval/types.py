@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.game.schemas import EndState, ToolCall
+from app.game.schemas import Agent, EndState, ToolCall
 
 
 class RunRecord(BaseModel):
@@ -50,3 +50,24 @@ class RunRecord(BaseModel):
 
     narration_per_turn: list[str] = Field(default_factory=list)
     """Narration string per turn — used by inter-run similarity in 5.3c."""
+
+
+class TurnJudgeInput(BaseModel):
+    """One (agent, turn, reasoning, action) tuple to feed the coherence judge."""
+
+    agent_id: UUID
+    turn_number: int
+    reasoning: str
+    action: str
+
+
+class RunCoherenceInput(BaseModel):
+    """Minimal inputs needed by the decision-coherence judge.
+
+    Decoupled from `RunRecord` because the simulated runner emits per-turn
+    `(agent, reasoning, action)` tuples that aren't on the standard record.
+    Keeping this separate avoids bloating `RunRecord` with judge-only fields.
+    """
+
+    agents_by_id: dict[UUID, Agent]
+    turns: list[TurnJudgeInput] = Field(default_factory=list)

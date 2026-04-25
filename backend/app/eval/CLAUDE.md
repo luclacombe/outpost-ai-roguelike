@@ -15,6 +15,8 @@ hot path.
 ## Module map
 
 - `personality.py` — embedding + Haiku-judge personality consistency.
+- `coherence.py` — Haiku-judge decision coherence (action vs reasoning + personality). `score_run_coherence` caps concurrency at 4 via `asyncio.Semaphore` — never use a bare `asyncio.gather` for judge fan-out.
+- `_judge_utils.py` — private helpers shared by Haiku-judge metrics (text extraction, code-fence stripping, JSON parsing). Import `_extract_text` / `_parse_judge_json` from here in any new judge module.
 - `tool_validity.py` — `tool_validity_rate` + `tool_validity_breakdown` (engine-only).
 - `repetition.py` — pairwise BLEU-2 narrative repetition (NLTK, no LLM).
 - `balance.py` — aggregated survival/resource/forced-choice metrics across runs.
