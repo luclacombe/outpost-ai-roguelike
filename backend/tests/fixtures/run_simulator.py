@@ -18,6 +18,12 @@ The driver requires Postgres because:
   * `nodes.advance_turn` is the sole DB-write site and runs every turn.
   * `graph_postgres` is the only checkpointer that survives the /turn → /decide
     pause/resume hop.
+
+Tool-call provenance: the canonical record of all per-turn tool calls comes
+from the `turn_logs` rows written at `nodes.advance_turn`, NOT from SSE
+frames. SSE drops the chosen proposal's `tool_calls_on_pick` and the
+applied/rejected calls from `resolve`; reading the DB at end of run is the
+only way to reconstruct the full picture for the validity-rate metric.
 """
 
 from __future__ import annotations
@@ -28,11 +34,10 @@ from uuid import UUID
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.agent.graph import thread_config
 from app.database import async_session_factory
 from app.dependencies import get_current_user
 from app.eval.types import RunRecord
-from app.game.models import GameSession
+from app.game.models import GameSession, TurnLog
 from app.game.schemas import ColonyState, EndState, ToolCall
 from app.main import app
 from tests.fixtures.simulated_player import SimulatedPlayer
@@ -53,30 +58,30 @@ async def _load_final_state(game_id: UUID) -> ColonyState:
     return ColonyState.model_validate(row.state)
 
 
+async def _read_turn_logs(game_id: UUID) -> list[TurnLog]:
+    """Return every `turn_logs` row for this game, ordered by turn_number ASC.
+
+    Used by the run aggregator to reconstruct tool-call history and
+    per-turn resource snapshots that SSE doesn't expose.
+    """
+    async with async_session_factory() as s:
+        rows = (
+            (
+                await s.execute(
+                    select(TurnLog)
+                    .where(TurnLog.game_id == game_id)
+                    .order_by(TurnLog.turn_number.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return list(rows)
+
+
 def _proposals_from_frame(frame: dict[str, Any]) -> list[dict[str, Any]]:
     """Pluck the public proposals payload from a `proposals_ready` SSE frame."""
     return list(frame["data"]["proposals"])
-
-
-async def _resolve_chosen_tool_calls(
-    *,
-    graph: Any,
-    game_id: UUID,
-    chosen_proposal_id: str,
-) -> list[ToolCall]:
-    """Read the paused snapshot to recover the chosen proposal's tool_calls_on_pick.
-
-    `ProposalPublic` (the SSE payload shape) drops `tool_calls_on_pick`, so
-    the only way to capture them for the RunRecord is via
-    `graph.aget_state(...)` while the graph is paused at `resolve`.
-    """
-    cfg = thread_config(str(game_id))
-    snapshot = await graph.aget_state(cfg)
-    full_proposals = snapshot.values.get("proposals") or []
-    for p in full_proposals:
-        if p.id == chosen_proposal_id:
-            return list(p.tool_calls_on_pick)
-    return []
 
 
 def _auth_override(user_id: UUID) -> dict[str, str]:
@@ -92,13 +97,18 @@ class _RunAggregator:
 
     Kept private — the public API is `simulate_game`. A class lets us add
     new buckets without growing the function signature.
+
+    Note on tool calls: this aggregator does NOT collect tool calls from
+    SSE. The canonical source is the `turn_logs` table, read once after
+    the run via `_read_turn_logs`. SSE only emits applied autonomous
+    actions and a public-shape proposal payload that drops
+    `tool_calls_on_pick`; relying on it would silently under-count the
+    validity-rate denominator.
     """
 
     def __init__(self) -> None:
-        self.tool_calls: list[ToolCall] = []
         self.agent_responses_per_agent: dict[UUID, list[str]] = {}
         self.narration_per_turn: list[str] = []
-        self.forced_choice_turns: int = 0
 
     def absorb_frames(self, frames: list[dict[str, Any]]) -> None:
         for f in frames:
@@ -109,26 +119,44 @@ class _RunAggregator:
             if event == "agent_spoke":
                 aid = UUID(data["agent_id"])
                 self.agent_responses_per_agent.setdefault(aid, []).append(data["text"])
-            elif event == "autonomous_action":
-                # Reconstruct a ToolCall from the SSE payload. `agent_id` and
-                # `args` are the only fields exposed; the engine has already
-                # validated/applied so `rejection_reason` stays None here.
-                # Off-list autonomous calls or rejected ones never reach
-                # the SSE stream — they are filtered upstream — so this
-                # under-counts validity-rate denominators but keeps the
-                # numerator stable. Documented limitation.
-                aid_str = data.get("agent_id")
-                self.tool_calls.append(
-                    ToolCall(
-                        name=data["tool_name"],
-                        caller_id=UUID(aid_str) if aid_str else None,
-                        args=dict(data.get("args") or {}),
-                    )
-                )
             elif event == "narration":
                 text = data.get("text")
                 if text:
                     self.narration_per_turn.append(text)
+
+
+def _tool_calls_from_turn_log(row: TurnLog) -> list[ToolCall]:
+    """Recover every ToolCall recorded against this turn.
+
+    Two sources, both round-tripped through `ToolCall.model_validate` so
+    `rejection_reason` is a real `str | None` field on the returned models.
+
+    1. The chosen proposal's `tool_calls_on_pick` — from the JSONB
+       `proposals` column, filtered by `chosen.chosen_proposal_id`. These
+       are the calls that ran through the engine at `resolve`.
+    2. `autonomous_actions` — applied autonomous-phase calls.
+
+    Calls rejected at `resolve` or `autonomous` aren't persisted in the
+    `turn_logs` schema today (engine clears `turn_tool_calls` at
+    `advance_turn`), so this still under-counts validity denominators on
+    runs where the engine rejects calls. Documented limitation; fixing it
+    requires snapshotting `turn_tool_calls` BEFORE the clear, which is an
+    `app/agent/nodes.py` change out of scope for Task 5.5.
+    """
+    out: list[ToolCall] = []
+
+    chosen_id = (row.chosen or {}).get("chosen_proposal_id")
+    if chosen_id is not None:
+        for prop in row.proposals or []:
+            if prop.get("id") == chosen_id:
+                for tc_dict in prop.get("tool_calls_on_pick") or []:
+                    out.append(ToolCall.model_validate(tc_dict))
+                break
+
+    for tc_dict in row.autonomous_actions or []:
+        out.append(ToolCall.model_validate(tc_dict))
+
+    return out
 
 
 async def simulate_game(
@@ -145,9 +173,7 @@ async def simulate_game(
     Sequence per turn:
       1. POST /turn — collect SSE frames until proposals_ready or run_over.
       2. SimulatedPlayer.pick(proposals).
-      3. Read the paused snapshot to capture `tool_calls_on_pick` for the
-         chosen proposal (the SSE payload drops them).
-      4. POST /decide — collect frames until proposals_ready (next turn) or
+      3. POST /decide — collect frames until proposals_ready (next turn) or
          run_over.
 
     `setting_id` is currently informational — `POST /game/session` picks the
@@ -158,11 +184,24 @@ async def simulate_game(
     `real_llm` is a no-op flag here; the network is either intercepted by a
     `respx.mock` block in the caller (mocked mode) or not (real mode).
 
-    Returns a `RunRecord` populated from SSE frames + the final DB state.
+    After the SSE loop terminates, the driver reads `turn_logs` for the
+    game and walks every row to populate:
+
+    * `tool_calls` — chosen proposal `tool_calls_on_pick` + applied
+      autonomous actions, round-tripped through `ToolCall.model_validate`
+      so `rejection_reason` is preserved.
+    * `resource_history` — per-turn `value` for each resource id.
+    * `forced_choice_turns` — turns where `len(proposals) <= 1`.
+
+    Per-debate `agent_responses_per_agent` and per-turn `narration_per_turn`
+    stay SSE-derived (one debate / one narration per turn — no aggregation
+    gap there).
+
+    Returns a `RunRecord` populated from the final DB state + per-turn
+    `turn_logs` rows + the SSE-derived narration / responses streams.
     """
     player = SimulatedPlayer(policy, seed=seed)
     aggregator = _RunAggregator()
-    graph = app.state.graph
 
     app.dependency_overrides[get_current_user] = lambda: _auth_override(user_id)
     try:
@@ -191,17 +230,8 @@ async def simulate_game(
                 proposals = _proposals_from_frame(pr)
                 if not proposals:
                     break
-                if len(proposals) == 1:
-                    aggregator.forced_choice_turns += 1
 
                 chosen_id = player.pick(proposals)
-
-                # Capture the chosen proposal's tool_calls_on_pick from the
-                # paused snapshot before /decide consumes the pause.
-                chosen_tool_calls = await _resolve_chosen_tool_calls(
-                    graph=graph, game_id=game_id, chosen_proposal_id=chosen_id
-                )
-                aggregator.tool_calls.extend(chosen_tool_calls)
 
                 # ---- /decide ----
                 async with client.stream(
@@ -220,14 +250,20 @@ async def simulate_game(
         app.dependency_overrides.pop(get_current_user, None)
 
     final_state = await _load_final_state(game_id)
+    turn_logs = await _read_turn_logs(game_id)
 
-    # Build resource_history from the final state. Per-turn snapshots aren't
-    # streamed; we expose the final values as a single-element history per
-    # resource. The metrics treat single-element histories as zero volatility,
-    # which is the correct conservative default for one-run inputs.
-    resource_history: dict[str, list[int]] = {
-        rid: [r.value] for rid, r in final_state.resources.items()
-    }
+    # DB-derived per-turn aggregates.
+    tool_calls: list[ToolCall] = []
+    forced_choice_turns = 0
+    resource_history: dict[str, list[int]] = {}
+    for row in turn_logs:
+        tool_calls.extend(_tool_calls_from_turn_log(row))
+        if len(row.proposals or []) <= 1:
+            forced_choice_turns += 1
+        snap_resources = (row.state_snapshot or {}).get("resources") or {}
+        for rid, rdict in snap_resources.items():
+            value = int(rdict.get("value", 0))
+            resource_history.setdefault(rid, []).append(value)
 
     end_state: EndState | None = final_state.end_state
     turns_played = final_state.turn_number
@@ -249,12 +285,12 @@ async def simulate_game(
         agents_alive_at_end=agents_alive_at_end,
         total_agents=total_agents,
         cost_cents=cost_cents,
-        tool_calls=aggregator.tool_calls,
+        tool_calls=tool_calls,
         agent_responses_per_agent=aggregator.agent_responses_per_agent,
         resource_history=resource_history,
-        forced_choice_turns=aggregator.forced_choice_turns,
+        forced_choice_turns=forced_choice_turns,
         narration_per_turn=aggregator.narration_per_turn,
     )
 
 
-__all__ = ["simulate_game"]
+__all__ = ["simulate_game", "_read_turn_logs"]

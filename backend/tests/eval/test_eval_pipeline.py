@@ -21,7 +21,6 @@ from typing import Any
 import numpy as np
 import pytest
 import respx
-from httpx import Response
 
 from app.eval.personality import (
     PERSONALITY_THRESHOLD,
@@ -30,7 +29,7 @@ from app.eval.personality import (
 from app.eval.tool_validity import TOOL_VALIDITY_THRESHOLD, tool_validity_rate
 from app.game.schemas import ColonyState
 from app.game.setting_loader import load_setting
-from tests.conftest import fake_haiku_response, fake_sonnet_response
+from tests.fixtures._factories import make_haiku_debate_side_effect
 from tests.fixtures.run_simulator import simulate_game
 
 pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
@@ -49,84 +48,6 @@ def _alive_agents(setting_id: str) -> list[Any]:
     only need names + IDs once /game/session has run; this is unused
     pre-flight, kept for documentation."""
     return load_setting(setting_id).advisors
-
-
-def _haiku_debate_factory():
-    """Return a respx side_effect callable that emits a fresh debate body
-    for each Haiku call.
-
-    The debate body needs three `propose_action` tool_uses (DOMINANT, MORAL,
-    WILDCARD) and an XML reaction line per agent. We don't know the agent
-    UUIDs at test set-up time — they come from `/game/session` — so we read
-    them off the request body's `system` block isn't viable. Instead we
-    return a debate body whose XML uses placeholder names and tool_uses
-    whose `caller_agent_id` is a UUID string that the parser will discard
-    (no match → caller_id stays None, but the proposal still surfaces with
-    `proposed_by_agent_id=None`).
-
-    Calls 2+ are autonomous-phase Haiku calls — we differentiate by request
-    body shape: if the system prompt mentions "propose three options"
-    (debate), return debate body; else return an empty autonomous body.
-
-    Sonnet calls are routed to a separate respx mock; this factory only
-    fires for Haiku. The model field on the request distinguishes them.
-    """
-
-    def _make_debate_body() -> dict[str, Any]:
-        # Use four placeholder agent names matching the shipped settings'
-        # advisor templates is brittle — but the parser tolerates unknown
-        # agent names (logs WARNING + skips). Use generic names; xml
-        # reaction text is harmless filler.
-        xml = (
-            '<agent name="Advisor1">Steady on.</agent>'
-            '<agent name="Advisor2">We must act.</agent>'
-            '<agent name="Advisor3">Risky.</agent>'
-            '<agent name="Advisor4">I object.</agent>'
-        )
-        tool_uses = [
-            {
-                "id": f"toolu_d_{i}",
-                "name": "propose_action",
-                "input": {
-                    "name": f"Plan {i}",
-                    "description": f"Option {i}.",
-                    "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
-                    "effects_preview": [],
-                },
-            }
-            for i in range(3)
-        ]
-        return fake_haiku_response(text_xml=xml, tool_uses=tool_uses)
-
-    def _make_autonomous_body() -> dict[str, Any]:
-        # Zero tool_uses — autonomous phase fires no actions in the smoke test.
-        return fake_haiku_response(text_xml="")
-
-    call_count = {"n": 0}
-
-    def _side_effect(request) -> Response:
-        # Inspect the request body to decide debate vs autonomous vs Sonnet.
-        try:
-            body = request.read()
-            payload = body.decode("utf-8") if isinstance(body, bytes) else body
-        except Exception:  # noqa: BLE001
-            payload = ""
-
-        # Sonnet narration uses a different model id.
-        if '"claude-sonnet' in payload:
-            return Response(200, json=fake_sonnet_response("The colony endures."))
-
-        # Haiku: debate vs autonomous distinguished by user-message shape.
-        # Debate's user message embeds `<event id=...>`; autonomous embeds
-        # `<turn_summary>`. The latter is the post-pause phase and emits
-        # zero tool_uses in the smoke test.
-        is_debate = "<event id=" in payload
-        call_count["n"] += 1
-        if is_debate:
-            return Response(200, json=_make_debate_body())
-        return Response(200, json=_make_autonomous_body())
-
-    return _side_effect
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +84,7 @@ async def test_simulated_run_meets_thresholds(
     monkeypatch.setattr("app.eval.personality._get_model", lambda: _FakeEncoder())
 
     with respx.mock(base_url="https://api.anthropic.com", assert_all_called=False) as router:
-        router.post("/v1/messages").mock(side_effect=_haiku_debate_factory())
+        router.post("/v1/messages").mock(side_effect=make_haiku_debate_side_effect())
 
         run = await simulate_game(
             setting_id="arctic_station_v1",  # informational only
@@ -251,3 +172,12 @@ async def test_real_llm_simulated_run(eval_user_id, graph_postgres) -> None:
     )
     assert run.turns_played >= 1
     assert tool_validity_rate(run.tool_calls) >= TOOL_VALIDITY_THRESHOLD
+
+    # Hard budget ceiling — CI sets OUTPOST_EVAL_BUDGET_CENTS=50 and the job
+    # MUST fail (red ❌) on any overrun so cost regressions can't slip in.
+    # See `docs/ARCHITECTURE.md` §12 / root CLAUDE.md invariant #10.
+    budget_cents = int(os.environ.get("OUTPOST_EVAL_BUDGET_CENTS", "50"))
+    assert run.cost_cents <= budget_cents, (
+        f"Real-LLM run cost {run.cost_cents}¢ exceeds budget ceiling "
+        f"{budget_cents}¢ (OUTPOST_EVAL_BUDGET_CENTS)"
+    )

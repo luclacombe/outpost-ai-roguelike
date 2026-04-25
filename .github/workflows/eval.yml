@@ -1,0 +1,109 @@
+name: Eval (Phase 5)
+
+# Real-LLM eval pipeline. Runs the simulated player against live Anthropic
+# under a hard $0.50/run budget ceiling and a 25-minute job ceiling. Mocked
+# pytest paths run in the regular test workflow; this one ONLY exists to
+# catch real-LLM regressions on PRs that touch backend code or the plan.
+#
+# See docs/ARCHITECTURE.md §13.3 + §12 for the full spec.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'docs/PLAN.md'
+      - '.github/workflows/eval.yml'
+  workflow_dispatch:  # manual trigger from the Actions tab
+
+jobs:
+  eval-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # hard wall-clock ceiling per run
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      LANGFUSE_BASE_URL: https://cloud.langfuse.com
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      OUTPOST_EVAL_REAL_LLM: "1"
+      # Per-run ceiling enforced as a hard pytest assertion in
+      # tests/eval/test_eval_pipeline.py::test_real_llm_simulated_run.
+      # The job MUST fail (red ❌) if any single run exceeds this.
+      OUTPOST_EVAL_BUDGET_CENTS: "50"
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      # Re-use the runner-level cache directory across jobs; pre-warm step below
+      # downloads MiniLM-L6-v2 once and the test never pays the 80MB cost.
+      SENTENCE_TRANSFORMERS_HOME: /home/runner/.cache/sentence-transformers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync deps
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Bootstrap Postgres schema
+        # The Alembic migration for `profiles` has a cross-schema FK to
+        # `auth.users` (a Supabase-managed table that doesn't exist in a
+        # vanilla Postgres image). Create a minimal auth schema + users
+        # table here so Alembic can apply cleanly and the eval pipeline's
+        # auth-user seed inserts succeed.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              instance_id UUID,
+              aud VARCHAR(255),
+              role VARCHAR(255),
+              email VARCHAR(255),
+              encrypted_password VARCHAR(255),
+              email_confirmed_at TIMESTAMPTZ,
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+          SQL
+
+      - name: Apply Alembic migrations
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Pre-warm sentence-transformers cache
+        working-directory: backend
+        run: |
+          uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
+      # TODO: agentevals trajectory check — defer until langsmith + agentevals
+      # are added to backend/pyproject.toml. The eval pipeline already covers
+      # the merge-gate metrics (tool validity, personality consistency); the
+      # trajectory check is additive, not blocking. See PLAN.md §5.5.
+
+      - name: Run eval pipeline (mocked + real-LLM)
+        working-directory: backend
+        run: uv run pytest tests/eval/ tests/fixtures/test_run_simulator.py -m eval --tb=short -v
