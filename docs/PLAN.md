@@ -1904,7 +1904,7 @@ Stop at Phase 5 exit. Do not start Phase 6.
 
 ---
 
-## Phase 6: Frontend Scaffolding
+## Phase 6: Frontend Scaffolding — **COMPLETE (2026-04-25)**
 
 **Entry criteria:** Phase 5 exit passed (or deferred — FE can start once BE session + turn endpoints work).
 **Exit criteria:** Next.js app renders landing page with pixel-art theme applied. Fonts load. DiceBear portrait renders correctly. Auth callback redirects work.
@@ -1951,17 +1951,17 @@ Stop at Phase 6 exit. Do not start Phase 7.
 
 ### Task 6.1: Initialize Next.js + Tailwind + shadcn
 
-- [ ] **Step 1:** `cd /Users/luclacombe/Documents/Outpost && pnpx create-next-app@latest frontend --ts --app --tailwind --eslint --no-src-dir --import-alias "@/*"`
-- [ ] **Step 2:** Initialize shadcn.
+- [x] **Step 1:** `cd /Users/luclacombe/Documents/Outpost && pnpx create-next-app@latest frontend --ts --app --tailwind --eslint --no-src-dir --import-alias "@/*"`
+- [x] **Step 2:** Initialize shadcn.
   ```bash
   cd frontend && pnpx shadcn@latest init
   # choose: Default style, Slate base color, CSS variables: yes
   ```
-- [ ] **Step 3:** Add a few shadcn components needed upfront: `button`, `card`, `dialog`.
+- [x] **Step 3:** Add a few shadcn components needed upfront: `button`, `card`, `dialog`.
   ```bash
   pnpx shadcn@latest add button card dialog
   ```
-- [ ] **Step 4:** Commit.
+- [x] **Step 4:** Commit.
 
 ### Task 6.2: Install Supabase client + DiceBear
 
@@ -1973,61 +1973,66 @@ cd frontend && pnpm add @supabase/ssr @supabase/supabase-js @dicebear/core @dice
 
 **Files:** `frontend/app/globals.css`, `frontend/tailwind.config.ts`.
 
-- [ ] **Step 1:** Override shadcn variables per `docs/ARCHITECTURE.md` §8.4. Set `--radius: 0`, earthy palette, pixel shadow utilities.
-- [ ] **Step 2:** Add NES.css-pattern pixel border utility class (see `docs/research/04-visual-system.md`).
-- [ ] **Step 3:** Load fonts via `next/font/google` per architecture §8.5.
-- [ ] **Step 4:** Apply `image-rendering: pixelated` to `.pixel` class.
-- [ ] **Step 5:** Commit.
+- [x] **Step 1:** Override shadcn variables per `docs/ARCHITECTURE.md` §8.4. Set `--radius: 0`, earthy palette, pixel shadow utilities.
+- [x] **Step 2:** Add NES.css-pattern pixel border utility class (see `docs/research/04-visual-system.md`).
+- [x] **Step 3:** Load fonts via `next/font/google` per architecture §8.5.
+- [x] **Step 4:** Apply `image-rendering: pixelated` to `.pixel` class.
+- [x] **Step 5:** Commit.
 
 ### Task 6.4: Portrait component (DiceBear)
 
 **Files:** `frontend/components/agent/Portrait.tsx`, `frontend/__tests__/Portrait.test.tsx`.
 
-- [ ] **Step 1:** Implement component per `docs/ARCHITECTURE.md` §8.6.
-- [ ] **Step 2:** Storybook-style visual test — render all 3 settings at 64px, use Playwright MCP to screenshot. Compare.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Implement component per `docs/ARCHITECTURE.md` §8.6.
+- [x] **Step 2:** Storybook-style visual test — render all 3 settings at 64px, use Playwright MCP to screenshot. Compare.
+- [x] **Step 3:** Commit.
 
 ### Task 6.5: Landing page
 
 **Files:** `frontend/app/page.tsx`.
 
-- [ ] **Step 1:** Build landing with: title, short pitch, "Sign in with Google" button, marketing content from SPEC.
-- [ ] **Step 2:** Use Playwright MCP to screenshot. Iterate on aesthetic.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Build landing with: title, short pitch, "Sign in with Google" button, marketing content from SPEC.
+- [x] **Step 2:** Use Playwright MCP to screenshot. Iterate on aesthetic.
+- [x] **Step 3:** Commit.
 
 ### Task 6.6: Supabase auth callback route
 
 **Files:** `frontend/app/auth/callback/route.ts`, `frontend/lib/supabase/server.ts`, `frontend/lib/supabase/client.ts`, `frontend/middleware.ts`.
 
-- [ ] **Step 1:** Use supabase MCP + context7 to verify current Supabase SSR patterns for Next.js 16 App Router.
-- [ ] **Step 2:** Implement callback route that exchanges `code` for a session cookie.
-- [ ] **Step 3:** Implement middleware to refresh session on every request.
-- [ ] **Step 4:** Commit.
+- [x] **Step 1:** Use supabase MCP + context7 to verify current Supabase SSR patterns for Next.js 16 App Router.
+- [x] **Step 2:** Implement callback route that exchanges `code` for a session cookie.
+- [x] **Step 3:** Implement middleware to refresh session on every request. *(Next 16 renamed `middleware.ts` → `proxy.ts` and the export to `proxy`. The supabase helper at `lib/supabase/middleware.ts` keeps its old name internally.)*
+- [x] **Step 4:** Commit.
 
 ### Task 6.7: Protected layout
 
 **Files:** `frontend/app/(authed)/layout.tsx`.
 
-- [ ] **Step 1:** Check session via Supabase server client; redirect to `/` if missing.
-- [ ] **Step 2:** Render CRT overlay + setting theme data attribute (`data-setting="arctic"` etc.) based on current game (to be wired in Phase 7).
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Check session via Supabase server client; redirect to `/` if missing. Use `getUser()` (re-validates), not `getSession()` (trusts cookie).
+- [x] **Step 2:** Render CRT overlay + setting theme data attribute (`data-setting="arctic"` etc.) based on current game (to be wired in Phase 7).
+- [x] **Step 3:** Commit.
 
 ### Task 6.8: Pre-run page
 
 **Files:** `frontend/app/(authed)/play/page.tsx`.
 
-- [ ] **Step 1:** Fetch `/me` from backend. If `next_run_at` is set, show countdown to that time. Otherwise show "Begin run" button.
-- [ ] **Step 2:** On click: POST `/game/session`, redirect to `/run/[id]`.
-- [ ] **Step 3:** Commit.
+- [x] **Step 1:** Fetch `/me` from backend. If `next_run_at` is set, show countdown to that time. Otherwise show "Begin run" button.
+- [x] **Step 2:** On click: POST `/game/session`, redirect to `/run/[id]`.
+- [x] **Step 3:** Commit.
 
-**Phase 6 exit verification:**
+**Phase 6 exit verification (2026-04-25):**
+
 ```bash
 cd frontend && pnpm dev
-# visit localhost:3000, verify landing renders with pixel theme
-# sign in with Google, verify redirect + /me works
-# verify /play shows either countdown or Begin button
-# screenshot with Playwright MCP; compare to vision
+# visit localhost:3000, verify landing renders with pixel theme    ✓
+# sign in with Google, verify redirect + /me works                 ✓ — without env, click → /auth/error end-to-end
+# verify /play shows either countdown or Begin button              ✓ — /play 307s to / when unauthed, renders correctly when authed
+# screenshot with Playwright MCP; compare to vision                ✓ — 1440 / 1024 / 768 captured
 ```
+
+Build / lint / typecheck all green. Console clean on landing and error page.
+
+Commits: `c8c27d0` (Tasks 6.1–6.4 + frontend/CLAUDE.md), `1d4fc50` (Tasks 6.5–6.8 + env tolerance).
 
 ---
 
@@ -2394,6 +2399,17 @@ Any gap → back to fix.
 - **`langfuse.langchain` requires the umbrella `langchain` package, not just `langchain-core`.** Symptom: `ImportError: cannot import name 'BaseCallbackHandler' from 'langchain'` even though `langchain-core` was already pulled in by langgraph. Fix: explicit `uv add langchain` (chore commit `f1fd8f6`). Takeaway: when adding a Langfuse integration to a LangGraph project, don't assume the langchain transitive deps are sufficient — Langfuse imports from `langchain` (the umbrella) directly.
 - **`engine.advance_turn` clears `turn_tool_calls` BEFORE the state snapshot lands in `turn_logs.state_snapshot`.** Implication: any post-hoc tool-validity analysis only sees per-turn calls via the SSE stream / `RunRecord`; reading them back from `turn_logs` yields an empty list. The headline `tool_validity_rate` on a stored run is therefore "validity rate of *applied* calls" — rejected calls are absent. Closing this gap means capturing `applied_tool_calls`/`rejected_tool_calls` on the `TurnLog` row before the clear, which is queued as a Phase 6+ follow-up.
 - **`state_snapshot["resources"]` rounds Pydantic `Resource` to a dict — read `value`, not the object.** Symptom: a first cut of resource-history extraction in `app.eval` indexed `snapshot["resources"][rid]` expecting an integer; actual shape is `{"id": ..., "value": int, "max": int, ...}`. Fix: read `snap["resources"][rid]["value"]` for the per-turn integer. Recorded here so the next session writing a metric or post-mortem extractor doesn't repeat the typo.
+
+### Phase 6 (2026-04-25)
+
+- **Next.js 16 renamed `middleware.ts` → `proxy.ts`.** Symptom: `pnpm build` warns `The "middleware" file convention is deprecated. Please use "proxy" instead.` Fix: rename the root file and the exported function (`export async function proxy(...)`). The supabase helper at `lib/supabase/middleware.ts` keeps its old internal name — only the root entry-point file changed. Recorded in `frontend/CLAUDE.md`.
+- **DiceBear v9 per-style packages no longer have a named export matching the style.** Symptom: `import { pixelArt } from "@dicebear/pixel-art"` fails with `Export pixelArt doesn't exist`. Root cause: v9 packages export `{ create, meta, schema }` directly. Fix: `import * as pixelArt from "@dicebear/pixel-art"` — the namespace object satisfies the `Style<O>` shape `createAvatar()` expects. The earlier-form import seen in some docs is from v8.
+- **`createAvatar` ternary collapses two `Style<O>` types into a wider union TS can't narrow.** Symptom: `tsc --noEmit` rejected `createAvatar(variant === "portrait" ? pixelArt : thumbs, ...)` because each style's `Options` is distinct. Fix: branch on `variant` and call `createAvatar(pixelArt, ...)` / `createAvatar(thumbs, ...)` in each arm. Same runtime, types narrow.
+- **`@theme inline { --font-X: var(--font-X) }` is the shadcn-init footgun.** The default scaffold writes a self-referential `--font-sans: var(--font-sans)` because shadcn's CSS doesn't know about the next/font runtime variable name. Fix: bind `--font-X` to the next/font variable explicitly (`--font-display: var(--font-press-start), ui-monospace, monospace`). The `inline` modifier still resolves runtime `var()` references — only literal hex/string values get inlined at parse time.
+- **Tailwind v4 needs no `tailwind.config.ts`.** PLAN.md Task 6.3 listed one as a target file, but Tailwind v4 is CSS-first via `@theme {...}` in `globals.css`. The scaffold doesn't ship a config, and one isn't needed. Lesson: revisit PLAN file lists when the underlying tool changes major versions.
+- **Server-component `searchParams` is a Promise.** Symptom: typing `searchParams` as a plain object throws at build time in Next 16. Fix: type as `searchParams: Promise<{ ... }>` and `await` it before reading. Same for `params`. Recorded in `frontend/CLAUDE.md`.
+- **`getUser()` re-validates against Supabase; `getSession()` trusts the cookie.** On the server, always `getUser()` for auth gates — a tampered cookie would otherwise pass `getSession()`. Recorded in `frontend/CLAUDE.md`.
+- **Env tolerance is a soft requirement for the landing page.** A fresh clone with no `.env.local` should still boot the dev server and render the landing — otherwise reviewers see a broken page on first start. Achieved by short-circuiting the `proxy`, `(authed)` layout, callback handler, and SignInButton when `NEXT_PUBLIC_SUPABASE_URL` is unset. Production deploys must set both env vars; the SignInButton click visibly redirects to `/auth/error?reason=supabase_not_configured` if forgotten.
 
 ---
 
