@@ -34,7 +34,6 @@ from typing import TYPE_CHECKING, Any
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-_warned_missing_langchain = False
 
 if TYPE_CHECKING:  # pragma: no cover — typing-only import
     from langfuse.langchain import CallbackHandler
@@ -76,8 +75,11 @@ def _ensure_langfuse_client() -> bool:
 def build_langfuse_handler() -> CallbackHandler | None:
     """Construct a Langfuse v3 CallbackHandler, or None when disabled.
 
-    Lazy-imports `langfuse.langchain` so the disabled path never requires
-    Langfuse's optional `langchain` umbrella package to be installed.
+    Lazy-imports `langfuse.langchain` so the disabled path doesn't pay the
+    import cost. `langchain` is a hard dependency (Langfuse v4's
+    `langfuse.langchain` module requires the umbrella package, not just
+    `langchain-core`), so an `ImportError` here is a build/packaging bug
+    and should fail loudly — we don't catch it.
     Initializes the global `Langfuse` client first (idempotent) so the
     handler's internal `get_client()` call finds our credentials without
     relying on `os.environ`.
@@ -86,20 +88,7 @@ def build_langfuse_handler() -> CallbackHandler | None:
         return None
     if not _ensure_langfuse_client():
         return None
-    try:
-        from langfuse.langchain import CallbackHandler  # lazy: optional dep
-    except ModuleNotFoundError:
-        # Langfuse v4's `langfuse.langchain` requires the `langchain`
-        # umbrella package (not just `langchain-core`). If it's missing,
-        # disable Langfuse cleanly and warn once — never crash the run.
-        global _warned_missing_langchain
-        if not _warned_missing_langchain:
-            logger.warning(
-                "Langfuse keys are set but `langchain` package is missing; "
-                "install it to enable Langfuse tracing. Disabling for this process."
-            )
-            _warned_missing_langchain = True
-        return None
+    from langfuse.langchain import CallbackHandler  # lazy
 
     return CallbackHandler()
 
