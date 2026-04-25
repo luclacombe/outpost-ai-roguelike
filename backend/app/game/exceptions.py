@@ -15,9 +15,7 @@ class GameError(Exception):
     code: str = "game_error"
     message: str = "Game error."
 
-    def __init__(
-        self, message: str | None = None, detail: dict | None = None
-    ) -> None:
+    def __init__(self, message: str | None = None, detail: dict | None = None) -> None:
         self.message = message or self.__class__.message
         self.detail = detail
         super().__init__(self.message)
@@ -54,6 +52,18 @@ class GameNotFound(GameError):  # noqa: N818 — names the 404 condition, not an
 
     code = "game_not_found"
     message = "game_not_found"
+
+
+class GameNotEnded(GameError):  # noqa: N818 — names the 409 condition
+    """Raised when a post-mortem is requested for a still-running game.
+
+    The post-mortem aggregates terminal state (end_state, final scores,
+    counterfactuals) — surfacing it mid-run would either confuse the player
+    or leak future events. Surfaces as 409 Conflict.
+    """
+
+    code = "game_not_ended"
+    message = "Run is still in progress."
 
 
 class NoSettingsAvailable(GameError):  # noqa: N818 — names the 503 condition

@@ -17,14 +17,21 @@ from app.dependencies import get_current_user, get_db
 from app.game.exceptions import (
     DailyGateExceeded,
     GameError,
+    GameNotEnded,
     GameNotFound,
     NoSettingsAvailable,
+)
+from app.game.post_mortem import (
+    build_post_mortem,
+    build_post_mortem_by_token,
+    ensure_share_token,
 )
 from app.game.schemas import ColonyState
 from app.game.schemas_io import (
     AgentPublic,
     GameSessionCreateRequest,
     GameSessionResponse,
+    PostMortem,
     ProposalPublic,
     ResourcePublic,
 )
@@ -41,6 +48,8 @@ def _to_http_exception(exc: GameError) -> HTTPException:
         http_status = status.HTTP_429_TOO_MANY_REQUESTS
     elif isinstance(exc, GameNotFound):
         http_status = status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, GameNotEnded):
+        http_status = status.HTTP_409_CONFLICT
     elif isinstance(exc, NoSettingsAvailable):
         http_status = status.HTTP_503_SERVICE_UNAVAILABLE
     else:  # pragma: no cover — exhaustive over known subclasses
@@ -48,9 +57,7 @@ def _to_http_exception(exc: GameError) -> HTTPException:
     return HTTPException(status_code=http_status, detail={"error": exc.to_dict()})
 
 
-def _shape_response(
-    state: ColonyState, *, setting_name: str
-) -> GameSessionResponse:
+def _shape_response(state: ColonyState, *, setting_name: str) -> GameSessionResponse:
     """Project ColonyState into the player-facing response shape.
 
     Hides agent axes (ethics/temperament/loyalty), memory, relationships,
@@ -149,3 +156,50 @@ async def get_session(
         raise _to_http_exception(exc) from exc
     setting = load_setting(state.setting_id)
     return _shape_response(state, setting_name=setting.name)
+
+
+@router.get("/{game_id}/post-mortem", response_model=PostMortem)
+async def get_post_mortem(
+    game_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PostMortem:
+    """Aggregated post-mortem for a completed run.
+
+    Authorization: scoped to `user_id` like the rest of /game. Calling for
+    a still-running game returns 409 (`game_not_ended`); calling for a run
+    that doesn't belong to this user returns 404 (`game_not_found`) — same
+    response as a missing run, to avoid leaking existence.
+    """
+    user_id = UUID(user["sub"])
+    # Ownership check uses the same query path as get_session — raises
+    # GameNotFound if the row is missing or belongs to another user.
+    try:
+        await get_game_session(user_id=user_id, game_id=game_id, db=db)
+        # Lazily mint share_token on first post-mortem view so the share
+        # button always has a non-null token to render. Idempotent.
+        await ensure_share_token(game_id=game_id, db=db)
+        post_mortem = await build_post_mortem(game_id=game_id, db=db)
+    except GameError as exc:
+        raise _to_http_exception(exc) from exc
+    await db.commit()
+    return post_mortem
+
+
+@router.get("/share/{token}", response_model=PostMortem)
+async def get_shared_post_mortem(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> PostMortem:
+    """Public, unauthenticated view of a shared post-mortem.
+
+    Auth is the share token — anyone holding the URL gets the run. Token
+    minting is one-way (`ensure_share_token` is called the first time the
+    owner views their post-mortem); no rotation, no revocation in MVP.
+    Returns 404 for unknown tokens — same shape as a wrong-owner request,
+    avoiding existence leaks.
+    """
+    try:
+        return await build_post_mortem_by_token(token=token, db=db)
+    except GameError as exc:
+        raise _to_http_exception(exc) from exc
