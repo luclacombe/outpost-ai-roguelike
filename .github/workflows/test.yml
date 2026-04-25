@@ -22,6 +22,17 @@ jobs:
       run:
         working-directory: backend
 
+    # Settings() is constructed at import (see backend/CLAUDE.md). Tests
+    # don't need real values — just non-empty strings satisfying Pydantic.
+    # JWT secret must be >=32 bytes to avoid pyjwt's HMAC length warning.
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:54322/postgres
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_JWT_SECRET: ci-placeholder-secret-not-real-must-be-32-bytes-min
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+      FRONTEND_URL: http://localhost:3000
+
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +70,10 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # Read pnpm version from the frontend's package.json `packageManager`
+          # field (action-setup looks at the repo root by default; we point it
+          # at the actual workspace).
+          package_json_file: frontend/package.json
 
       - uses: actions/setup-node@v4
         with:

@@ -20,6 +20,15 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # See test.yml for the rationale: Settings() runs at import, requires
+    # non-empty placeholders to load.
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:54322/postgres
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_JWT_SECRET: ci-placeholder-secret-not-real-must-be-32-bytes-min
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+      FRONTEND_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
