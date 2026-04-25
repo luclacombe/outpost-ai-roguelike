@@ -1,0 +1,52 @@
+name: Deploy
+
+# Backend deploy to Railway on push to main. Frontend auto-deploys via the
+# Vercel GitHub integration (no workflow needed). Re-runs the unit-test gate
+# inline so a green PR can't decay before merge; the eval gate lives in
+# eval.yml and runs on PRs (not on every main push, since it costs tokens).
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # never cancel an in-flight deploy
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install uv
+      - run: uv sync --frozen
+      - run: uv run ruff check app/
+      - run: uv run ruff format --check app/
+      - run: uv run pytest tests/ -v -m "not eval and not integration" --tb=short
+
+  deploy-backend:
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Railway
+        # Uses the official Railway CLI to trigger a deploy of the configured
+        # service. RAILWAY_TOKEN must be set in repo secrets (account- or
+        # project-scoped token from Railway → Account Settings → Tokens).
+        # RAILWAY_SERVICE is the service name (default: outpost-backend).
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::warning::RAILWAY_TOKEN not set — skipping deploy. Add it in repo Settings → Secrets to enable."
+            exit 0
+          fi
+          npm install -g @railway/cli
+          railway up --service "${RAILWAY_SERVICE:-outpost-backend}" --detach
