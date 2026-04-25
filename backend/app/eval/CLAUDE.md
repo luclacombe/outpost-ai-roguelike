@@ -12,6 +12,15 @@ hot path.
 - The merge gate (`personality_consistency >= 0.72`, `tool_validity >= 85%`):
   root CLAUDE.md invariant #10.
 
+## Module map
+
+- `personality.py` — embedding + Haiku-judge personality consistency.
+- `tool_validity.py` — `tool_validity_rate` + `tool_validity_breakdown` (engine-only).
+- `repetition.py` — pairwise BLEU-2 narrative repetition (NLTK, no LLM).
+- `balance.py` — aggregated survival/resource/forced-choice metrics across runs.
+- `end_state.py` — observed end-state distribution vs SPEC target bands.
+- `types.py` — `RunRecord`, the canonical Pydantic snapshot of one simulated run. Single source of truth — do not shadow with per-module variants.
+
 ## Naming convention
 
 - `score_<metric>(...)` returns either `float` (single signal) or `dict[str, Any]`
