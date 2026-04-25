@@ -131,3 +131,96 @@ Never replace a shadcn primitive with a raw `<div>` for "simplicity."
 ## Supabase env tolerance
 
 Both the proxy and the `(authed)` layout no-op when `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` are unset. The landing remains reachable in a fresh clone with no `.env.local`. CI / production must set both — the SignInButton click will surface the failure visibly otherwise.
+
+---
+
+## Dashboard grid (Phase 7)
+
+Layout lives in `globals.css` under `.dashboard-grid`. Three named areas, two breakpoints:
+
+| Width | Layout | Notes |
+|---|---|---|
+| ≥1024 (`lg`) | 2 columns; `h-svh`; event panel scrolls in place | Status spans both right rows |
+| 768–1023 | 2 columns (`260px / 1fr`); `min-h-svh`; page scrolls | Event panel does NOT internally scroll |
+| ≤768 | 1 column; ordered `header → event → choose → status` | Action above the fold; status sinks to bottom |
+
+**Why `lg:` and not `md:` for the desktop pinning.** Tailwind's `md:` is `min-width: 768`, which collides at exactly 768 with the mobile `@media (max-width: 768px)` block. Using `lg:` (1024) avoids the boundary fight. If you need a tablet-specific tweak, write a custom `@media` rule, not `md:`.
+
+**`overflow-y-auto` on `.dashboard-area-event`.** Apply with the `lg:overflow-y-auto` Tailwind utility so the scroll container only exists in the desktop fixed-height grid. On mobile the event area must be `overflow: visible` or its content gets clipped under the choose panel.
+
+**`h-full` on inner panels (`EventDebatePanel`, `ColonyStatus`).** Same rule: gate behind `lg:`. On mobile these grow to content. Without the gate, the layout collapses at 768 because `h-full` on auto-sized parents resolves to a fixed pixel value the row never gets back.
+
+---
+
+## SSE consumption pattern (`hooks/useTurnStream.ts`)
+
+`fetch` + `ReadableStream` + `TextDecoderStream` — never `EventSource` (no `Authorization` header support). Frame parser lives in `lib/api/sse.ts` (`parseSseFrame`, `iterateSse`). Final sentinel is the literal string `[DONE]`, not JSON.
+
+**Hook shape.**
+
+```ts
+const stream = useTurnStream(gameId, seed, opts?);
+// → { phase, turnNumber, currentEvent, proposals, debateLines,
+//     narration, legitimacy, playerHealth, costCents, endState,
+//     error, eventLog, beginTurn, submitChoice }
+```
+
+`opts` is the test/dev seam:
+
+| Option | Default | When to override |
+|---|---|---|
+| `beginTurnUrl` / `decideUrl` | `${API_BASE_URL}/game/{id}/turn` etc. | Dev preview points these at `/api/dev/turn` |
+| `getAuthToken` | `supabase.auth.getSession().access_token` | Dev preview returns `"dev-mock"`; tests can return any string |
+| `refreshSession` | `supabase.auth.refreshSession()` | Dev preview no-ops; tests assert it was called |
+
+**Token refresh discipline (PLAN 7.6, hard rule).**
+
+1. `getAuthToken()` runs BEFORE every fetch. Never close-over a token from mount.
+2. On `401` (response status OR thrown stream error), if `attempt === 0`, call `refreshSession()` and re-POST. `/turn` is idempotent while paused — the backend short-circuits to re-emit `proposals_ready`. `/decide` is NOT safely retryable past pause; surface error and let the caller refresh state via `GET /game/{id}`.
+3. The reducer keeps `debateLines` and `narration` across a re-emitted `proposals_ready` IFF the event id is unchanged (see `applyEvent` → `proposals_ready` branch). This is what lets reconnect look idempotent to the player.
+
+**Reducer is exported.** `applyEvent(state, event)` is pure and can be unit-tested without React. Add tests there before the hook proper, since most logic lives in the reducer.
+
+---
+
+## Dev SSE harness (`/api/dev/turn`, `/api/dev/decide`)
+
+In-process Next route handlers that mirror the backend's SSE shape. Gated by `process.env.NODE_ENV !== "production"` (returns 404 in production builds). Used by `/dev/dashboard` to drive the real `useTurnStream` hook without a running backend.
+
+Query switches on `/api/dev/turn`:
+- `?fail_first=1` — first POST returns 401, retry succeeds. Verifies the refresh+reconnect path.
+- `?fail_always=1` — every POST returns 401. Verifies the error UX.
+
+Session distinction across reloads is via the `x-dev-session` header (set in `DashboardPreview` via a one-shot `window.fetch` patch).
+
+---
+
+## Error UX
+
+Stream errors surface as an inline alert inside the event panel:
+
+```tsx
+<div role="alert" data-testid="stream-error" className="border border-px-danger ...">
+  {code} · {message}
+</div>
+```
+
+Inline (not a toast or dialog) because errors are tied to the current turn — the player needs the message in context with the dashboard, not popping out of nowhere. The `data-testid` is for Playwright; the role is for AT.
+
+Per-action errors (e.g. proposal rejected) reset on the next user action via `error: null` in `beginTurn`/`submitChoice`.
+
+Pre-stream HTTP errors (4xx other than 401) get the same alert with the backend's `error.code` / `error.message` from the standard error envelope (root `CLAUDE.md`).
+
+---
+
+## CRT overlay & WCAG
+
+`<CrtOverlay />` is a shared component mounted in `(authed)/layout.tsx` and `dev/dashboard`. The 0.08 scanline opacity is the upper bound — at 0.10+ the dimmer body text drops below WCAG AA on `--px-bg`.
+
+**`--px-text-dim` floor: `#968f7d`** (5.12:1 vs `--px-bg` with the CRT overlay applied; AA requires 4.5:1). The previous value `#7a7a6e` failed AA at 4.01:1 even without the overlay. If you find yourself wanting a darker dim — pick a new color and re-run the contrast formula in dev tools first; don't drop the floor.
+
+---
+
+## shadcn re-theme status (Phase 7)
+
+All dashboard primitives so far hit Level 2 (CSS-var override only). No Level-3 copies needed yet. The Button's hardcoded `rounded-*` classes are already neutralized by `--radius: 0` on the token, so the pixel-art look survives without a local fork. Re-evaluate when adding `Dialog` / `Sheet` / `AlertDialog` (likely Level 3 on those — Phase 8 territory).

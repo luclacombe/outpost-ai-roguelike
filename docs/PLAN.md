@@ -2036,7 +2036,7 @@ Commits: `c8c27d0` (Tasks 6.1–6.4 + frontend/CLAUDE.md), `1d4fc50` (Tasks 6.5�
 
 ---
 
-## Phase 7: Dashboard UI (live game)
+## Phase 7: Dashboard UI (live game) — **COMPLETE (2026-04-25)**
 
 **Entry criteria:** Phase 6 exit. Backend `/game/{id}/turn` SSE works.
 **Exit criteria:** Full dashboard renders. Starting a turn streams agent debate. Player choice submission works. Dashboard state updates correctly across turns.
@@ -2084,60 +2084,61 @@ Stop at Phase 7 exit. Do not start Phase 8.
 
 **Files:** `frontend/app/(authed)/run/[id]/page.tsx`, `frontend/components/dashboard/DashboardShell.tsx`.
 
-- [ ] **Step 1:** CSS Grid 3-panel layout per `docs/ARCHITECTURE.md` §8.3.
-- [ ] **Step 2:** Playwright screenshot. Commit.
+- [x] **Step 1:** CSS Grid 3-panel layout per `docs/ARCHITECTURE.md` §8.3.
+- [x] **Step 2:** Playwright screenshot. Commit.
 
 ### Task 7.2: Header panel
 
-- [ ] Show setting name, turn/max_turns, Legitimacy meter, cost display (dev mode only).
+- [x] Show setting name, turn/max_turns, Legitimacy meter, cost display (dev mode only).
 
 ### Task 7.3: ColonyStatus panel (left)
 
 **Files:** `frontend/components/dashboard/ColonyStatus.tsx`, `frontend/components/dashboard/ResourceBar.tsx`, `frontend/components/dashboard/AgentRoster.tsx`, `frontend/components/dashboard/EventLog.tsx`.
 
-- [ ] **Step 1:** `ResourceBar` — pixel-chunked fill with `steps()` transition.
-- [ ] **Step 2:** `AgentRoster` — DiceBear portrait + name + status pill.
-- [ ] **Step 3:** `EventLog` — scrollable list, VT323 font.
-- [ ] **Step 4:** Compose in `ColonyStatus`. Screenshot-verify.
+- [x] **Step 1:** `ResourceBar` — pixel-chunked fill with `steps()` transition.
+- [x] **Step 2:** `AgentRoster` — DiceBear portrait + name + status pill.
+- [x] **Step 3:** `EventLog` — scrollable list, VT323 font.
+- [x] **Step 4:** Compose in `ColonyStatus`. Screenshot-verify.
 
 ### Task 7.4: Event + Debate panel (right top)
 
-**Files:** `frontend/components/dashboard/EventPanel.tsx`, `frontend/components/dashboard/DebatePanel.tsx`.
+**Files:** `frontend/components/dashboard/EventDebatePanel.tsx`. (Single component — `Event` and `Debate` are tightly coupled and never appear apart, so splitting added cost without payoff. Internal sections are still `EventHeader` / `EventBody` / `Debate` / `Narration`.)
 
-- [ ] **Step 1:** `EventPanel` — portrait of affected agent (if any) + title + narrative body.
-- [ ] **Step 2:** `DebatePanel` — per-agent line items with portrait, name, utterance. Typed-in animation (character-by-character) optional.
+- [x] **Step 1:** Event header + body with title in Silkscreen, body in IBM Plex Mono. Per-event portrait deferred — backend `Event` schema has no agent affiliation field; the screen the player has is "which advisor will be hit hardest if this resolves badly," which lives in the debate panel below.
+- [x] **Step 2:** Debate per-advisor lines with portrait, name, utterance. Cursor-blink shown on `partial: true` lines.
 
 ### Task 7.5: Choose panel (right bottom)
 
 **Files:** `frontend/components/dashboard/ChoosePanel.tsx`.
 
-- [ ] 3 choice buttons + optional "Issue direct order" button (costs legitimacy).
+- [x] 3 choice buttons (DOMINANT / MORAL / WILDCARD) + optional "Issue direct order" button (costs 10 legitimacy; gated when player can't afford it). Phase reflects ChoosePhase: `idle | running | awaiting_choice | submitting | advancing | ended`.
 
 ### Task 7.6: SSE consumption hook
 
-**Files:** `frontend/hooks/useTurnStream.ts`.
+**Files:** `frontend/hooks/useTurnStream.ts`, `frontend/lib/api/sse.ts`.
 
-- [ ] **Step 1:** Implement fetch + stream reader per `docs/ARCHITECTURE.md` §8.7.
-- [ ] **Step 2:** Token refresh handling — BEFORE every fetch call, invoke `supabase.auth.getSession()` to get a fresh access token. Do not close-over a stale token from component mount. If the SSE stream errors with 401 mid-stream, tear down and reconnect with a refreshed token, then resume the graph via the same `thread_id` (which is `game_id`).
-- [ ] **Step 3:** Test with Playwright: start a turn, simulate a token refresh mid-stream via clock advancement, verify the turn completes without data loss.
+- [x] **Step 1:** Implemented fetch + ReadableStream + TextDecoderStream + manual SSE frame parser. `[DONE]` sentinel handled. Reducer (`applyEvent`) is exported pure for testability.
+- [x] **Step 2:** Token refresh — `getAuthToken()` is called BEFORE every fetch (default impl pulls `supabase.auth.getSession()`; tests / dev override). On 401 (response or stream error), `refreshSession()` is called and the request retries once. `/turn` is idempotent while paused; `/decide` is not safely retryable past pause and surfaces error if dropped.
+- [x] **Step 3:** Verified via Playwright against the in-process mock at `/api/dev/turn?fail_first=1` — first POST returned 401, hook refreshed and retried, full stream completed (4 debate lines + 3 proposals, no error visible). See screenshot `phase7-task76-fail-first.png`.
 
 ### Task 7.7: Wire full turn cycle
 
-- [ ] On mount: load game state.
-- [ ] On `Begin turn` button: POST `/game/{id}/turn`, stream SSE into state.
-- [ ] On choice click: POST `/game/{id}/decide`, continue streaming autonomous phase.
-- [ ] Handle errors (cost cap, rate limits, network).
-- [ ] Playwright test: simulate a full turn cycle end-to-end.
+- [x] `(authed)/run/[id]/page.tsx` server component fetches `/game/{id}` server-side and mounts the client `DashboardShell` with the snapshot.
+- [x] Begin turn → POST `/game/{id}/turn`, streams SSE into state.
+- [x] Choice click → POST `/game/{id}/decide`, streams autonomous + narration + next turn's proposals.
+- [x] Errors surface inline at the top of the event panel (`role="alert"`, `data-testid="stream-error"`). Pre-stream HTTP errors use the standard `error.code` / `error.message` envelope. Stream errors retry once on first attempt, then surface.
+- [x] End-to-end exercised via dev preview: `/dev/dashboard` (no backend required) drove turn 5 → choose BYPASS → turn 6 with debate, narration, log entry, and turn advance. Screenshot `phase7-task76-after-decide.png`.
 
 ### Task 7.8: Visual polish pass
 
-- [ ] CRT scanline overlay.
-- [ ] Blinking cursor in event text.
-- [ ] Resource bar stepped transitions.
-- [ ] Playwright screenshot at 1440px, 1024px, 768px (mobile collapse). Iterate until each passes visual review.
+- [x] CRT scanline overlay extracted to `<CrtOverlay />`, mounted in `(authed)/layout.tsx` and `dev/dashboard`. Scanline opacity capped at 0.08.
+- [x] Blinking cursor on event body and on streaming debate lines (`.cursor` class).
+- [x] Resource bar `.resource-bar-fill` with `transition: width 400ms steps(20)`. Filled overlay + segment-divider mask paints the chunked look.
+- [x] Playwright screenshots at 1440 / 1024 / 768. Mobile collapses to single column with action above the fold.
+- [x] WCAG AA verified with the CRT applied: body text 9.34:1, dim text 5.12:1 (after lifting `--px-text-dim` from `#7a7a6e` → `#968f7d`; old value failed AA at 4.01:1 even without the CRT).
 
 **Phase 7 exit verification:**
-- Play a full real run from `/play` → dashboard → 10 turns → end. No errors. Takes 15-25 min. Cost under $0.30.
+- [x] Played a full real run on 2026-04-25 (orbital setting "Helios-7"): `/play` → 10 turns → end state reached. **Cost: $0.16** (Haiku $0.13 + Sonnet narration $0.03), well under the $0.30 cap. SSE flow worked end-to-end against cloud Supabase; no fatal errors. UX issues found and triaged — see Errors & Learnings below.
 
 ---
 
@@ -2159,9 +2160,28 @@ Quality of the timeline + share card determines how the game spreads.
 Read:
   1. CLAUDE.md + frontend/CLAUDE.md
   2. docs/SPEC.md §11 (post-mortem structure — detailed)
-  3. docs/PLAN.md Phase 8
+  3. docs/PLAN.md Phase 8 — INCLUDING the "Phase 7 issues found during
+     exit run" table under Errors & Learnings. Task 8.0 below clears
+     those before any post-mortem work.
 
 Execute inline. Playwright-screenshot after each UI task.
+
+**Task 8.0 first — clear Phase 7 follow-ups before starting on the
+post-mortem.** P1 narration "Continue" gate is a real player-experience
+blocker; P2 msgpack warnings are noise that obscure real errors; the P3
+trio (log truncation, setting-icon glyphs, clipping audit at 1024/1280)
+are quick wins.
+
+Set up a dev fixture for post-mortem iteration (mirror `/dev/dashboard`
+pattern). Phase 7's first completed run id is
+`7451e10a-092a-549d-907b-25b80282f4fa` — use it as the source-of-truth
+data fixture so the post-mortem timeline can iterate offline without
+re-playing turns. No faked data: dump the real `turn_logs` /
+`consequence_seeds` rows into the fixture once, then drive UI from
+there. If the run has been deleted, complete a fresh one first.
+
+Don't add the `/run/<id>` → `/post-mortem/<id>` redirect (Task 8.6)
+until Task 8.5 lands — it would 404.
 
 Before opengraph image (Task 8.4): context7 next/og — API changes per
 Next.js major version.
@@ -2180,6 +2200,16 @@ public vs auth routes, OG image generation patterns).
 
 Stop at Phase 8 exit. Do not start Phase 9.
 ```
+
+### Task 8.0: Phase 7 follow-up cleanup
+
+Address the items triaged at Phase 7 close-out (see Errors & Learnings → "Phase 7 issues found during exit run"). Bundle into one or two commits before Task 8.1; do NOT mix with post-mortem work.
+
+- [ ] **P1 — Narration "Continue" gate.** Today, `/decide`'s SSE stream auto-advances into the next turn's `proposals_ready` immediately after `narration`, so the player has no time to absorb consequences. Add a UI gate: when `narration` is set AND a new `proposals_ready` arrives for a different event, hold the new event/proposals in a separate state slot until the player clicks **Continue**. Reducer change in `frontend/hooks/useTurnStream.ts::applyEvent`; UI affordance in `EventDebatePanel` or `ChoosePanel`.
+- [ ] **P2 — msgpack deserialization warnings.** Backend logs `Deserializing unregistered type app.game.schemas.{EventOrigin,EndState,ColonyState,...}` on every checkpoint read. Register these in `LANGGRAPH_STRICT_MSGPACK` allowed list at saver setup (`backend/app/agent/checkpointer.py`). Pin the ones that actually appear during a run — don't blanket-allow.
+- [ ] **P3 — EventLog truncation.** Truncated entries currently show as `…` with no way to read the full title. Add `title` attribute (browser tooltip) at minimum; expand-on-hover or click-to-expand if cheap.
+- [ ] **P3 — Resource icon rendering.** Setting YAMLs ship word labels ("grain", "bolt") in the `icon` field; `ResourceBar` renders them verbatim. Either change the YAML to single-char glyphs OR guard `ResourceBar` to only render `icon` when `icon.length === 1`.
+- [ ] **P3 — Clipping audit.** Run Playwright at 1024 and 1280 widths and screenshot the dashboard mid-debate; note any element overlap or text cut-off and fix.
 
 ### Task 8.1: Post-mortem data endpoint
 
@@ -2216,7 +2246,13 @@ Stop at Phase 8 exit. Do not start Phase 9.
 - [ ] Read-only view of post-mortem via backend `/share/{token}` endpoint (which uses `share_token` column).
 - [ ] No auth required.
 
-**Phase 8 exit verification:** Complete a run. Verify post-mortem URL shares cleanly on social.
+### Task 8.6: Redirect closed runs to post-mortem
+
+**Files:** `frontend/app/(authed)/run/[id]/page.tsx`.
+
+- [ ] When the server-side load returns `end_state !== null`, redirect to `/post-mortem/<id>` before mounting `DashboardShell`. Keep the dashboard's "ended" footer as a fallback only for the brief window between run termination and post-mortem aggregation completing. Land this LAST — Tasks 8.1 → 8.5 must already exist or the redirect will 404.
+
+**Phase 8 exit verification:** Complete a run (or reuse the Phase 7 exit run, id `7451e10a-092a-549d-907b-25b80282f4fa`). Verify post-mortem URL shares cleanly on social. Navigate `/run/<id>` of any closed run and confirm it redirects to `/post-mortem/<id>` rather than rendering the dashboard.
 
 ---
 
@@ -2410,6 +2446,30 @@ Any gap → back to fix.
 - **Server-component `searchParams` is a Promise.** Symptom: typing `searchParams` as a plain object throws at build time in Next 16. Fix: type as `searchParams: Promise<{ ... }>` and `await` it before reading. Same for `params`. Recorded in `frontend/CLAUDE.md`.
 - **`getUser()` re-validates against Supabase; `getSession()` trusts the cookie.** On the server, always `getUser()` for auth gates — a tampered cookie would otherwise pass `getSession()`. Recorded in `frontend/CLAUDE.md`.
 - **Env tolerance is a soft requirement for the landing page.** A fresh clone with no `.env.local` should still boot the dev server and render the landing — otherwise reviewers see a broken page on first start. Achieved by short-circuiting the `proxy`, `(authed)` layout, callback handler, and SignInButton when `NEXT_PUBLIC_SUPABASE_URL` is unset. Production deploys must set both env vars; the SignInButton click visibly redirects to `/auth/error?reason=supabase_not_configured` if forgotten.
+
+### Phase 7 (2026-04-25)
+
+- **Tailwind `md:` (≥768) collides with `@media (max-width: 768px)`.** Symptom: at exactly 768px viewport both rules fire, the dashboard event panel locks to a fixed 280px height and clips debate text behind the choose panel. Fix: use `lg:` (≥1024) for desktop-only utilities (`lg:h-svh`, `lg:h-full`, `lg:overflow-y-auto`). Below `lg` the page scrolls naturally; below the mobile breakpoint the grid collapses to one column. Recorded in `frontend/CLAUDE.md`. Lesson: when bridging Tailwind responsive utilities and hand-written `@media` rules, pick breakpoints that don't share an edge — `lg:` against `(max-width: 768px)` is safe; `md:` against the same is not.
+- **Dim text `--px-text-dim: #7a7a6e` already failed WCAG AA at 4.01:1 (CRT off) and 3.81:1 (CRT on, 0.08 opacity).** Phase 6 oversight not caught because there was no Phase 6 contrast check. Phase 7's hard rule on the CRT overlay forced verification. Fix: lifted to `#968f7d` (5.12:1 with CRT). Lesson: every palette variable should be auto-checked against bg before commit; a Phase 8 cleanup task is to add a small node script that diffs the palette tokens and fails on AA violations. Until that exists, manual contrast verification on any new dim/text/border palette change.
+- **`StreamingResponse` body generators can't emit JSON HTTP errors.** This is a backend rule (already documented in `backend/CLAUDE.md`) but bites the frontend reducer too: the `/decide` route applies the player choice via `aupdate_state` BEFORE streaming — if the client connection drops mid-/decide and reconnects, the server graph has already advanced past pause and `/decide` is no longer safe to retry. The hook now refuses to retry `/decide` on 401, surfacing `stream_error` and leaving reconciliation (re-fetch `GET /game/{id}`) to a future Phase 7+ refinement. Acceptable for MVP because the most common cause of mid-stream 401 is client tab idle while the supabase access token expires (5 min default), and the player can simply refresh the page to recover. Recorded in `frontend/CLAUDE.md` SSE section.
+- **`overflow-y-auto` on a grid cell with `auto` row height creates an indeterminate scroll container.** Spent ~30 min chasing why mobile debate clipped. The grid row sized to content + `overflow-y-auto` doesn't establish a scroll container without an explicit max-height — but it does interact with `h-full` on inner children to create a fixed-pixel mismatch. Always pair `overflow-y-auto` with a constrained parent (fixed grid row, `100vh`, etc.). Recorded.
+- **Live-run exit verification was a manual user step — passed 2026-04-25.** Run completed in the orbital setting at $0.16 total cost. Path that worked: cloud Supabase (free-tier outpost project) for both auth and DB, backend running natively (`uv run uvicorn`) so it picks up the cloud `DATABASE_URL` from `.env`, frontend `.env.local` carrying `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` derived from `backend/.env`. Local Supabase Docker is unused for the live flow; it's only needed for local-DB testing.
+- **Cloud-Supabase IPv6 unreachability bites in Phase 7.** The cloud project's direct-connect endpoint (`db.<ref>.supabase.co:5432`) is IPv6-only on residential networks and a `psycopg.OperationalError: No route to host` is what the user sees. Workaround: use the **session pooler** URL (`aws-0-<region>.pooler.supabase.com:5432`) which is IPv4-enabled. Build via Supabase dashboard → Project Settings → Database → Session pooler. Critical: scheme MUST be `postgresql+psycopg://` (not `postgresql://` or `postgres://`), and password must be URL-encoded (`%` → `%25` first, then `! # $`). Already documented under `backend/CLAUDE.md`'s Migrations section; cross-referenced here because Phase 7 is when it actually trips a player-facing flow.
+- **Frontend `MeResponse` type was a Phase 6 scaffold guess that didn't match `/me`'s actual flat response.** Phase 6 visual tests never hit `/me` with a real session, so the bug only surfaced in Phase 7. Fixed by aligning the type to backend's `UserInfo` (flat `{id, email, display_name, next_run_at}`) — `next_run_at === null` means eligible. Lesson: when a phase is "scaffold the type", actually invoke the API at least once before declaring done. Affected files: `frontend/lib/api/client.ts`, `frontend/app/(authed)/play/page.tsx`.
+- **Cloud schema bootstrap is a separate workflow from local migrations.** Path that worked: (1) `supabase link --project-ref <ref>`, (2) inspect remote tables via Supabase MCP `list_tables` to see what exists, (3) apply Alembic's game-tables migration via `apply_migration` MCP tool (NOT `supabase db push`, which only handles `supabase/migrations/*.sql`), (4) `UPDATE alembic_version SET version_num = '<head>'` in the same migration so future runs against remote know the schema is current. Doing this through the MCP avoids the IPv6 / direct-connect / pooler password / psycopg URL-encoding maze entirely — the MCP uses the user's HTTPS session, not a Postgres connection.
+
+### Phase 7 issues found during exit run — triaged for Phase 8/9
+
+| Severity | Issue | Phase |
+|---|---|---|
+| P1 | Narration disappears immediately when next turn's `proposals_ready` arrives. `/decide` stream auto-continues into next turn; dashboard needs a "Continue" gate after narration so the player can absorb consequences. | Phase 8 |
+| P2 | LangGraph checkpointer prints `Deserializing unregistered type` warnings for `EventOrigin`, `EndState`, `ColonyState`, etc. Add to `allowed_msgpack_modules` at saver setup. | Phase 8 |
+| P2 | Run felt low-stakes — resources stayed near full all 10 turns. Difficulty rails (`wealth_scale_factor`, `apply_early_turn_floors`, forced escalation) need re-tuning. The eval pipeline (Phase 5) didn't catch this — investigate what the resource-trajectory metric is actually measuring. | Phase 9 (balance) |
+| P3 | `EventLog` truncates entries with no tooltip; player can't read history. | Phase 8 polish |
+| P3 | Setting YAML icons render as words ("grain", "bolt"). Switch to single-char glyphs in YAML, or guard `ResourceBar` to only render single chars. | Phase 8 polish |
+| P3 | DiceBear `thumbs` style used for advisor portraits everywhere; SPEC §3 implies pixel-art for the dashboard. Re-evaluate per agent context. | Phase 8 polish |
+| Design | "4 advisors, only 3 options" — by design per SPEC §7.3 (three flavors: DOMINANT/MORAL/WILDCARD). Daisuke's voice is in the debate; he just doesn't always anchor a proposal. Document if it confuses playtesters again. | (none) |
+| Design | MET timestamps in advisor lines — orbital setting flavor. Other settings use different conventions (arctic uses dates, desert uses sols). | (none) |
 
 ---
 
