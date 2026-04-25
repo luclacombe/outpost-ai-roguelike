@@ -2142,7 +2142,7 @@ Stop at Phase 7 exit. Do not start Phase 8.
 
 ---
 
-## Phase 8: Post-Mortem + Share
+## Phase 8: Post-Mortem + Share — **COMPLETE (2026-04-25)**
 
 **Entry criteria:** Phase 7 exit passed.
 **Exit criteria:** Post-mortem renders timeline + counterfactuals for completed runs. Share card generates correctly and is accessible via public `/share/[token]` URL.
@@ -2205,54 +2205,69 @@ Stop at Phase 8 exit. Do not start Phase 9.
 
 Address the items triaged at Phase 7 close-out (see Errors & Learnings → "Phase 7 issues found during exit run"). Bundle into one or two commits before Task 8.1; do NOT mix with post-mortem work.
 
-- [ ] **P1 — Narration "Continue" gate.** Today, `/decide`'s SSE stream auto-advances into the next turn's `proposals_ready` immediately after `narration`, so the player has no time to absorb consequences. Add a UI gate: when `narration` is set AND a new `proposals_ready` arrives for a different event, hold the new event/proposals in a separate state slot until the player clicks **Continue**. Reducer change in `frontend/hooks/useTurnStream.ts::applyEvent`; UI affordance in `EventDebatePanel` or `ChoosePanel`.
-- [ ] **P2 — msgpack deserialization warnings.** Backend logs `Deserializing unregistered type app.game.schemas.{EventOrigin,EndState,ColonyState,...}` on every checkpoint read. Register these in `LANGGRAPH_STRICT_MSGPACK` allowed list at saver setup (`backend/app/agent/checkpointer.py`). Pin the ones that actually appear during a run — don't blanket-allow.
-- [ ] **P3 — EventLog truncation.** Truncated entries currently show as `…` with no way to read the full title. Add `title` attribute (browser tooltip) at minimum; expand-on-hover or click-to-expand if cheap.
-- [ ] **P3 — Resource icon rendering.** Setting YAMLs ship word labels ("grain", "bolt") in the `icon` field; `ResourceBar` renders them verbatim. Either change the YAML to single-char glyphs OR guard `ResourceBar` to only render `icon` when `icon.length === 1`.
-- [ ] **P3 — Clipping audit.** Run Playwright at 1024 and 1280 widths and screenshot the dashboard mid-debate; note any element overlap or text cut-off and fix.
+- [x] **P1 — Narration "Continue" gate.** Reducer holds next-turn `proposals_ready` in `pendingEvent`/`pendingProposals`/`pendingTurnNumber`/`pendingLogEntry` slots when narration is set AND new event id differs. New phase `awaiting_continue`; `ChoosePanel` renders Continue button; `continueAfterNarration()` promotes pending → main. Verified on `/dev/dashboard` end-to-end.
+- [x] **P2 — msgpack deserialization warnings.** `app/agent/checkpointer.py` constructs `JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_MSGPACK_TYPES)` and rebinds it onto `saver.serde` after `setup()`. Pinned set covers the 16 game-schema types the graph carries. Regression test asserts the warning text never fires on a state round-trip (`tests/test_checkpointer.py`). `with_msgpack_allowlist` is a no-op when the base allowlist is `True` — must construct fresh.
+- [x] **P3 — EventLog truncation.** `title` attr added to `<span class="truncate">` in `EventLog.tsx`.
+- [x] **P3 — Resource icon rendering.** Setting YAMLs migrated to single-char glyphs (`flame`→▲, `grain`→◆, `thermometer`→✦, `cross`→✚, `spark`→♪, `bolt`→⌁, `bubble`→○, `bullet`→●, `drop`→◇, `roof`→⌂). `ResourceBar` guards via `[...icon].length === 1` — multi-grapheme icons silently drop rather than printing words.
+- [x] **P3 — Clipping audit.** No clipping at 1024 or 1280; status panel + event/debate + choose layout holds across both. Screenshots `phase8-clipping-1024-debate.png`, `phase8-clipping-1024-fullpage.png`, `phase8-clipping-1280-debate.png`.
 
 ### Task 8.1: Post-mortem data endpoint
 
-**Files:** `backend/app/game/router.py` (add `GET /game/{id}/post-mortem`), test.
+**Files:** `backend/app/game/router.py` (added `GET /game/{id}/post-mortem` and `GET /game/share/{token}`), `backend/app/game/post_mortem.py`, `backend/app/game/schemas_io.py` (new `PostMortem*` types), `backend/app/game/exceptions.py` (new `GameNotEnded`), `backend/tests/test_post_mortem.py`.
 
-- [ ] Aggregates turn_logs, consequence_seeds (fired + dormant), decisions, end_state. Returns PostMortem schema.
+- [x] Aggregates turn_logs, consequence_seeds (fired + dormant), decisions, end_state. Returns `PostMortem` schema. Counterfactuals computed: dormant seeds (any seed `dormant=true OR fired=false`), near-miss coups (peak pair where both held grievance ≥ 7 simultaneously), didn't-happen transformations (empty in MVP — engine doesn't track near-transform state).
+- [x] `ensure_share_token` lazily mints a urlsafe token on first authed view; `build_post_mortem_by_token` resolves token → game → PostMortem for the public route.
+- [x] 12 unit + integration tests passing.
 
 ### Task 8.2: Timeline component
 
-**Files:** `frontend/components/postmortem/Timeline.tsx`, `frontend/components/postmortem/TurnCard.tsx`.
+**Files:** `frontend/components/postmortem/Timeline.tsx`, `frontend/components/postmortem/TurnCard.tsx`, `frontend/components/postmortem/PostMortemHeader.tsx`, `frontend/components/postmortem/PostMortemView.tsx`.
 
-- [ ] Vertical timeline per `docs/SPEC.md` §11. Each turn shows chosen action + dimmed alternatives + state deltas.
+- [x] Vertical timeline per `docs/SPEC.md` §11. `TurnCard` highlights chosen proposal with accent border + CHOSEN badge; alternatives dim to `opacity-60`. Origin badge color-coded (NATURAL=accent, SEED_FIRED=warning, FORCED_ESCALATION=danger). Per-agent advisor lines are one-sentence summaries (collapsed via the backend's `_to_one_line` helper). State delta footer surfaces legitimacy, per-turn cost, and any non-zero grievance per agent.
 
 ### Task 8.3: Counterfactuals panel
 
 **Files:** `frontend/components/postmortem/Counterfactuals.tsx`.
 
-- [ ] Dormant seeds ("if you'd done X, Y would have happened on turn Z").
-- [ ] Near-miss coups.
-- [ ] Didn't-happen transformations.
+- [x] Dormant seeds with origin reference + foreshadow flag.
+- [x] Near-miss coups with agent names + per-turn grievance.
+- [x] Empty state explicit ("No dormant consequences. No near-miss factions.") so the player sees the system DID track these — empty is meaningful, not a missing feature.
+- [x] Didn't-happen transformations is a structural slot reserved for when the engine tracks near-transform state; renders as no-op in MVP.
 
 ### Task 8.4: Share card (image generation)
 
-**Files:** `frontend/app/(authed)/post-mortem/[id]/opengraph-image.tsx`.
+**Files:** `frontend/app/share/[token]/opengraph-image.tsx`.
 
-- [ ] Use Next.js's built-in OG image generation (`next/og`).
-- [ ] 12 colored tiles (one per turn, flavor color coded), opening + closing lines, Outpost branding.
-- [ ] Test that Twitter/X, Discord, Bluesky unfurl the share URL correctly.
+- [x] Built on `next/og` `ImageResponse`. Layout: brand strip → end-state badge → 12 flavor tiles (DOMINANT cream, MORAL ok-green, WILDCARD warning-orange; empty slots dim) → opening line dim italic, closing line primary italic.
+- [x] **Deviation from PLAN file path.** PLAN listed `(authed)/post-mortem/[id]/opengraph-image.tsx`. Built at `share/[token]/opengraph-image.tsx` because the URL pasted into Twitter/Discord/Bluesky is `/share/{token}` and that's the URL crawlers fetch. The authed post-mortem URL would 401 a non-cookie crawler. Documented in `frontend/CLAUDE.md`.
+- [x] **1200×630, not square.** SPEC §11.3 said "compact square" but cross-platform unfurl behavior with square images is uneven. Wide-format unfurls predictably on Twitter, Discord, Bluesky.
+- [x] **Twitter/X, Discord, Bluesky unfurl verification deferred to Phase 9 deploy.** Local dev verifies the image renders correctly via direct GET; platform-side OG-cache testing requires a public URL. Added to Phase 9.7 verification checklist territory.
 
 ### Task 8.5: Public share route
 
-**Files:** `frontend/app/(public)/share/[token]/page.tsx`.
+**Files:** `frontend/app/share/[token]/page.tsx`.
 
-- [ ] Read-only view of post-mortem via backend `/share/{token}` endpoint (which uses `share_token` column).
-- [ ] No auth required.
+- [x] Read-only view of post-mortem via backend `/game/share/{token}` endpoint. No auth required. `generateMetadata` derives title (`"{setting_name} · {end_state}"`) and description (closing line) per run, so each share gets unique unfurl text.
 
 ### Task 8.6: Redirect closed runs to post-mortem
 
-**Files:** `frontend/app/(authed)/run/[id]/page.tsx`.
+**Files:** `frontend/app/(authed)/run/[id]/page.tsx`, `frontend/app/(authed)/post-mortem/[id]/page.tsx` (new).
 
-- [ ] When the server-side load returns `end_state !== null`, redirect to `/post-mortem/<id>` before mounting `DashboardShell`. Keep the dashboard's "ended" footer as a fallback only for the brief window between run termination and post-mortem aggregation completing. Land this LAST — Tasks 8.1 → 8.5 must already exist or the redirect will 404.
+- [x] `loadGame` returns the `GameSessionResponse`; if `end_state !== null` we `redirect` to `/post-mortem/{id}` BEFORE rendering `DashboardShell`. Falls through to the existing error-or-dashboard branches otherwise.
+- [x] New authed `/post-mortem/{id}` page calls `/game/{id}/post-mortem`. 404 → `/play`, 409 (`game_not_ended`) → `/run/{id}` so a player who hits `/post-mortem/<id>` mid-run bounces into the live dashboard rather than seeing an error.
 
-**Phase 8 exit verification:** Complete a run (or reuse the Phase 7 exit run, id `7451e10a-092a-549d-907b-25b80282f4fa`). Verify post-mortem URL shares cleanly on social. Navigate `/run/<id>` of any closed run and confirm it redirects to `/post-mortem/<id>` rather than rendering the dashboard.
+**Phase 8 exit verification (2026-04-25):**
+- [x] Continue gate verified end-to-end on `/dev/dashboard`: heating-core narration held, Continue button surfaced, click promoted next event. Screenshot `phase8-task80a-continue-gate.png`.
+- [x] Post-mortem renders at `/dev/post-mortem` from the real Phase 7 exit run (id `7451e10a-...`) — header, timeline (9 turns, SEED_FIRED tone for turns 3/4/7/8, FORCED_ESCALATION tone for turn 6), empty Counterfactuals, closing line.
+- [x] Rich-fixture variant (`?fixture=rich`) verifies populated Counterfactuals: 2 dormant seeds with origin context, 1 near-miss coup pair (Irena 7 / Nadia 8 on d02). Screenshot `phase8-task83-counterfactuals-rich.png`.
+- [x] OG card renders against both fixtures via `/share/dev/opengraph-image` and `/share/dev-rich/opengraph-image`. Real run shows mixed flavor tiles (DOMINANT/MORAL/WILDCARD); rich shows all-DOMINANT. Screenshots `phase8-task84-og-real.png`, `phase8-task84-og-rich-v2.png`.
+- [x] Public share page `/share/dev` and `/share/dev-rich` mount the same `PostMortemView` as the authed route, with per-run page title from `generateMetadata`.
+- [x] Closed-run redirect: `(authed)/run/[id]/page.tsx` checks `end_state` BEFORE mounting the dashboard.
+- [x] Backend test suite green: 447 passing including 12 new post-mortem tests.
+
+**Deferred to Phase 9:**
+- Twitter/X, Discord, Bluesky unfurl verification (requires public URL).
+- Real-run share-button affordance from inside the post-mortem (copy-link UX).
 
 ---
 
@@ -2457,6 +2472,13 @@ Any gap → back to fix.
 - **Cloud-Supabase IPv6 unreachability bites in Phase 7.** The cloud project's direct-connect endpoint (`db.<ref>.supabase.co:5432`) is IPv6-only on residential networks and a `psycopg.OperationalError: No route to host` is what the user sees. Workaround: use the **session pooler** URL (`aws-0-<region>.pooler.supabase.com:5432`) which is IPv4-enabled. Build via Supabase dashboard → Project Settings → Database → Session pooler. Critical: scheme MUST be `postgresql+psycopg://` (not `postgresql://` or `postgres://`), and password must be URL-encoded (`%` → `%25` first, then `! # $`). Already documented under `backend/CLAUDE.md`'s Migrations section; cross-referenced here because Phase 7 is when it actually trips a player-facing flow.
 - **Frontend `MeResponse` type was a Phase 6 scaffold guess that didn't match `/me`'s actual flat response.** Phase 6 visual tests never hit `/me` with a real session, so the bug only surfaced in Phase 7. Fixed by aligning the type to backend's `UserInfo` (flat `{id, email, display_name, next_run_at}`) — `next_run_at === null` means eligible. Lesson: when a phase is "scaffold the type", actually invoke the API at least once before declaring done. Affected files: `frontend/lib/api/client.ts`, `frontend/app/(authed)/play/page.tsx`.
 - **Cloud schema bootstrap is a separate workflow from local migrations.** Path that worked: (1) `supabase link --project-ref <ref>`, (2) inspect remote tables via Supabase MCP `list_tables` to see what exists, (3) apply Alembic's game-tables migration via `apply_migration` MCP tool (NOT `supabase db push`, which only handles `supabase/migrations/*.sql`), (4) `UPDATE alembic_version SET version_num = '<head>'` in the same migration so future runs against remote know the schema is current. Doing this through the MCP avoids the IPv6 / direct-connect / pooler password / psycopg URL-encoding maze entirely — the MCP uses the user's HTTPS session, not a Postgres connection.
+
+### Phase 8 (2026-04-25)
+
+- **`with_msgpack_allowlist` is a no-op when the existing allowlist is `True`.** Symptom: my first cut wrapped `saver.serde = saver.serde.with_msgpack_allowlist(_ALLOWED_MSGPACK_TYPES)` and the warning didn't go away — and the unit test that introspected `_allowed_msgpack_modules` failed because the attribute stayed `True`. Root cause: the helper short-circuits with `return self` when the base is `True` (the permissive sentinel) or `False`. Fix: construct a fresh `JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_MSGPACK_TYPES)` and rebind onto `saver.serde`. The new serializer is in "explicit allowlist" mode — anything off-list now logs "Blocked" rather than allowing-with-warning, which is a stricter (and intended) failure mode. File: `backend/app/agent/checkpointer.py`.
+- **`opengraph-image.tsx`'s `params` is a Promise in Next.js 16.** Symptom: the OG card showed the fallback "A daily narrative roguelike." instead of the real run, even though the dev fallback path was correctly importing the fixture. Root cause: `params.token` was `undefined` because `params` is a Promise and the property access ran on the Promise object, not the resolved value. Next 16 logs a `sync-dynamic-apis` warning but still returns `undefined` for the property. Fix: type as `params: Promise<{token: string}>` and `await params`. Same convention as page components — already documented for `page.tsx` in `frontend/CLAUDE.md`, now applies to `opengraph-image.tsx` too. File: `frontend/app/share/[token]/opengraph-image.tsx`.
+- **Real Phase 7 exit run had zero `consequence_seeds` rows but multiple SEED_FIRED events.** Symptom: building the post-mortem from run `7451e10a-...` produced empty `seeds_fired` lists for turns 3/4/7/8 even though their events were `origin: SEED_FIRED`. Root cause: the engine's seed lifecycle (Phase 4) appears to delete the seed row when the seed fires, leaving the event's `origin_seed_id` referencing a row that no longer exists. Fix: defensive double-lookup in `build_post_mortem` — first try `seeds_fired_by_turn[turn_number]`, then fall back to `seeds_by_id[origin_seed_id]`. Both empty in this run; the post-mortem still surfaces "this turn was a seed-fired event" via the origin badge. The deletion-on-fire behavior is worth revisiting in Phase 9 — keeping the row with `fired=true` would let dormant + fired both surface in counterfactuals from a single source of truth.
+- **Phase 7 exit summary said "10 turns" but `turn_logs` only has 9.** Run records turn_number 0-8 (9 rows) ending in ENDURED. Plan summary was off-by-one — likely counting the initial respite as "before turn 1" while the engine numbers from 0. Not a bug, just a doc/engine mismatch worth flagging if a future eval references "turn count."
 
 ### Phase 7 issues found during exit run — triaged for Phase 8/9
 
