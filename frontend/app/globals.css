@@ -68,7 +68,7 @@
   --px-surface:   #242420;
   --px-border:    #3a3a34;
   --px-text:      #c8c4b0;
-  --px-text-dim:  #7a7a6e;
+  --px-text-dim:  #968f7d;
   --px-danger:    #8b2020;
   --px-warning:   #7a6020;
   --px-ok:        #2a5c2a;
@@ -213,6 +213,50 @@
 /* Pixel-art-feeling stepped transitions */
 .resource-bar-fill {
   transition: width 400ms steps(20);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Dashboard — 3-panel CSS Grid (ARCHITECTURE §8.3)
+   ────────────────────────────────────────────────────────────────────── */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-areas:
+    "header header"
+    "status event"
+    "status choose";
+  grid-template-columns: 320px 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 0;
+}
+
+.dashboard-area-header { grid-area: header; }
+.dashboard-area-status { grid-area: status; min-height: 0; }
+.dashboard-area-event  { grid-area: event;  min-height: 0; }
+.dashboard-area-choose { grid-area: choose; }
+
+/* Tablet — narrow the status column slightly. */
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 260px 1fr;
+  }
+}
+
+/* Mobile — single column, action above the fold, status at the bottom.
+   The page scrolls. The event panel's `lg:overflow-y-auto` (Tailwind
+   responsive utility) only kicks in at the desktop fixed-height grid. */
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-areas:
+      "header"
+      "event"
+      "choose"
+      "status";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    height: auto;
+    min-height: 100svh;
+  }
 }
 
 .status-critical {

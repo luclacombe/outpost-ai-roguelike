@@ -63,7 +63,12 @@ export default async function PlayPage() {
 }
 
 function ReadyOrLocked({ me }: { me: MeResponse }) {
-  if (me.daily_gate.can_start_run) {
+  // Backend contract: `next_run_at === null` ⇒ user is eligible right now.
+  // Any non-null value is the ISO-8601 UTC string of the next 00:00.
+  const canStartRun = me.next_run_at === null;
+  const next = me.next_run_at;
+
+  if (canStartRun) {
     return (
       <section className="space-y-6">
         <p className="font-terminal text-2xl leading-snug">
@@ -73,14 +78,10 @@ function ReadyOrLocked({ me }: { me: MeResponse }) {
           The cast and setting are generated when you begin. Choose carefully.
         </p>
         <BeginRunButton />
-        <p className="font-heading text-xs uppercase text-px-text-dim">
-          Total runs: {me.daily_gate.total_runs}
-        </p>
       </section>
     );
   }
 
-  const next = me.daily_gate.next_run_at;
   return (
     <section className="space-y-6">
       <p className="font-terminal text-2xl leading-snug">
@@ -101,9 +102,6 @@ function ReadyOrLocked({ me }: { me: MeResponse }) {
           </p>
         ) : null}
       </div>
-      <p className="font-heading text-xs uppercase text-px-text-dim">
-        Total runs: {me.daily_gate.total_runs}
-      </p>
     </section>
   );
 }

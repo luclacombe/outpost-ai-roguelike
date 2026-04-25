@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { CrtOverlay } from "@/components/CrtOverlay";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -38,7 +39,7 @@ export default async function AuthedLayout({
 
   return (
     <div data-setting="arctic" className="contents">
-      <div aria-hidden className="crt-overlay" />
+      <CrtOverlay />
       {children}
     </div>
   );

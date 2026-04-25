@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { API_BASE_URL, type StartRunResponse } from "@/lib/api/client";
+import { API_BASE_URL, type GameSessionResponse } from "@/lib/api/client";
 import { createClient } from "@/lib/supabase/client";
 
 export function BeginRunButton() {
@@ -45,7 +45,7 @@ export function BeginRunButton() {
         return;
       }
 
-      const data: StartRunResponse = await res.json();
+      const data: GameSessionResponse = await res.json();
       router.push(`/run/${data.game_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error.");
