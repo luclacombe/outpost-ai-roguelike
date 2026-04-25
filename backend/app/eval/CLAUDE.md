@@ -21,6 +21,7 @@ hot path.
 - `repetition.py` — pairwise BLEU-2 narrative repetition (NLTK, no LLM).
 - `balance.py` — aggregated survival/resource/forced-choice metrics across runs.
 - `end_state.py` — observed end-state distribution vs SPEC target bands.
+- `inter_run_similarity.py` — mean pairwise cosine on per-run narration; reuses `personality._get_model` and `_cosine`. Verdict band `[0.55, 0.80]`.
 - `types.py` — `RunRecord`, the canonical Pydantic snapshot of one simulated run. Single source of truth — do not shadow with per-module variants.
 
 ## Naming convention
@@ -58,3 +59,11 @@ call downloads ~80MB, subsequent calls are free.
   `messages.create` call args.
 - Using prompt caching for per-call judges. The prompt is small and varies
   per response — cache-write overhead would dominate.
+- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Metrics consume `RunRecord.tool_calls` (built from the live SSE / in-memory stream). Until that gap closes, `tool_validity_rate` measures applied calls only — rejected-at-resolve calls do not survive into stored runs.
+
+## Test layout
+
+- Eval-package unit tests live next to the modules: `tests/test_eval_*.py`. They import the metric directly and are part of the default `pytest tests/` run (no marker).
+- Pipeline-level tests live under `tests/eval/` with their own `conftest.py` (Postgres-backed checkpointer + auth-user seeding). They are gated by `pytest.mark.eval` and excluded by `addopts = "-m 'not eval and not integration'"` in `pyproject.toml`. Run explicitly: `uv run pytest tests/eval/ -m eval`.
+- The pipeline test `test_simulated_run_meets_thresholds` requires a reachable Postgres — it SKIPs (not fails) when unreachable. Use the standard local override: `DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:54322/postgres uv run pytest tests/eval/ -m eval`.
+- Shared respx body factories (Haiku debate / autonomous / Sonnet narration) live in `tests/fixtures/_factories.py::make_haiku_debate_side_effect`. New eval tests reuse this rather than redefining call-routing logic per file.
