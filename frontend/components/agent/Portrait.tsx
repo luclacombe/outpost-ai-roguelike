@@ -42,16 +42,22 @@ export function Portrait({
   alt = "",
 }: Props) {
   const dataUri = useMemo(() => {
-    const style = variant === "portrait" ? pixelArt : thumbs;
-    const overrides =
-      variant === "portrait" ? SETTING_OVERRIDES[setting] : {};
-
-    const svg = createAvatar(style, {
-      seed,
-      size,
-      backgroundColor: PORTRAIT_BG,
-      ...overrides,
-    }).toString();
+    // Each style has its own Options union; createAvatar's generic narrows on
+    // the literal style argument, so branch instead of using a ternary that
+    // would collapse to a wider union TS can't satisfy.
+    const svg =
+      variant === "portrait"
+        ? createAvatar(pixelArt, {
+            seed,
+            size,
+            backgroundColor: PORTRAIT_BG,
+            ...SETTING_OVERRIDES[setting],
+          }).toString()
+        : createAvatar(thumbs, {
+            seed,
+            size,
+            backgroundColor: PORTRAIT_BG,
+          }).toString();
 
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   }, [seed, setting, size, variant]);

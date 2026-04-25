@@ -116,3 +116,18 @@ Never replace a shadcn primitive with a raw `<div>` for "simplicity."
 - Letting Tailwind's `dark:` variants leak in — we have one theme (dark). The `dark` class is unused; do not gate styles on it.
 - Hardcoded hex colors in components — always go through palette vars (`var(--px-accent)` or `bg-px-accent`).
 - `text-zinc-*`, `text-neutral-*`, `bg-slate-*` — these are scaffold leftovers. Use `text-foreground`, `text-px-text-dim`, `bg-card`, `bg-px-surface` instead.
+
+---
+
+## Next.js 16 conventions to remember
+
+- **`proxy.ts`, not `middleware.ts`.** Next 16 renamed the file convention. The exported function is also `proxy` (not `middleware`). The supabase helper at `lib/supabase/middleware.ts` keeps its old name internally — only the root file is `proxy.ts`.
+- **`searchParams` is a Promise.** Page components receive `searchParams: Promise<{...}>`; `await` it before reading. Same for `params`.
+- **`cookies()` is async.** Always `await cookies()` before accessing.
+- **Client component triggers OAuth.** Server actions don't expose `window.location.origin`, which we need for `redirectTo`. Sign-in is a client `'use client'` component.
+- **Auth gate uses `getUser()`, not `getSession()`.** `getSession()` trusts the cookie; `getUser()` re-validates against Supabase. Always `getUser()` on the server.
+- **Middleware (proxy) skips assets via matcher.** The matcher excludes `_next/*`, image extensions, and fonts — don't widen it without reason; every match runs a Supabase token refresh.
+
+## Supabase env tolerance
+
+Both the proxy and the `(authed)` layout no-op when `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` are unset. The landing remains reachable in a fresh clone with no `.env.local`. CI / production must set both — the SignInButton click will surface the failure visibly otherwise.
