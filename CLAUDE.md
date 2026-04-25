@@ -137,6 +137,18 @@ Use the right skill for the task:
 - Skipping prompt caching "for simplicity" — cache_control is mandatory
 - One LLM call per agent in debate — use one batched XML call (see ARCHITECTURE §3.6)
 - Writing AI-tell prose: "unfortunately", "delve into", em-dash overuse, rule-of-three lists, "a tapestry of" (run `/humanizer` on user-facing prose)
+- Running CI without inlined `Settings()` env placeholders. `app.config.settings = Settings()` runs at module import; CI runners have no `.env`, so importing `app.*` for `pytest` or `ruff` without setting `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `FRONTEND_URL` at the job level fails before any test runs. Pattern is in `.github/workflows/test.yml` and `deploy.yml` — copy if you add a new workflow that imports the app.
+- Adding a transitive dep that pulls `python-jose` back in. We removed it in Phase 9 because its `ecdsa` transitive (Minerva timing attack on P-256) tripped Dependabot HIGH. JWT signing/verification goes through `pyjwt[crypto]`; the auth tests that forge ES256 keypairs use `cryptography.hazmat` directly.
+
+## Production / deploy gotchas
+
+- **CORS allowlist is single-origin** (`FRONTEND_URL` + `localhost:3000`). Vercel preview deploys (each PR gets a `*.vercel.app` URL) will be blocked from hitting prod backend. Acceptable for MVP; if previews-against-prod become a need, switch to a regex match on `*.vercel.app` and gate on auth.
+- **Supabase Auth needs the Vercel domain in two places:** dashboard → Authentication → URL Configuration → "Site URL" AND "Redirect URLs" (`https://<vercel>/auth/callback`). Without both, `signInWithOAuth` returns 400 silently or redirects to `localhost`.
+- **NEXT_PUBLIC_API_BASE_URL chicken-and-egg.** Vercel needs the Railway URL; Railway needs `FRONTEND_URL` (CORS). Order: deploy Vercel with placeholder API URL → grab Vercel domain → deploy Railway with that as `FRONTEND_URL` → grab Railway URL → update Vercel env → redeploy.
+- **Railway free tier idle-sleeps.** First request after inactivity adds 1–3s. For a daily-run game this is fine. Upgrade to Pro with `min_machines_running=1` only if it bites real users.
+- **Env-var precedence is OS env > `.env` file** (pydantic-settings default). Inside Docker compose this is exploited: `docker-compose.yml` sets `DATABASE_URL=...host.docker.internal:54322...` so the container always hits local Postgres regardless of what `.env` says. Same trick for tests via `DATABASE_URL=... uv run pytest`.
+- **`pnpm-workspace.yaml` without a `packages` field crashes pnpm 9** (CI default), works on pnpm 10. Pin the version via `packageManager` in `frontend/package.json` and point `pnpm/action-setup` at it via `package_json_file`.
+- **`.github/workflows/eval.yml` requires GH secrets** (`ANTHROPIC_API_KEY`, `LANGFUSE_*`, `LANGSMITH_API_KEY`) to actually run real-LLM eval. Without secrets the job runs but the eval test SKIPs the real-LLM path; `OUTPOST_EVAL_REAL_LLM=1` is set unconditionally in the workflow, so the gate becomes silently weaker. Audit secret presence after each token rotation.
 
 ---
 
