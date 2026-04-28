@@ -28,6 +28,7 @@ only way to reconstruct the full picture for the validity-rate metric.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
@@ -38,7 +39,8 @@ from app.database import async_session_factory
 from app.dependencies import get_current_user
 from app.eval.types import RunRecord
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import ColonyState, EndState, ToolCall
+from app.game.schemas import ColonyState, ToolCall
+from app.game.setting_loader import load_setting
 from app.main import app
 from tests.fixtures.simulated_player import SimulatedPlayer
 from tests.test_agent_router import _collect_stream
@@ -249,10 +251,167 @@ async def simulate_game(
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
+    # `ended` is informational — `final_state.end_state` is authoritative.
+    _ = ended
+
+    return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
+
+
+async def simulate_game_with_player(
+    *,
+    setting_id: str,
+    seed: int = 0,
+    real_llm: bool = False,
+    max_turns: int = 12,
+    user_id: UUID,
+    player: Any,  # ducktyped: .pick(proposals: list[dict]) -> str
+    on_turn_input: Callable[[dict[str, Any]], None] | None = None,
+) -> RunRecord:
+    """Variant of simulate_game that accepts a pre-built player and emits
+    per-turn input to a callback. Used by the LLM playtest orchestrator.
+
+    Differences vs. simulate_game:
+      - No `policy` argument; caller passes an already-constructed `player`.
+      - `on_turn_input(turn_input_dict)` fires before each pick so the
+        LLMPlayer can wire its turn_input_provider closure.
+
+    The `setting_id` argument is informational (server picks the setting
+    from (user_id, UTC day)); the returned RunRecord reflects what the
+    server actually used.
+
+    `real_llm` is a no-op flag here; intercept network externally via respx.
+    """
+    aggregator = _RunAggregator()
+
+    app.dependency_overrides[get_current_user] = lambda: _auth_override(user_id)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            create_resp = await client.post("/game/session")
+            assert create_resp.status_code == 201, create_resp.text
+            game_id = UUID(create_resp.json()["game_id"])
+
+            for _turn_idx in range(max_turns):
+                # ---- /turn ----
+                async with client.stream("POST", f"/game/{game_id}/turn") as resp:
+                    assert resp.status_code == 200, await resp.aread()
+                    turn_frames = await _collect_stream(resp)
+                aggregator.absorb_frames(turn_frames)
+
+                if any(f["event"] == "run_over" for f in turn_frames):
+                    break
+
+                pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
+                if pr is None:
+                    break
+                proposals = _proposals_from_frame(pr)
+                if not proposals:
+                    break
+
+                # Assemble per-turn input dict for the LLM persona and notify
+                # the caller before pick() so turn_input_provider is wired.
+                if on_turn_input is not None:
+                    colony = await _load_final_state(game_id)
+                    on_turn_input(
+                        _assemble_turn_input(turn_frames, proposals, _turn_idx + 1, colony)
+                    )
+
+                chosen_id = player.pick(proposals)
+
+                # ---- /decide ----
+                async with client.stream(
+                    "POST",
+                    f"/game/{game_id}/decide",
+                    json={"chosen_proposal_id": chosen_id},
+                ) as resp:
+                    assert resp.status_code == 200, await resp.aread()
+                    decide_frames = await _collect_stream(resp)
+                aggregator.absorb_frames(decide_frames)
+
+                if any(f["event"] == "run_over" for f in decide_frames):
+                    break
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    policy = str(getattr(player, "persona", None) and player.persona.id or "llm")
+    return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
+
+
+def _assemble_turn_input(
+    turn_frames: list[dict[str, Any]],
+    proposals: list[dict[str, Any]],
+    turn_number: int,
+    colony: ColonyState,
+) -> dict[str, Any]:
+    """Project SSE frames + current ColonyState into the dict shape that
+    PersonaSession._format_turn_user_message expects.
+
+    Frame names emitted by app/agent/service.py:
+      - `agent_spoke`     — {agent_id, text}
+      - `proposals_ready` — {turn_number, current_event, proposals}
+      - `narration`       — {text}
+      - `turn_advanced`   — {turn_number, legitimacy, player_health, cost_cents}
+      - `decision_applied`, `autonomous_action`, `death`, `run_over`, `done`
+
+    There is no `dashboard` or `event_intro` frame. The dashboard is assembled
+    from the ColonyState (loaded after /turn completes, before pick). The event
+    comes from proposals_ready.current_event.
+    """
+    # Event: from proposals_ready frame.
+    pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
+    raw_event = (pr["data"].get("current_event") or {}) if pr else {}
+
+    # Advisor reactions: one agent_spoke frame per advisor.
+    advisor_reactions = [
+        {"agent_id": f["data"]["agent_id"], "text": f["data"]["text"]}
+        for f in turn_frames
+        if f["event"] == "agent_spoke" and isinstance(f.get("data"), dict)
+    ]
+
+    # Setting lore from setting file.
+    try:
+        setting = load_setting(colony.setting_id)
+        setting_lore = setting.lore
+    except Exception:  # noqa: BLE001 — file missing in test env is acceptable
+        setting_lore = ""
+
+    # Dashboard resources: {resource_id: value}.
+    resources = {rid: r.value for rid, r in colony.resources.items()}
+
+    # Advisor list from colony agents (alive only, so persona doesn't see dead advisors).
+    advisors = [
+        {"id": str(a.id), "name": a.name, "role": a.role} for a in colony.agents if a.is_alive
+    ]
+
+    return {
+        "turn": turn_number,
+        "setting_lore": setting_lore,
+        "dashboard": {
+            "resources": resources,
+            "legitimacy": colony.legitimacy,
+            "player_health": colony.player_health,
+            "advisors": advisors,
+        },
+        "event": raw_event,
+        "proposals": proposals,
+        "advisor_reactions": advisor_reactions,
+    }
+
+
+async def _build_run_record(
+    game_id: UUID,
+    aggregator: _RunAggregator,
+    *,
+    policy: str,
+    seed: int,
+) -> RunRecord:
+    """Shared tail logic: build a RunRecord from final DB state + turn_logs.
+
+    Factored out so simulate_game and simulate_game_with_player both produce
+    a RunRecord using the same authoritative source.
+    """
     final_state = await _load_final_state(game_id)
     turn_logs = await _read_turn_logs(game_id)
 
-    # DB-derived per-turn aggregates.
     tool_calls: list[ToolCall] = []
     forced_choice_turns = 0
     resource_history: dict[str, list[int]] = {}
@@ -265,26 +424,16 @@ async def simulate_game(
             value = int(rdict.get("value", 0))
             resource_history.setdefault(rid, []).append(value)
 
-    end_state: EndState | None = final_state.end_state
-    turns_played = final_state.turn_number
-    final_player_health = final_state.player_health
-    agents_alive_at_end = sum(1 for a in final_state.agents if a.is_alive)
-    total_agents = len(final_state.agents)
-    cost_cents = final_state.turn_cost_cents
-
-    # `ended` is informational — `final_state.end_state` is authoritative.
-    _ = ended
-
     return RunRecord(
         setting_id=final_state.setting_id,
         policy=policy,
         seed=seed,
-        end_state=end_state,
-        turns_played=turns_played,
-        final_player_health=final_player_health,
-        agents_alive_at_end=agents_alive_at_end,
-        total_agents=total_agents,
-        cost_cents=cost_cents,
+        end_state=final_state.end_state,
+        turns_played=final_state.turn_number,
+        final_player_health=final_state.player_health,
+        agents_alive_at_end=sum(1 for a in final_state.agents if a.is_alive),
+        total_agents=len(final_state.agents),
+        cost_cents=final_state.turn_cost_cents,
         tool_calls=tool_calls,
         agent_responses_per_agent=aggregator.agent_responses_per_agent,
         resource_history=resource_history,
@@ -293,4 +442,4 @@ async def simulate_game(
     )
 
 
-__all__ = ["simulate_game", "_read_turn_logs"]
+__all__ = ["simulate_game", "simulate_game_with_player", "_read_turn_logs"]
