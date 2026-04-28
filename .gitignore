@@ -57,3 +57,6 @@ phase*-*.jpeg
 
 # Claude local overrides
 .claude/settings.local.json
+
+# Git worktrees (per superpowers:using-git-worktrees skill)
+.worktrees/
