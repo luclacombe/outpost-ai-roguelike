@@ -166,7 +166,10 @@ async def _drive_one_game(
     return PerRunArchive(
         run_id=str(session_row.id),
         persona_id=persona_id,
-        setting_id=setting_id,
+        # Use the actually-served setting from the run record, not the
+        # requested setting — the daily-gate-aware service.create_game_session
+        # may pick a different setting (one-run-per-day → server-side rotation).
+        setting_id=run_record.setting_id,
         seed=seed,
         end_state=str(run_record.end_state.value if run_record.end_state else "UNKNOWN"),
         turns_played=run_record.turns_played,
