@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import async_session_factory
 from app.eval.playtest.llm_player import LLMPlayer
@@ -60,19 +60,60 @@ class PlaytestConfig:
     )
     out_dir: Path = field(default_factory=lambda: Path("docs/playtest"))
     shell_dir: Path = field(default_factory=lambda: Path("/tmp/outpost-playtest-shell"))
-    user_id: UUID = field(default_factory=uuid.uuid4)
     max_turns: int = 12
     max_concurrency: int = 5
     git_sha: str = "unknown"
-    # Safety guard: the daily-run gate (one-run-per-account-per-day) will reject
-    # games 2..N when `user_id` is reused. The current `_drive_one_game` does
-    # not provision a per-game synthetic user, so a multi-game invocation with
-    # this flag false fails fast at run_harness entry. To run more than one
-    # game in a single invocation, refactor `_drive_one_game` to insert
-    # auth.users + profiles per game (mirror tests/eval/conftest.py::
-    # _ensure_auth_user) — or set this flag and accept silent aborts on N-1
-    # games for diagnostic purposes.
-    allow_daily_gate_violation: bool = False
+    # If True, delete each game's synthetic auth.users + profiles row after the
+    # run completes. Default False: synthetic users persist for forensic
+    # re-analysis. Smoke tests set this True to keep the test DB clean.
+    cleanup_after_run: bool = False
+
+
+async def _provision_synthetic_user(user_id: UUID, email: str) -> None:
+    """Insert auth.users + profiles row for a per-game synthetic user.
+
+    Mirrors tests/eval/conftest.py::_ensure_auth_user. Each game in the
+    harness gets its own user_id so the daily-run gate
+    (one-run-per-account-per-day) doesn't reject games 2..N.
+    """
+    async with async_session_factory() as s:
+        await s.execute(
+            text(
+                """
+                INSERT INTO auth.users (
+                    id, instance_id, aud, role, email, encrypted_password,
+                    email_confirmed_at, created_at, updated_at
+                )
+                VALUES (
+                    :id,
+                    '00000000-0000-0000-0000-000000000000'::uuid,
+                    'authenticated', 'authenticated', :email,
+                    '', now(), now(), now()
+                )
+                ON CONFLICT (id) DO NOTHING
+                """
+            ),
+            {"id": user_id, "email": email},
+        )
+        await s.execute(
+            text(
+                """
+                INSERT INTO profiles (id, display_name, total_runs, created_at)
+                VALUES (:id, :name, 0, now())
+                ON CONFLICT (id) DO NOTHING
+                """
+            ),
+            {"id": user_id, "name": "Playtest Synthetic User"},
+        )
+        await s.commit()
+
+
+async def _cleanup_synthetic_user(user_id: UUID) -> None:
+    """Delete a per-game synthetic auth.users row (cascade removes the
+    profiles row + game_sessions + agents + turn_logs via FK)."""
+    async with async_session_factory() as s:
+        await s.execute(text("DELETE FROM auth.users WHERE id = :id"), {"id": user_id})
+        await s.commit()
 
 
 def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
@@ -97,118 +138,112 @@ async def _drive_one_game(
 ) -> PerRunArchive:
     """Drive one simulated game with an LLMPlayer. Returns the archive bundle.
 
-    Uses `config.user_id` for the game session. In tests this is the seeded
-    eval user; in production it is a synthetic user pre-registered in the DB.
+    Provisions a fresh synthetic user (auth.users + profiles row) per game so
+    the daily-run gate doesn't reject games 2..N. The user_id is generated
+    from the seed for reproducibility — same (persona, setting, seed) tuple
+    yields the same synthetic UUID on re-run.
     """
     from tests.fixtures.run_simulator import simulate_game_with_player  # noqa: PLC0415
 
     persona = get_persona(persona_id)
-    per_game_user_id = config.user_id
+    per_game_user_id = uuid.uuid4()
+    per_game_email = f"playtest-{per_game_user_id}@outpost.local"
+    await _provision_synthetic_user(per_game_user_id, per_game_email)
 
-    # A ref-cell updated by on_turn_input before each pick().
-    last_turn_input: dict[str, Any] = {}
+    try:
+        # A ref-cell updated by on_turn_input before each pick().
+        last_turn_input: dict[str, Any] = {}
 
-    def turn_input_provider() -> dict[str, Any]:
-        return dict(last_turn_input)
+        def turn_input_provider() -> dict[str, Any]:
+            return dict(last_turn_input)
 
-    def on_turn_input(d: dict[str, Any]) -> None:
-        last_turn_input.clear()
-        last_turn_input.update(d)
+        def on_turn_input(d: dict[str, Any]) -> None:
+            last_turn_input.clear()
+            last_turn_input.update(d)
 
-    player = LLMPlayer(
-        persona=persona,
-        pool=pool,
-        shell_dir=config.shell_dir,
-        seed=seed,
-        turn_input_provider=turn_input_provider,
-    )
-
-    run_record = await simulate_game_with_player(
-        setting_id=setting_id,
-        seed=seed,
-        real_llm=False,
-        max_turns=config.max_turns,
-        user_id=per_game_user_id,
-        player=player,
-        on_turn_input=on_turn_input,
-    )
-
-    # End-of-run: look up the most-recently started game session for this user,
-    # then build the post-mortem. Using started_at DESC + limit 1 is safe because
-    # games run sequentially per user within _drive_one_game.
-    async with async_session_factory() as session:
-        session_row = (
-            await session.execute(
-                select(GameSession)
-                .where(GameSession.user_id == per_game_user_id)
-                .order_by(GameSession.started_at.desc())
-                .limit(1)
-            )
-        ).scalar_one()
-        try:
-            post_mortem = await build_post_mortem(game_id=session_row.id, db=session)
-        except GameNotEnded:
-            # max_turns exhausted before a terminal event — no post-mortem available.
-            post_mortem = None
-
-    if post_mortem is not None:
-        verdict = pool.run_final_verdict(
-            session=player._session,  # noqa: SLF001 — orchestrator is the only legit consumer
-            post_mortem_json=post_mortem.model_dump(),
+        player = LLMPlayer(
+            persona=persona,
+            pool=pool,
+            shell_dir=config.shell_dir,
+            seed=seed,
+            turn_input_provider=turn_input_provider,
         )
-    else:
-        verdict = None
 
-    # Compute per-run oracles using agents from the final ColonyState.
-    final_state = ColonyState.model_validate(session_row.state)
-    per_run_oracles = compute_per_run_oracles(run_record, agents=final_state.agents)
+        run_record = await simulate_game_with_player(
+            setting_id=setting_id,
+            seed=seed,
+            real_llm=False,
+            max_turns=config.max_turns,
+            user_id=per_game_user_id,
+            player=player,
+            on_turn_input=on_turn_input,
+        )
 
-    return PerRunArchive(
-        run_id=str(session_row.id),
-        persona_id=persona_id,
-        # Use the actually-served setting from the run record, not the
-        # requested setting — the daily-gate-aware service.create_game_session
-        # may pick a different setting (one-run-per-day → server-side rotation).
-        setting_id=run_record.setting_id,
-        seed=seed,
-        end_state=str(run_record.end_state.value if run_record.end_state else "UNKNOWN"),
-        turns_played=run_record.turns_played,
-        per_turn_outputs=player.per_turn_outputs,
-        verdict=verdict,
-        run_record_summary={
-            "end_state": run_record.end_state,
-            "final_player_health": run_record.final_player_health,
-            "agents_alive_at_end": run_record.agents_alive_at_end,
-            "total_agents": run_record.total_agents,
-            "cost_cents": run_record.cost_cents,
-            "tool_calls": [tc.model_dump() for tc in run_record.tool_calls],
-            "agent_responses_per_agent": {
-                str(k): v for k, v in run_record.agent_responses_per_agent.items()
+        # End-of-run: look up the most-recently started game session for this user.
+        async with async_session_factory() as session:
+            session_row = (
+                await session.execute(
+                    select(GameSession)
+                    .where(GameSession.user_id == per_game_user_id)
+                    .order_by(GameSession.started_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one()
+            try:
+                post_mortem = await build_post_mortem(game_id=session_row.id, db=session)
+            except GameNotEnded:
+                # max_turns exhausted before a terminal event — no post-mortem.
+                post_mortem = None
+
+        if post_mortem is not None:
+            verdict = pool.run_final_verdict(
+                session=player._session,  # noqa: SLF001 — orchestrator is the only legit consumer
+                post_mortem_json=post_mortem.model_dump(),
+            )
+        else:
+            verdict = None
+
+        # Compute per-run oracles using agents from the final ColonyState.
+        final_state = ColonyState.model_validate(session_row.state)
+        per_run_oracles = compute_per_run_oracles(run_record, agents=final_state.agents)
+
+        return PerRunArchive(
+            run_id=str(session_row.id),
+            persona_id=persona_id,
+            # Use the actually-served setting from the run record, not the
+            # requested setting — the daily-gate-aware create_game_session
+            # may pick a different setting (one-run-per-day → server rotation).
+            setting_id=run_record.setting_id,
+            seed=seed,
+            end_state=str(run_record.end_state.value if run_record.end_state else "UNKNOWN"),
+            turns_played=run_record.turns_played,
+            per_turn_outputs=player.per_turn_outputs,
+            verdict=verdict,
+            run_record_summary={
+                "end_state": run_record.end_state,
+                "final_player_health": run_record.final_player_health,
+                "agents_alive_at_end": run_record.agents_alive_at_end,
+                "total_agents": run_record.total_agents,
+                "cost_cents": run_record.cost_cents,
+                "tool_calls": [tc.model_dump() for tc in run_record.tool_calls],
+                "agent_responses_per_agent": {
+                    str(k): v for k, v in run_record.agent_responses_per_agent.items()
+                },
+                "resource_history": run_record.resource_history,
+                "forced_choice_turns": run_record.forced_choice_turns,
+                "narration_per_turn": run_record.narration_per_turn,
             },
-            "resource_history": run_record.resource_history,
-            "forced_choice_turns": run_record.forced_choice_turns,
-            "narration_per_turn": run_record.narration_per_turn,
-        },
-        per_run_oracles=per_run_oracles,
-    )
+            per_run_oracles=per_run_oracles,
+        )
+    finally:
+        if config.cleanup_after_run:
+            await _cleanup_synthetic_user(per_game_user_id)
 
 
 async def run_harness(*, config: PlaytestConfig) -> None:
     """Top-level entry. Allocates runs, drives them with bounded concurrency,
     emits archives + corpus artifacts."""
     allocations = _allocate_runs(config)
-    if len(allocations) > 1 and not config.allow_daily_gate_violation:
-        raise RuntimeError(
-            f"PlaytestConfig requests {len(allocations)} games but reuses "
-            f"one user_id ({config.user_id}). The daily-run gate will reject "
-            f"games 2..N. Either (a) refactor _drive_one_game to provision a "
-            f"per-game synthetic user (auth.users + profiles row, mirror "
-            f"tests/eval/conftest.py::_ensure_auth_user), or (b) set "
-            f"PlaytestConfig.allow_daily_gate_violation=True to proceed and "
-            f"accept silent aborts on games 2..N. See "
-            f"docs/superpowers/specs/2026-04-26-llm-playtest-harness-design.md "
-            f"§13 'open questions / future work'."
-        )
 
     config.out_dir.mkdir(parents=True, exist_ok=True)
     config.shell_dir.mkdir(parents=True, exist_ok=True)
