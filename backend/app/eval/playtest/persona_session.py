@@ -35,7 +35,23 @@ SONNET_MODEL_ID = "claude-sonnet-4-6"
 
 
 class PersonaSessionError(RuntimeError):
-    """Raised when a subprocess call fails or output is unparseable."""
+    """Base exception for PersonaSession failures. SubprocessPool catches
+    this base and dispatches on subclass for spec §10 retry/degrade rules."""
+
+
+class PersonaTimeout(PersonaSessionError):  # noqa: N818 — name is part of the public API
+    """Subprocess hit the per-turn timeout (subprocess.TimeoutExpired). Pool
+    should retry once via --resume, then degrade to fallback pick."""
+
+
+class PersonaSubprocessError(PersonaSessionError):
+    """Subprocess returned non-zero exit code. Pool should retry once via
+    --resume, then degrade."""
+
+
+class PersonaParseError(PersonaSessionError):
+    """Output failed JSON parse OR Pydantic schema validation. Pool should
+    re-prompt once with strict schema reminder, then degrade."""
 
 
 def _build_system_prompt(persona: Persona) -> str:
@@ -88,20 +104,20 @@ def _build_system_prompt(persona: Persona) -> str:
 
 def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
     """Extract session_id and inner JSON from the `claude --output-format json`
-    envelope. Returns (session_id, inner_dict). Raises PersonaSessionError on
+    envelope. Returns (session_id, inner_dict). Raises PersonaParseError on
     any parse failure."""
     try:
         envelope = json.loads(raw_stdout)
     except json.JSONDecodeError as exc:
-        raise PersonaSessionError(f"envelope is not JSON: {exc}") from exc
+        raise PersonaParseError(f"envelope is not JSON: {exc}") from exc
 
     session_id = envelope.get("session_id")
     if not session_id:
-        raise PersonaSessionError("envelope missing session_id")
+        raise PersonaParseError("envelope missing session_id")
 
     result_text = envelope.get("result", "")
     if not isinstance(result_text, str):
-        raise PersonaSessionError("envelope.result is not a string")
+        raise PersonaParseError("envelope.result is not a string")
 
     # Strip optional ```json ... ``` fence.
     text = result_text.strip()
@@ -110,16 +126,16 @@ def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
         first_nl = text.find("\n")
         last_fence = text.rfind("```")
         if first_nl == -1 or last_fence <= first_nl:
-            raise PersonaSessionError("malformed code-fence in result")
+            raise PersonaParseError("malformed code-fence in result")
         text = text[first_nl + 1 : last_fence].strip()
 
     try:
         inner = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise PersonaSessionError(f"inner result is not JSON: {exc}") from exc
+        raise PersonaParseError(f"inner result is not JSON: {exc}") from exc
 
     if not isinstance(inner, dict):
-        raise PersonaSessionError("inner result is not a JSON object")
+        raise PersonaParseError("inner result is not a JSON object")
 
     return session_id, inner
 
@@ -234,10 +250,10 @@ class PersonaSession:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PersonaSessionError(f"first-turn timeout after {exc.timeout}s") from exc
+            raise PersonaTimeout(f"first-turn timeout after {exc.timeout}s") from exc
 
         if proc.returncode != 0:
-            raise PersonaSessionError(
+            raise PersonaSubprocessError(
                 f"first-turn subprocess returned {proc.returncode}: {proc.stderr[:500]}"
             )
 
@@ -247,7 +263,7 @@ class PersonaSession:
         try:
             return PersonaTurnOutput.model_validate(inner)
         except ValidationError as exc:
-            raise PersonaSessionError(f"per-turn output failed validation: {exc}") from exc
+            raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
 
     def subsequent_turn(
         self, *, turn_input: dict[str, Any], displayed_order: list[str]
@@ -281,10 +297,10 @@ class PersonaSession:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PersonaSessionError(f"subsequent-turn timeout after {exc.timeout}s") from exc
+            raise PersonaTimeout(f"subsequent-turn timeout after {exc.timeout}s") from exc
 
         if proc.returncode != 0:
-            raise PersonaSessionError(
+            raise PersonaSubprocessError(
                 f"subsequent-turn subprocess returned {proc.returncode}: {proc.stderr[:500]}"
             )
 
@@ -295,7 +311,7 @@ class PersonaSession:
         try:
             return PersonaTurnOutput.model_validate(inner)
         except ValidationError as exc:
-            raise PersonaSessionError(f"per-turn output failed validation: {exc}") from exc
+            raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
 
     def final_verdict(self, *, post_mortem_json: dict[str, Any]) -> PersonaRunVerdict:
         """Send the post-mortem JSON to the persona; expect a run-level verdict."""
@@ -347,10 +363,10 @@ class PersonaSession:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PersonaSessionError(f"final-verdict timeout after {exc.timeout}s") from exc
+            raise PersonaTimeout(f"final-verdict timeout after {exc.timeout}s") from exc
 
         if proc.returncode != 0:
-            raise PersonaSessionError(
+            raise PersonaSubprocessError(
                 f"final-verdict subprocess returned {proc.returncode}: {proc.stderr[:500]}"
             )
 
@@ -359,4 +375,4 @@ class PersonaSession:
         try:
             return PersonaRunVerdict.model_validate(inner)
         except ValidationError as exc:
-            raise PersonaSessionError(f"run-verdict output failed validation: {exc}") from exc
+            raise PersonaParseError(f"run-verdict output failed validation: {exc}") from exc

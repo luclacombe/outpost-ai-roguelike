@@ -9,7 +9,11 @@ from typing import Any
 
 import pytest
 
-from app.eval.playtest.persona_session import PersonaSession
+from app.eval.playtest.persona_session import (
+    PersonaParseError,
+    PersonaSession,
+    _parse_envelope_and_inner,
+)
 from app.eval.playtest.personas import OPTIMIZER
 from app.eval.playtest.schemas import PersonaTurnOutput
 
@@ -158,3 +162,58 @@ def test_final_verdict_parses_run_verdict(monkeypatch: pytest.MonkeyPatch, tmp_s
     verdict = session.final_verdict(post_mortem_json={"end_state": "ENDURED"})
     assert verdict.axes.stakes_felt_real.score == 4
     assert verdict.continue_tomorrow.decision is True
+
+
+@pytest.mark.parametrize(
+    "envelope_json,expects_raise",
+    [
+        # Baseline: fenced JSON inside .result
+        (
+            json.dumps({"session_id": "s", "result": '```json\n{"a": 1}\n```'}),
+            False,
+        ),
+        # Raw JSON, no fence
+        (
+            json.dumps({"session_id": "s", "result": '{"a": 1}'}),
+            False,
+        ),
+        # Fence with no language tag
+        (
+            json.dumps({"session_id": "s", "result": '```\n{"a": 1}\n```'}),
+            False,
+        ),
+        # Trailing prose after closing fence (rfind picks up the closing fence)
+        (
+            json.dumps({"session_id": "s", "result": '```json\n{"a": 1}\n```\nDone!'}),
+            False,
+        ),
+        # Prose BEFORE fence (broken — preamble fed to json.loads)
+        (
+            json.dumps({"session_id": "s", "result": 'Here:\n```json\n{"a": 1}\n```'}),
+            True,
+        ),
+        # Fence opened but never closed
+        (
+            json.dumps({"session_id": "s", "result": '```json\n{"a": 1}'}),
+            True,
+        ),
+        # Empty result
+        (json.dumps({"session_id": "s", "result": ""}), True),
+        # Envelope itself not JSON
+        ("not-valid-json", True),
+        # Envelope missing session_id
+        (json.dumps({"result": '{"a": 1}'}), True),
+        # result not a string
+        (json.dumps({"session_id": "s", "result": 42}), True),
+        # Inner JSON is not an object (e.g. a list)
+        (json.dumps({"session_id": "s", "result": "[1,2,3]"}), True),
+    ],
+)
+def test_parse_envelope_handles_fence_variants(envelope_json: str, expects_raise: bool) -> None:
+    if expects_raise:
+        with pytest.raises(PersonaParseError):
+            _parse_envelope_and_inner(envelope_json)
+    else:
+        session_id, inner = _parse_envelope_and_inner(envelope_json)
+        assert session_id == "s"
+        assert isinstance(inner, dict)
