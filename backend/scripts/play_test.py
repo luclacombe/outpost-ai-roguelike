@@ -64,6 +64,15 @@ class PlaytestConfig:
     max_turns: int = 12
     max_concurrency: int = 5
     git_sha: str = "unknown"
+    # Safety guard: the daily-run gate (one-run-per-account-per-day) will reject
+    # games 2..N when `user_id` is reused. The current `_drive_one_game` does
+    # not provision a per-game synthetic user, so a multi-game invocation with
+    # this flag false fails fast at run_harness entry. To run more than one
+    # game in a single invocation, refactor `_drive_one_game` to insert
+    # auth.users + profiles per game (mirror tests/eval/conftest.py::
+    # _ensure_auth_user) — or set this flag and accept silent aborts on N-1
+    # games for diagnostic purposes.
+    allow_daily_gate_violation: bool = False
 
 
 def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
@@ -184,12 +193,24 @@ async def _drive_one_game(
 async def run_harness(*, config: PlaytestConfig) -> None:
     """Top-level entry. Allocates runs, drives them with bounded concurrency,
     emits archives + corpus artifacts."""
+    allocations = _allocate_runs(config)
+    if len(allocations) > 1 and not config.allow_daily_gate_violation:
+        raise RuntimeError(
+            f"PlaytestConfig requests {len(allocations)} games but reuses "
+            f"one user_id ({config.user_id}). The daily-run gate will reject "
+            f"games 2..N. Either (a) refactor _drive_one_game to provision a "
+            f"per-game synthetic user (auth.users + profiles row, mirror "
+            f"tests/eval/conftest.py::_ensure_auth_user), or (b) set "
+            f"PlaytestConfig.allow_daily_gate_violation=True to proceed and "
+            f"accept silent aborts on games 2..N. See "
+            f"docs/superpowers/specs/2026-04-26-llm-playtest-harness-design.md "
+            f"§13 'open questions / future work'."
+        )
+
     config.out_dir.mkdir(parents=True, exist_ok=True)
     config.shell_dir.mkdir(parents=True, exist_ok=True)
     pool = SubprocessPool(max_concurrency=config.max_concurrency)
     started = time.monotonic()
-
-    allocations = _allocate_runs(config)
     archives: list[PerRunArchive] = []
     runs_for_corpus: list[RunRecord] = []
 
@@ -282,7 +303,13 @@ def main() -> None:  # pragma: no cover — CLI entry
     from datetime import UTC, datetime
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    out_dir = Path(args.out) if args.out else Path("docs/playtest") / today
+    if args.out:
+        out_dir = Path(args.out)
+    else:
+        # Anchor to repo root so artifacts land in <repo>/docs/playtest/<date>/
+        # regardless of cwd. Script lives at <repo>/backend/scripts/play_test.py.
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        out_dir = repo_root / "docs" / "playtest" / today
 
     git_sha = os.environ.get("OUTPOST_GIT_SHA", "unknown")
 
