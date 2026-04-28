@@ -39,23 +39,20 @@ in the top-level `scripts/` tier — application code can't depend on test fixtu
   pattern requires CoT before scoring; that needs thinking budget. Don't downgrade
   personas to `medium` — verdicts get noisy.
 
-## Daily-gate constraint (BLOCKING for >1 game per invocation)
+## Daily-gate handling (resolved)
 
-`config.user_id` is reused across all games. `app/game/service.py::create_game_session`
-enforces "one run per account per day" via `UPDATE profiles WHERE last_run_started_at
-< today_midnight`. Reusing one user → game #1 wins, games 2..N hit `DailyGateExceeded`.
+The daily-run gate (`app/game/service.py::create_game_session` enforces "one run
+per account per day") would otherwise reject games 2..N when a single user_id is
+reused. `_drive_one_game` provisions a fresh synthetic user per game via
+`_provision_synthetic_user` (mirrors `tests/eval/conftest.py::_ensure_auth_user`):
+fresh `uuid.uuid4()` + insert into `auth.users` + `profiles`. Synthetic emails
+are namespaced as `playtest-<uuid>@outpost.local`.
 
-`run_harness` raises a hard error when `len(allocations) > 1` AND
-`allow_daily_gate_violation=False`. To run multiple games per invocation:
-
-1. Implement per-game synthetic user provisioning in `_drive_one_game` — mirror
-   `tests/eval/conftest.py::_ensure_auth_user` to insert `auth.users` + `profiles`
-   rows per game, then thread the per-game `user_id` through.
-2. Or set `PlaytestConfig.allow_daily_gate_violation=True` and accept silent
-   aborts on games 2..N. (Diagnostic only — corrupts the run distribution.)
-
-**Until (1) is implemented, smoke testing is `runs_per_persona=1`, `personas=["one"]`.**
-The 42-game launch run is blocked on this.
+`PlaytestConfig.cleanup_after_run` (default `False`) controls whether the
+synthetic user is deleted post-run via `_cleanup_synthetic_user`. Default keeps
+the data for forensic re-analysis; smoke tests set it `True` to keep the test
+DB clean. The `auth.users` row's cascade FK removes `profiles`, `game_sessions`,
+`agents`, and `turn_logs` on delete.
 
 ## Output artifacts
 
@@ -85,15 +82,12 @@ cd backend && OUTPOST_PLAYTEST_REAL_LLM=1 ANTHROPIC_API_KEY=... \
   uv run pytest tests/eval/playtest/test_real_llm_smoke.py -v -m eval
 ```
 
-Cost: ~10¢ for one 3-turn game. The 42-game invocation is run via
-`uv run python -m scripts.play_test` (not pytest) and currently blocked on the
-daily-gate constraint above.
+Cost: ~10¢ for one 3-turn game. The 42-game invocation runs via
+`uv run python -m scripts.play_test` (not pytest). Each game provisions its
+own synthetic user, so multi-game runs no longer trip the daily-gate.
 
 ## Known follow-ups (deferred)
 
-- **Per-game user provisioning** so `runs_per_persona × len(personas)` games can
-  actually run in one invocation. This is the only blocker for the spec's
-  intended ~42-game workflow.
 - **Materialize `runs.json` aggregates** to match spec §9 (axis means, by_persona/
   by_setting flag splits, per-run position-bias Spearman). Currently aggregator
   recomputes from raw archives.

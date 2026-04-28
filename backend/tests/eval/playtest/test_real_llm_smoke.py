@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
     os.environ.get("OUTPOST_PLAYTEST_REAL_LLM") != "1",
     reason="OUTPOST_PLAYTEST_REAL_LLM not set; skipping real-LLM playtest",
 )
-async def test_real_llm_one_persona_one_game(eval_user_id, graph_postgres, tmp_path: Path) -> None:
+async def test_real_llm_one_persona_one_game(graph_postgres, tmp_path: Path) -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         pytest.skip("ANTHROPIC_API_KEY not set")
     if shutil.which("claude") is None:
@@ -35,9 +35,9 @@ async def test_real_llm_one_persona_one_game(eval_user_id, graph_postgres, tmp_p
             settings=["arctic_station_v1"],
             out_dir=out_dir,
             shell_dir=shell_dir,
-            user_id=eval_user_id,
             max_turns=3,  # keep cost ≤ ~10¢
             max_concurrency=1,
+            cleanup_after_run=True,
         )
     )
 

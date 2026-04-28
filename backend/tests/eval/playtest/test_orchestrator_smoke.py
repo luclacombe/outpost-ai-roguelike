@@ -19,12 +19,13 @@ from scripts.play_test import PlaytestConfig, run_harness
 async def test_orchestrator_writes_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     canned_persona_response_factory,
-    eval_user_id,  # provided by tests/eval/conftest.py via parent dir scan
-    graph_postgres,
+    graph_postgres,  # provides Postgres availability skip + injects checkpointer
     tmp_path: Path,
 ) -> None:
     """Smoke run: 1 persona × 1 game with everything mocked. Verifies that
-    the orchestrator produces docs/playtest-style artifacts."""
+    the orchestrator provisions its own synthetic user, runs the game, and
+    produces docs/playtest-style artifacts. cleanup_after_run=True keeps
+    the test DB clean."""
     from tests.fixtures._factories import make_haiku_debate_side_effect
 
     # Subprocess side: always return a canned valid PersonaTurnOutput
@@ -54,9 +55,9 @@ async def test_orchestrator_writes_artifacts(
                 settings=["arctic_station_v1"],
                 out_dir=out_dir,
                 shell_dir=tmp_path / "shell",
-                user_id=eval_user_id,
                 max_turns=3,
                 max_concurrency=1,
+                cleanup_after_run=True,
             )
         )
 
