@@ -178,18 +178,6 @@ class SubprocessPool:
             for attempt in (1, 2):
                 try:
                     out = method(turn_input=turn_input, displayed_order=displayed_order)
-                    if out.chosen_proposal_id not in displayed_order:
-                        # Defensive belt-and-suspenders. Pydantic schema
-                        # validation already enforces this; recorded as
-                        # invalid_pick rather than malformed.
-                        self.findings.invalid_pick_count += 1
-                        self.findings.by_persona[session.persona.id]["invalid_pick"] += 1
-                        # Fall through to retry/fallback path
-                        raise PersonaParseError(
-                            f"chosen_proposal_id {out.chosen_proposal_id!r} not in "
-                            f"displayed_order {displayed_order}"
-                        )
-                    return PoolPickResult(output=out, fallback_used=False)
                 except PersonaTimeout as exc:
                     logger.warning(
                         "%s timeout (attempt %d/2) for %s: %s",
@@ -199,6 +187,7 @@ class SubprocessPool:
                         exc,
                     )
                     self.findings.subprocess_hangs += 1
+                    continue
                 except PersonaSubprocessError as exc:
                     logger.warning(
                         "%s subprocess crash (attempt %d/2) for %s: %s",
@@ -208,6 +197,7 @@ class SubprocessPool:
                         exc,
                     )
                     self.findings.subprocess_crashes += 1
+                    continue
                 except PersonaParseError as exc:
                     logger.warning(
                         "%s parse error (attempt %d/2) for %s: %s",
@@ -218,6 +208,25 @@ class SubprocessPool:
                     )
                     self.findings.malformed_json_count += 1
                     self.findings.by_persona[session.persona.id]["malformed"] += 1
+                    continue
+
+                # Defensive belt-and-suspenders. Pydantic schema validation
+                # already enforces this; recorded as invalid_pick — distinct
+                # from malformed_json per spec §10's failure table.
+                if out.chosen_proposal_id not in displayed_order:
+                    logger.warning(
+                        "%s invalid pick (attempt %d/2) for %s: %r not in %r",
+                        kind,
+                        attempt,
+                        session.persona.id,
+                        out.chosen_proposal_id,
+                        displayed_order,
+                    )
+                    self.findings.invalid_pick_count += 1
+                    self.findings.by_persona[session.persona.id]["invalid_pick"] += 1
+                    continue
+
+                return PoolPickResult(output=out, fallback_used=False)
 
             return PoolPickResult(
                 output=_synthesize_fallback(
