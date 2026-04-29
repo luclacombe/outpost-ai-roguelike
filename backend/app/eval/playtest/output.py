@@ -150,16 +150,26 @@ def _archive_to_dict(a: PerRunArchive) -> dict[str, Any]:
     }
 
 
-def write_per_run_archives(out_dir: Path, archives: list[PerRunArchive]) -> None:
-    """Writes raw/<basename>.md and raw/<basename>.json for each run."""
+def write_one_archive(out_dir: Path, archive: PerRunArchive) -> None:
+    """Writes raw/<basename>.{md,json} for a single run.
+
+    Called from the orchestrator's per-game epilogue so completed games
+    persist on disk before the orchestrator can be interrupted.
+    """
     raw_dir = out_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
+    base = _archive_basename(archive)
+    (raw_dir / f"{base}.md").write_text(_render_per_run_markdown(archive))
+    (raw_dir / f"{base}.json").write_text(
+        json.dumps(_archive_to_dict(archive), indent=2, default=str)
+    )
+
+
+def write_per_run_archives(out_dir: Path, archives: list[PerRunArchive]) -> None:
+    """Writes raw/<basename>.{md,json} for each run. Batch wrapper around
+    `write_one_archive`."""
     for a in archives:
-        base = _archive_basename(a)
-        (raw_dir / f"{base}.md").write_text(_render_per_run_markdown(a))
-        (raw_dir / f"{base}.json").write_text(
-            json.dumps(_archive_to_dict(a), indent=2, default=str)
-        )
+        write_one_archive(out_dir, a)
 
 
 def write_corpus_artifacts(

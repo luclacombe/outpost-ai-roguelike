@@ -405,7 +405,7 @@ class PersonaSession:
             "Reasoning before scoring — the rationale comes BEFORE the number "
             "in your thinking.\n\n"
             "## Post-mortem\n\n"
-            f"```json\n{json.dumps(post_mortem_json, indent=2)}\n```"
+            f"```json\n{json.dumps(post_mortem_json, indent=2, default=str)}\n```"
         )
 
         cmd = [

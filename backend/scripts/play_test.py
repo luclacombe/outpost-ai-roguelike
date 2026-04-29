@@ -33,7 +33,7 @@ from app.eval.playtest.oracles import compute_corpus_oracles, compute_per_run_or
 from app.eval.playtest.output import (
     PerRunArchive,
     write_corpus_artifacts,
-    write_per_run_archives,
+    write_one_archive,
 )
 from app.eval.playtest.personas import PERSONAS, get_persona
 from app.eval.playtest.schemas import PersonaId
@@ -241,7 +241,7 @@ async def _drive_one_game(
             verdict = await asyncio.to_thread(
                 pool.run_final_verdict,
                 session=player._session,  # noqa: SLF001 — orchestrator is the only legit consumer
-                post_mortem_json=post_mortem.model_dump(),
+                post_mortem_json=post_mortem.model_dump(mode="json"),
             )
         else:
             verdict = None
@@ -313,6 +313,9 @@ async def run_harness(*, config: PlaytestConfig) -> None:
                     pool=pool,
                     config=config,
                 )
+                # Persist before append so a SIGTERM mid-orchestrator-loop still
+                # leaves a recoverable corpus on disk.
+                write_one_archive(config.out_dir, arc)
                 archives.append(arc)
             except Exception as exc:  # noqa: BLE001 — log and continue
                 logger.exception("game %s/%s/%s failed: %s", persona_id, setting_id, seed, exc)
@@ -359,7 +362,6 @@ async def run_harness(*, config: PlaytestConfig) -> None:
         "by_persona": dict(pool.findings.by_persona),
     }
 
-    write_per_run_archives(config.out_dir, archives)
     write_corpus_artifacts(
         config.out_dir,
         archives=archives,
