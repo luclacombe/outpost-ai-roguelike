@@ -14,6 +14,7 @@ Spec: `docs/superpowers/specs/2026-04-26-llm-playtest-harness-design.md`.
 - `llm_player.py` — drop-in for `tests/fixtures/simulated_player.py::SimulatedPlayer`
 - `oracles.py` — wraps 5 existing `app/eval/` modules into per-run + corpus computations
 - `output.py` — emits markdown + JSON archives + `runs.json` + `report.md` skeleton
+- `app_state.py` — `harness_app_state()` async CM that attaches `app.state.graph` + `app.state.checkpointer`. `httpx.ASGITransport` skips FastAPI lifespan, so both the CLI orchestrator and `tests/eval/conftest.py::graph_postgres` MUST wrap their driving loop in this helper or the first `/turn` POST raises `'State' object has no attribute 'graph'`.
 
 Orchestrator lives at `backend/scripts/play_test.py` (NOT under `app/`).
 Layering: it imports from `tests/fixtures/run_simulator.py`, so it must live

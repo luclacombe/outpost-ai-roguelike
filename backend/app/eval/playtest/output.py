@@ -127,7 +127,7 @@ def _render_per_run_markdown(a: PerRunArchive) -> str:
             [
                 "## Run-level verdict",
                 "",
-                "_(verdict missing — persona failed final response)_",
+                "_(no verdict — game did not reach a terminal state)_",
                 "",
             ]
         )

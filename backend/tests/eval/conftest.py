@@ -15,14 +15,10 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import text
 
-from app.agent.checkpointer import _sqlalchemy_to_psycopg_url
-from app.agent.graph import build_graph
-from app.config import settings
 from app.database import async_session_factory
-from app.main import app
+from app.eval.playtest.app_state import harness_app_state
 
 EVAL_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000077")
 EVAL_USER_EMAIL = "eval@outpost.local"
@@ -75,10 +71,6 @@ async def _delete_auth_user(user_id: uuid.UUID) -> None:
         await s.commit()
 
 
-def _dsn() -> str:
-    return _sqlalchemy_to_psycopg_url(settings.DATABASE_URL)
-
-
 @pytest_asyncio.fixture
 async def eval_user_id() -> AsyncIterator[uuid.UUID]:
     await _require_db()
@@ -93,21 +85,11 @@ async def eval_user_id() -> AsyncIterator[uuid.UUID]:
 async def graph_postgres() -> AsyncIterator[Any]:
     """Postgres-checkpointer-backed graph for the eval driver.
 
-    The driver must use a Postgres checkpointer because /turn pauses and
-    /decide resumes; only the Postgres saver persists across the two HTTP
-    calls.
+    Delegates to `app.eval.playtest.app_state.harness_app_state` so the eval
+    pipeline and the playtest harness share one bootstrap path. The driver
+    needs a Postgres checkpointer because /turn pauses and /decide resumes;
+    only the Postgres saver persists across the two HTTP calls.
     """
     await _require_db()
-    async with AsyncPostgresSaver.from_conn_string(_dsn()) as saver:
-        await saver.setup()
-        compiled = build_graph(saver)
-        prior = getattr(app.state, "graph", None)
-        app.state.graph = compiled
-        try:
-            yield compiled
-        finally:
-            if prior is None:
-                if hasattr(app.state, "graph"):
-                    delattr(app.state, "graph")
-            else:
-                app.state.graph = prior
+    async with harness_app_state() as compiled:
+        yield compiled
