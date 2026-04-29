@@ -18,6 +18,7 @@ JSON parse failure, schema validation failure). The pool catches and retries.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Literal
@@ -27,8 +28,11 @@ from pydantic import ValidationError
 from app.eval.playtest.schemas import (
     Persona,
     PersonaRunVerdict,
+    PersonaTurnFlags,
     PersonaTurnOutput,
 )
+
+logger = logging.getLogger(__name__)
 
 EffortLevel = Literal["low", "medium", "high", "xhigh", "max"]
 SONNET_MODEL_ID = "claude-sonnet-4-6"
@@ -70,7 +74,17 @@ def _build_system_prompt(persona: Persona) -> str:
         "You are reacting fresh — you have not seen this game before. You have "
         "no codebase context, no design documents, no prior plays. Stay in your "
         "persona's voice for in-character text; speak analytically for flags "
-        "and scores. Reasoning before scoring (always)."
+        "and scores. Reasoning before scoring (always).\n\n"
+        "Reading discipline (load-bearing): the user message includes a "
+        "`## Advisor reactions` section that lists every living advisor by "
+        "name with their actual reaction text. Read it line-by-line before "
+        "evaluating `advisor_oc` or claiming silence. An advisor counts as "
+        "silent ONLY if the dashboard literally renders `(silent)` next to "
+        "their name. Quotes you cite for any flag — especially `advisor_oc` "
+        "— MUST be verbatim excerpts from the rendered dashboard text. "
+        "Fabricating a `(silent)` claim against an advisor whose reaction is "
+        "rendered, or paraphrasing reaction text into a quote, is a contract "
+        "violation."
     )
 
     persona_block = (
@@ -143,10 +157,16 @@ def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
 def _format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: list[str]) -> str:
     """Renders the harness's per-turn user-message text shown to the persona.
 
-    Includes the dashboard, the event, and the proposals in `displayed_order`
-    sequence. Format is human-readable markdown so the LLM reads it naturally
-    (research finding: markdown beats JSON for narrative pattern matching by
-    LLMs).
+    Section order: Setting → Dashboard → Event → Advisor reactions →
+    Proposals → "Pick one". Reactions deliberately precede proposals: the
+    earlier order (proposals first) caused Sonnet personas to skim past
+    the reactions section and fabricate `(silent)` allegations against
+    advisors whose reactions WERE rendered (24/0 false-positive ratio in
+    the 2026-04-29 smoke run).
+
+    Format is human-readable markdown so the LLM reads it naturally
+    (research finding: markdown beats JSON for narrative pattern matching
+    by LLMs).
     """
     proposals_by_id = {p["id"]: p for p in turn_input["proposals"]}
     advisor_by_id = {a["id"]: a for a in turn_input["dashboard"]["advisors"]}
@@ -168,8 +188,13 @@ def _format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: li
         f"**{turn_input['event']['title']}**",
         turn_input["event"]["body"],
         "",
-        "## Proposals (in display order)",
+        "## Advisor reactions",
     ]
+    for a in turn_input["dashboard"]["advisors"]:
+        text = reactions_by_aid.get(a["id"], "(silent)")
+        lines.append(f"- **{a['name']}** ({a['role']}): {text}")
+    lines.append("")
+    lines.append("## Proposals (in display order)")
     for idx, pid in enumerate(displayed_order):
         p = proposals_by_id[pid]
         proposer = advisor_by_id.get(p.get("proposed_by_agent_id", ""))
@@ -178,16 +203,56 @@ def _format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: li
             f"{idx}. **{p['name']}** ({p['flavor']}, by {proposer_name}) — {p['description']}"
         )
     lines.append("")
-    lines.append("## Advisor reactions")
-    for a in turn_input["dashboard"]["advisors"]:
-        text = reactions_by_aid.get(a["id"], "(silent)")
-        lines.append(f"- **{a['name']}** ({a['role']}): {text}")
-    lines.append("")
     lines.append(
         f"Pick one of the three proposals above. Your `displayed_order` field "
         f"in the response must be exactly: {displayed_order}"
     )
     return "\n".join(lines)
+
+
+def _validate_quotes_against_dashboard(
+    output: PersonaTurnOutput, user_message: str
+) -> PersonaTurnOutput:
+    """Drop fabricated `(silent)` quotes and downgrade their flags.
+
+    A `(silent)` substring inside any `quotes[*]` value is legitimate ONLY
+    when the rendered user message also contains `(silent)` markers (i.e.
+    the dashboard literally rendered silence for at least one advisor).
+    When every advisor's reaction is rendered, the dashboard contains zero
+    `(silent)` markers — so a persona quote of `(silent)` is fabrication.
+
+    On detection: drop the offending quote and set the corresponding flag
+    to False. The persona's free-form `reaction` prose is left untouched
+    (we can't audit free-form text, and the validator's job is to gate
+    the binary flag, not rewrite voice).
+
+    Conservative when the dashboard DOES render silence: we can't tell
+    which advisors are legitimately silent vs fabricated, so we accept
+    every `(silent)` quote in that case. The verbatim instruction in the
+    system prompt carries the load there.
+    """
+    if "(silent)" in user_message:
+        return output
+
+    affected_flags = {k for k, v in output.quotes.items() if "(silent)" in v}
+    if not affected_flags:
+        return output
+
+    for flag_name in sorted(affected_flags):
+        logger.warning(
+            "fabricated-silence guard: dropping %s flag (no '(silent)' marker "
+            "in rendered dashboard); fabricated quote was %r",
+            flag_name,
+            output.quotes[flag_name],
+        )
+
+    new_quotes = {k: v for k, v in output.quotes.items() if k not in affected_flags}
+    flags_dict = output.flags.model_dump()
+    for k in affected_flags:
+        if k in flags_dict:
+            flags_dict[k] = False
+
+    return output.model_copy(update={"quotes": new_quotes, "flags": PersonaTurnFlags(**flags_dict)})
 
 
 class PersonaSession:
@@ -261,9 +326,10 @@ class PersonaSession:
         self.session_id = session_id
 
         try:
-            return PersonaTurnOutput.model_validate(inner)
+            output = PersonaTurnOutput.model_validate(inner)
         except ValidationError as exc:
             raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
+        return _validate_quotes_against_dashboard(output, user_message)
 
     def subsequent_turn(
         self, *, turn_input: dict[str, Any], displayed_order: list[str]
@@ -309,9 +375,10 @@ class PersonaSession:
         _, inner = _parse_envelope_and_inner(proc.stdout)
 
         try:
-            return PersonaTurnOutput.model_validate(inner)
+            output = PersonaTurnOutput.model_validate(inner)
         except ValidationError as exc:
             raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
+        return _validate_quotes_against_dashboard(output, user_message)
 
     def final_verdict(self, *, post_mortem_json: dict[str, Any]) -> PersonaRunVerdict:
         """Send the post-mortem JSON to the persona; expect a run-level verdict."""
