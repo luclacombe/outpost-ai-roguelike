@@ -33,6 +33,22 @@ def test_get_persona_unknown_raises() -> None:
         get_persona("not_real")  # type: ignore[arg-type]
 
 
+def test_brinksmanship_lens_forbids_silence_as_state_shift() -> None:
+    """Brinksmanship's prior lens primed the persona to interpret silence
+    as a probe signal, producing the bulk of the false `(silent)`
+    allegations in the 2026-04-29 smoke. The lens must now explicitly
+    redirect probing toward concrete engine signals."""
+    p = get_persona("brinksmanship")
+    lens = p.evaluation_lens.lower()
+    # Some form of "not silence" guidance must be present.
+    assert "silence" in lens or "silent" in lens, (
+        "BRINKSMANSHIP.evaluation_lens must explicitly address silence; "
+        "it's the persona that fabricates `(silent)` quotes."
+    )
+    # And it must ground engine push-back in concrete signals.
+    assert "foreshadow" in lens or "floor" in lens or "grievance" in lens
+
+
 def test_every_persona_has_substantive_fields() -> None:
     for p in PERSONAS:
         assert len(p.picking_rule.strip()) > 30, f"{p.id} picking_rule too short"

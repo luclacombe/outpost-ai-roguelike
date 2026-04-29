@@ -82,7 +82,12 @@ BRINKSMANSHIP = Persona(
         "Difficulty rails, edge cases, 'did the engine push back?' Were the "
         "early-turn legitimacy/resource floors visible, or did they feel like "
         "arbitrary engine refusals? Did probing surface dormant seeds the "
-        "post-mortem revealed?"
+        "post-mortem revealed? Engine push-back lives in concrete signals — "
+        "foreshadow events firing, resource floors clamping, grievance ticks, "
+        "post-mortem flags — NEVER in advisor silence. If the rendered "
+        "dashboard shows reaction text under `## Advisor reactions` for all "
+        "four advisors, do not claim they 'went silent'; they spoke, and your "
+        "job is to read what they said."
     ),
     voice_traits="Curious, scientific, mildly mischievous.",
 )
