@@ -19,6 +19,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -26,6 +27,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 
 from app.database import async_session_factory
+from app.eval.playtest.app_state import harness_app_state
 from app.eval.playtest.llm_player import LLMPlayer
 from app.eval.playtest.oracles import compute_corpus_oracles, compute_per_run_oracles
 from app.eval.playtest.output import (
@@ -41,6 +43,8 @@ from app.game.exceptions import GameNotEnded
 from app.game.models import GameSession
 from app.game.post_mortem import build_post_mortem
 from app.game.schemas import ColonyState
+from app.game.service import _pick_setting_id
+from app.game.setting_loader import list_available_settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +58,7 @@ class PlaytestConfig:
     settings: list[str] = field(
         default_factory=lambda: [
             "arctic_station_v1",
-            "orbital_station_v1",
+            "orbital_colony_v1",
             "desert_outpost_v1",
         ]
     )
@@ -117,15 +121,46 @@ async def _cleanup_synthetic_user(user_id: UUID) -> None:
 
 
 def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
-    """Round-robin (persona, setting, seed) tuples. Each persona plays each
-    setting at least floor(runs_per_persona / len(settings)) times."""
+    """Round-robin (persona, setting, seed) tuples.
+
+    Setting index is `(persona_idx * runs_per_persona + run_idx) % len(settings)`,
+    which matches the prior persona-local rotation when
+    `runs_per_persona % len(settings) == 0` (the production 7×6×3 = 42 case)
+    but stays balanced for small smoke runs where `runs_per_persona < len(settings)`.
+    """
     out: list[tuple[PersonaId, str, int]] = []
-    for persona_id in config.personas:
+    for persona_idx, persona_id in enumerate(config.personas):
         for run_idx in range(config.runs_per_persona):
-            setting = config.settings[run_idx % len(config.settings)]
+            setting_idx = (persona_idx * config.runs_per_persona + run_idx) % len(config.settings)
+            setting = config.settings[setting_idx]
             seed = hash((persona_id, setting, run_idx)) & 0x7FFFFFFF
             out.append((persona_id, setting, seed))
     return out
+
+
+def _uuid_for_setting(setting_id: str, now_utc: datetime, max_attempts: int = 1000) -> UUID:
+    """Generate a `uuid4` whose `_pick_setting_id(uid, now_utc)` returns the
+    requested setting.
+
+    `app.game.service.create_game_session` runs `_pick_setting_id` on the
+    incoming `user_id` and serves whatever setting that picker returns —
+    ignoring any setting the harness wanted. Brute-forcing uuids is the
+    cheapest way to drive a specific setting per game without growing the
+    engine API: with ~3 valid settings, expected attempts is ~3.
+
+    Raises `ValueError` if `setting_id` isn't in the engine's available pool
+    (otherwise the loop spins until `max_attempts`).
+    """
+    available = set(list_available_settings())
+    if setting_id not in available:
+        raise ValueError(f"setting {setting_id!r} not in available settings {sorted(available)!r}")
+    for _ in range(max_attempts):
+        candidate = uuid.uuid4()
+        if _pick_setting_id(candidate, now_utc) == setting_id:
+            return candidate
+    raise RuntimeError(
+        f"could not find a uuid mapping to setting {setting_id!r} after {max_attempts} attempts"
+    )
 
 
 async def _drive_one_game(
@@ -139,14 +174,19 @@ async def _drive_one_game(
     """Drive one simulated game with an LLMPlayer. Returns the archive bundle.
 
     Provisions a fresh synthetic user (auth.users + profiles row) per game so
-    the daily-run gate doesn't reject games 2..N. The user_id is generated
-    from the seed for reproducibility — same (persona, setting, seed) tuple
-    yields the same synthetic UUID on re-run.
+    the daily-run gate doesn't reject games 2..N. The user_id is brute-forced
+    via `_uuid_for_setting` so the engine's deterministic per-user setting
+    picker returns the *requested* setting (not whatever a fresh uuid4 would
+    happen to hash to). Game seeds remain reproducible per
+    `(persona_id, setting, run_idx)`; user_ids do not.
     """
     from tests.fixtures.run_simulator import simulate_game_with_player  # noqa: PLC0415
 
     persona = get_persona(persona_id)
-    per_game_user_id = uuid.uuid4()
+    # Brute-force a uuid whose engine-side picker yields the requested setting,
+    # otherwise per-cell aggregation collapses to whatever rotation the
+    # picker happens to produce for fresh uuid4s.
+    per_game_user_id = _uuid_for_setting(setting_id, datetime.now(UTC))
     per_game_email = f"playtest-{per_game_user_id}@outpost.local"
     await _provision_synthetic_user(per_game_user_id, per_game_email)
 
@@ -196,7 +236,10 @@ async def _drive_one_game(
                 post_mortem = None
 
         if post_mortem is not None:
-            verdict = pool.run_final_verdict(
+            # Same blocking-subprocess concern as `player.pick` — run in a
+            # thread so concurrent games' verdict calls don't serialize.
+            verdict = await asyncio.to_thread(
+                pool.run_final_verdict,
                 session=player._session,  # noqa: SLF001 — orchestrator is the only legit consumer
                 post_mortem_json=post_mortem.model_dump(),
             )
@@ -242,7 +285,13 @@ async def _drive_one_game(
 
 async def run_harness(*, config: PlaytestConfig) -> None:
     """Top-level entry. Allocates runs, drives them with bounded concurrency,
-    emits archives + corpus artifacts."""
+    emits archives + corpus artifacts.
+
+    Wraps the driving loop in `harness_app_state()` so `app.state.graph`
+    + `app.state.checkpointer` are attached for the in-process ASGI POSTs
+    that drive each game (FastAPI lifespan does NOT run under
+    `httpx.ASGITransport`, so this bootstrap is mandatory).
+    """
     allocations = _allocate_runs(config)
 
     config.out_dir.mkdir(parents=True, exist_ok=True)
@@ -276,7 +325,8 @@ async def run_harness(*, config: PlaytestConfig) -> None:
                     }
                 )
 
-    await asyncio.gather(*(go(p, s, sd) for (p, s, sd) in allocations))
+    async with harness_app_state():
+        await asyncio.gather(*(go(p, s, sd) for (p, s, sd) in allocations))
 
     # Reconstruct RunRecords for corpus oracles from per-archive summary fields.
     for a in archives:

@@ -28,7 +28,9 @@ only way to reconstruct the full picture for the validity-rate metric.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import Any, Literal
 from uuid import UUID
 
@@ -92,6 +94,24 @@ def _auth_override(user_id: UUID) -> dict[str, str]:
         "email": "eval@outpost.local",
         "aud": "authenticated",
     }
+
+
+# Per-task auth state. The override registered on `app.dependency_overrides`
+# is a single shared callable that reads from this contextvar — each asyncio
+# task running a game sets its own user_id token, so concurrent games no longer
+# stomp each other's auth (which used to manifest as 429 / 404 / 401 cascades
+# under `max_concurrency > 1`).
+_eval_user_id_ctx: ContextVar[UUID | None] = ContextVar("eval_user_id", default=None)
+
+
+def _auth_override_from_ctx() -> dict[str, str]:
+    uid = _eval_user_id_ctx.get()
+    if uid is None:
+        raise RuntimeError(
+            "eval auth override invoked without _eval_user_id_ctx set — "
+            "use simulate_game / simulate_game_with_player as the entrypoint"
+        )
+    return _auth_override(uid)
 
 
 class _RunAggregator:
@@ -205,7 +225,8 @@ async def simulate_game(
     player = SimulatedPlayer(policy, seed=seed)
     aggregator = _RunAggregator()
 
-    app.dependency_overrides[get_current_user] = lambda: _auth_override(user_id)
+    app.dependency_overrides.setdefault(get_current_user, _auth_override_from_ctx)
+    token = _eval_user_id_ctx.set(user_id)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             create_resp = await client.post("/game/session")
@@ -233,7 +254,7 @@ async def simulate_game(
                 if not proposals:
                     break
 
-                chosen_id = player.pick(proposals)
+                chosen_id = player.pick(proposals)  # SimulatedPlayer is non-blocking
 
                 # ---- /decide ----
                 async with client.stream(
@@ -249,7 +270,7 @@ async def simulate_game(
                     ended = True
                     break
     finally:
-        app.dependency_overrides.pop(get_current_user, None)
+        _eval_user_id_ctx.reset(token)
 
     # `ended` is informational — `final_state.end_state` is authoritative.
     _ = ended
@@ -283,7 +304,8 @@ async def simulate_game_with_player(
     """
     aggregator = _RunAggregator()
 
-    app.dependency_overrides[get_current_user] = lambda: _auth_override(user_id)
+    app.dependency_overrides.setdefault(get_current_user, _auth_override_from_ctx)
+    token = _eval_user_id_ctx.set(user_id)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             create_resp = await client.post("/game/session")
@@ -315,7 +337,12 @@ async def simulate_game_with_player(
                         _assemble_turn_input(turn_frames, proposals, _turn_idx + 1, colony)
                     )
 
-                chosen_id = player.pick(proposals)
+                # `player.pick` is sync (LLMPlayer subprocess-blocks on
+                # `claude --print`); calling it inline here would block the
+                # asyncio event loop, serializing all concurrent games' picks.
+                # Hand it to a thread so other games' /turn HTTP calls can
+                # progress while this one's persona thinks.
+                chosen_id = await asyncio.to_thread(player.pick, proposals)
 
                 # ---- /decide ----
                 async with client.stream(
@@ -330,7 +357,7 @@ async def simulate_game_with_player(
                 if any(f["event"] == "run_over" for f in decide_frames):
                     break
     finally:
-        app.dependency_overrides.pop(get_current_user, None)
+        _eval_user_id_ctx.reset(token)
 
     policy = str(getattr(player, "persona", None) and player.persona.id or "llm")
     return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
