@@ -39,6 +39,13 @@ in the top-level `scripts/` tier — application code can't depend on test fixtu
 - **Effort: persona side `--effort high`, aggregator `--effort max`.** G-Eval
   pattern requires CoT before scoring; that needs thinking budget. Don't downgrade
   personas to `medium` — verdicts get noisy.
+- **Pydantic models with UUID fields → `model_dump(mode="json")` before
+  `json.dumps`.** `PostMortem` carries `dict[UUID, int]` (agent_grievance) and
+  `UUID`-valued seed refs; default `model_dump()` runs in Python mode and leaves
+  UUIDs untouched. `json.dumps` then errors on UUID *keys* even with
+  `default=str` (the JSON spec forbids non-string keys regardless). Site:
+  `scripts/play_test.py` final-verdict path. See PLAN.md "Errors & Learnings →
+  Playtest harness — UUID-in-PostMortem JSON serialization".
 
 ## Daily-gate handling (resolved)
 
