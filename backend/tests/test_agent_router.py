@@ -454,6 +454,20 @@ async def test_turn_double_post_short_circuits_to_paused_proposals(
     assert _proposal_ids(first_frames) == _proposal_ids(second_frames)
     assert second_frames[-1] == {"event": "done", "data": _DONE_SENTINEL}
 
+    # The short-circuit must ALSO re-emit the cached `agent_spoke` frames.
+    # Without this, the second /turn returns proposals_ready alone and any
+    # caller assembling a dashboard from the SSE stream renders all advisors
+    # as `(silent)`. (Smoke 2026-04-29 regression.)
+    def _agent_spoke_ids(frames: list[dict[str, Any]]) -> set[str]:
+        return {f["data"]["agent_id"] for f in frames if f["event"] == "agent_spoke"}
+
+    first_spoke = _agent_spoke_ids(first_frames)
+    second_spoke = _agent_spoke_ids(second_frames)
+    assert first_spoke, "first /turn should emit agent_spoke frames"
+    assert second_spoke == first_spoke, (
+        f"second /turn must re-emit cached agent_spoke. first={first_spoke}, second={second_spoke}"
+    )
+
 
 @respx.mock
 async def test_decide_409_when_not_paused(persisted_game, graph_postgres) -> None:
@@ -629,6 +643,71 @@ async def test_decide_emits_turn_advanced_and_next_proposals(
     # turn_advanced payload's turn_number is post-advance, so > original.
     ta = decide_frames[ta_idx]["data"]
     assert ta["turn_number"] == colony.turn_number + 1
+
+
+@respx.mock
+async def test_turn_after_decide_emits_cached_agent_spoke(persisted_game, graph_postgres) -> None:
+    """Post-decide /turn must emit `agent_spoke` frames for the new turn.
+
+    The graph topology runs `advance_turn → generate_event → agent_debate
+    → apply_tool_calls → [pause]` at the END of /decide, so by the time
+    the harness POSTs /turn for the next turn, the graph is already
+    paused at resolve. Without re-emitting cached agent_spoke frames in
+    that short-circuit branch, the harness's `_assemble_turn_input`
+    sees zero advisor reactions and the dashboard renders every advisor
+    as `(silent)` — which is exactly what the 2026-04-29 smoke saw, and
+    which the persona then HONESTLY reported as silence.
+    """
+    colony = persisted_game
+
+    # 5 calls: debate(t1), autonomous(t1), narration(t1), debate(t2),
+    # then the /turn-2 short-circuit makes no Anthropic calls.
+    responses = [
+        Response(200, json=_debate_haiku_body(colony.agents)),
+        Response(200, json=fake_haiku_response(text_xml="")),
+        Response(200, json=fake_sonnet_response("End of turn 1.")),
+        Response(200, json=_debate_haiku_body(colony.agents)),
+    ]
+    respx.post(_ANTHROPIC_URL).mock(side_effect=responses)
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": str(colony.user_id),
+        "email": "test@outpost.local",
+        "aud": "authenticated",
+    }
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            async with c.stream("POST", f"/game/{colony.game_id}/turn") as r1:
+                turn1_frames = await _collect_stream(r1)
+            chosen_id = next(f for f in turn1_frames if f["event"] == "proposals_ready")["data"][
+                "proposals"
+            ][0]["id"]
+
+            async with c.stream(
+                "POST",
+                f"/game/{colony.game_id}/decide",
+                json={"chosen_proposal_id": chosen_id},
+            ) as r2:
+                await _collect_stream(r2)
+
+            async with c.stream("POST", f"/game/{colony.game_id}/turn") as r3:
+                turn2_frames = await _collect_stream(r3)
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    spoke = [f for f in turn2_frames if f["event"] == "agent_spoke"]
+    assert len(spoke) == len(colony.agents), (
+        f"post-decide /turn must emit one agent_spoke per advisor; "
+        f"got {len(spoke)}, expected {len(colony.agents)}. Frames: "
+        f"{[f['event'] for f in turn2_frames]}"
+    )
+    spoke_ids = {f["data"]["agent_id"] for f in spoke}
+    expected_ids = {str(a.id) for a in colony.agents}
+    assert spoke_ids == expected_ids, f"spoke={spoke_ids}, expected={expected_ids}"
+
+    # Texts must be non-empty — the cached frame had real reaction content.
+    for f in spoke:
+        assert f["data"]["text"], f"agent_spoke text was empty: {f}"
 
 
 @respx.mock

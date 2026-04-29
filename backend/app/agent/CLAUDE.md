@@ -150,12 +150,30 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 - First `/turn` for a game: builds initial `GameTurnState`, runs until pause,
   emits `proposals_ready`.
 - Repeat `/turn` while paused: short-circuits — re-emits the paused proposals
-  without touching the graph. Supports client reconnect.
+  AND the cached `agent_spoke` frames (see invariant below) without touching
+  the graph. Supports client reconnect.
 - `/decide`: validates the proposal id against the paused snapshot, calls
   `await graph.aupdate_state(config, {"player_choice": id})`, then
   `graph.astream(None, config=..., stream_mode="updates")` to resume.
 - `player_choice` in the *initial* state dict is meaningless — `generate_event`
   clears it. The correct path is always `aupdate_state` after pause.
+
+**Load-bearing invariant: `/decide` runs the next turn's pre-pause half.**
+The graph's conditional edge after `advance_turn` routes back to
+`generate_event`, so a single `/decide` invocation runs:
+`resolve → autonomous → check_deaths → narrate → advance_turn →
+generate_event(N+1) → agent_debate(N+1) → apply_tool_calls(N+1) → [pause]`.
+Two consequences a future session would otherwise re-discover the hard way:
+  1. The next turn's `agent_spoke` frames are emitted on the previous
+     turn's `/decide` SSE stream — not on its own `/turn`. The next
+     `/turn` arrives at an already-paused graph and short-circuits.
+  2. `service.stream_turn`'s short-circuit branch MUST re-emit the
+     cached `debate_per_agent_text` as `agent_spoke` frames. Skipping
+     it makes any consumer that builds its dashboard from `/turn`'s
+     SSE alone (the playtest harness, the frontend on a fresh tab)
+     render every advisor as `(silent)`. Caught the hard way during
+     the 2026-04-29 smoke (24 false-positive `(silent)` allegations
+     across 10 games). See `test_turn_after_decide_emits_cached_agent_spoke`.
 
 ## SSE streaming (service layer)
 
