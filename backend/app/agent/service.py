@@ -319,10 +319,23 @@ async def stream_turn(
     colony: ColonyState = prepared["colony"]
 
     # If the graph is already paused for this thread_id, short-circuit
-    # and re-emit the paused proposals. The frontend's reconnect/replay
+    # and re-emit the paused turn's frames. The frontend's reconnect/replay
     # flow becomes idempotent this way.
+    #
+    # The graph topology fires the next turn's pre-pause half (generate_event
+    # → agent_debate → apply_tool_calls) at the END of the previous /decide,
+    # so when /turn arrives next, agent_debate has already run. We must
+    # re-emit the cached `agent_spoke` frames here — otherwise the harness
+    # / frontend assembling the dashboard sees zero advisor reactions and
+    # renders every advisor as `(silent)` (smoke 2026-04-29 regression).
     snapshot = await graph.aget_state(cfg)
     if snapshot.next == ("resolve",):
+        cached_per_agent = snapshot.values.get("debate_per_agent_text") or {}
+        for agent_id, text in cached_per_agent.items():
+            yield _sse_frame(
+                "agent_spoke",
+                {"agent_id": str(agent_id), "text": text},
+            )
         yield _sse_frame("proposals_ready", _proposals_ready_payload(snapshot.values))
         yield _sse_frame("done", _DONE_SENTINEL)
         return
