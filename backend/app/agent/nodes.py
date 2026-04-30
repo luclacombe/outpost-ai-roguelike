@@ -319,16 +319,20 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     # Prefer the Sonnet narration summary if the narrate node already ran;
     # otherwise synthesize one from the most recent event_log entry (which
     # `resolve` just appended). Cap at 300 chars to keep token cost bounded.
+    #
+    # IMPORTANT: keep "turn N" out of the synthesized prose. Advisors that
+    # see "Turn 5: chose ..." in their off-turn summary echo the index back
+    # into `remember(...)` calls, and the leaked turn counter then resurfaces
+    # in the next turn's persona context — the §1.7 4th-wall leak caught in
+    # the 2026-04-29 playtest. Structured turn_number lives in
+    # <colony_state>; this prose stays index-free.
     summary = state.get("narration")
     if not summary:
         last_resolved = colony_state.event_log[-1] if colony_state.event_log else None
         if last_resolved is not None:
-            summary = (
-                f"Turn {colony_state.turn_number}: chose "
-                f"'{last_resolved.summary}' for {last_resolved.event.title}."
-            )
+            summary = f"The colony chose '{last_resolved.summary}' for {last_resolved.event.title}."
         else:
-            summary = f"Turn {colony_state.turn_number}: decision resolved."
+            summary = "The decision has been resolved."
     summary = summary[:300]
 
     colony_state_text = build_colony_state_block(colony_state)["text"]

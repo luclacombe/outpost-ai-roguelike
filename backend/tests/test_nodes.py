@@ -14,6 +14,7 @@ Postgres is unreachable, matching the pattern in test_game_router.py.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -47,6 +48,7 @@ from app.game.schemas import (
     Proposal,
     ProposalFlavor,
     Quadrant,
+    ResolvedEvent,
     Resource,
     SeedPayload,
     ToolCall,
@@ -764,6 +766,62 @@ async def test_autonomous_actions_drops_debate_only_tool_calls():
     # And the introspective call DID apply: Nadia's memory grew by one.
     nadia_post = next(a for a in new_colony.agents if a.id == nadia.id)
     assert any("Player overruled me" in m for m in nadia_post.memory)
+
+
+@respx.mock
+async def test_autonomous_actions_summary_strips_turn_counter_prose():
+    """Regression for §1.7 4th-wall leak: the synthesized summary that
+    `autonomous_actions` feeds to advisors must NOT include "Turn N"
+    prose. Advisors otherwise echo the index back into their `remember`
+    calls, which then re-surface in the next turn's persona context.
+
+    The structured `turn_number: N / M` line inside `<colony_state>` is
+    expected and required for engine-level pacing; this test isolates
+    the synthesized prose summary by stripping that one keyed line
+    before scanning.
+    """
+    # No prior narration → autonomous_actions synthesizes a summary from
+    # the most recent ResolvedEvent. Build one to force that path.
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    colony = make_colony_state(agents=[nadia], turn=5)
+    last_event = Event(
+        id="evt_storm",
+        category="weather",
+        title="Ice storm at first light",
+        body="Visibility drops to three meters; the heating core hums.",
+        severity=3,
+        origin=EventOrigin.NATURAL,
+    )
+    resolved = ResolvedEvent(
+        turn_number=5,
+        event=last_event,
+        chosen_proposal_id="p_a",
+        summary="Patch the leak and accept the temperature drop.",
+    )
+    colony = colony.model_copy(update={"event_log": [resolved]})
+
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 0.0,
+    }
+    await autonomous_actions(state)
+
+    sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
+    user_content = sent_body["messages"][0]["content"]
+
+    # Strip the structured `turn_number: N / M` line (expected and
+    # legitimate inside <colony_state>) before scanning.
+    stripped = re.sub(r"turn_number:\s*\d+\s*/\s*\d+", "", user_content)
+
+    matches = re.findall(r"\bturn\s+\d+\b", stripped, re.IGNORECASE)
+    assert not matches, (
+        f"autonomous_actions user message must not narrate 'turn N'; "
+        f"matched: {matches}.\nFull user message:\n{user_content}"
+    )
 
 
 # ---------------------------------------------------------------------------
