@@ -267,6 +267,12 @@ async def resolve(state: GameTurnState) -> GameTurnState:
         # to max_turns the clamp may equal turn_number — skip silently
         # rather than raise a ValidationError.
         if fires_at > new_colony.turn_number:
+            # Strip any leading `Seeded: ` / `Aftermath of ` from the source
+            # title before re-wrapping. Without this, an aftermath firing on
+            # top of an aftermath produces titles like
+            # "Aftermath of Seeded: Aftermath of X" — see report §1.3-1.4
+            # and tests/test_consequence_titles.py.
+            cleaned_title = consequence._clean_title_for_aftermath(current_event.title)
             seed = consequence.build_seed(
                 game_id=new_colony.game_id,
                 written_at_turn=new_colony.turn_number,
@@ -275,7 +281,7 @@ async def resolve(state: GameTurnState) -> GameTurnState:
                     event_id=f"aftermath_{current_event.id}",
                     severity=max(1, current_event.severity - 1),
                     category=current_event.category,
-                    description=f"Aftermath of {current_event.title}",
+                    description=f"Aftermath of {cleaned_title}",
                 ),
                 origin_decision=DecisionRef(
                     turn_number=new_colony.turn_number,
