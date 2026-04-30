@@ -99,7 +99,8 @@ def _build_system_prompt(persona: Persona) -> str:
         "```json\n"
         "{\n"
         '  "turn": <int>,\n'
-        '  "displayed_order": [<id1>, <id2>, <id3>],   // verbatim from input\n'
+        '  "displayed_order": [<id1>, <id2>, <id3>],   // EXACTLY THREE ids, '
+        "verbatim from the user message's `Pick one` line\n"
         '  "chosen_proposal_id": <one of displayed_order>,\n'
         '  "shown_position_of_chosen": <0, 1, or 2>,\n'
         '  "reaction": "<1-2 sentences in your voice>",\n'
@@ -109,8 +110,23 @@ def _build_system_prompt(persona: Persona) -> str:
         "  },\n"
         '  "quotes": { "<flag_name>": "<≤30-word quote>", ... }  // only for True flags\n'
         "}\n```\n"
-        "A bare True flag without a quote is a parse error. The harness will "
-        "re-prompt once if your JSON is malformed."
+        "Worked example (illustrative — your actual ids will differ):\n"
+        "```json\n"
+        "{\n"
+        '  "turn": 1,\n'
+        '  "displayed_order": ["p_dom", "p_mor", "p_wld"],\n'
+        '  "chosen_proposal_id": "p_dom",\n'
+        '  "shown_position_of_chosen": 0,\n'
+        '  "reaction": "Picked the perimeter cut — math beats sentiment for week 1.",\n'
+        '  "flags": {"surprise": false, "tone_break": false, "advisor_oc": false, '
+        '"stakes_low": false},\n'
+        '  "quotes": {}\n'
+        "}\n```\n"
+        "`displayed_order` MUST be a JSON array of EXACTLY THREE strings, "
+        "copied verbatim from the user message — never a single id, never "
+        "fewer than three, never paraphrased. A bare True flag without a "
+        "quote is a parse error. The harness will re-prompt once if your "
+        "JSON is malformed."
     )
 
     return frame + persona_block + output_contract
@@ -210,6 +226,39 @@ def _format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: li
     return "\n".join(lines)
 
 
+def _displayed_order_count_mismatch(exc: ValidationError) -> bool:
+    """Detect whether a `PersonaTurnOutput` ValidationError fired specifically
+    because `displayed_order` had a length other than 3.
+
+    The persona LLM occasionally emits a single-id list (Sonnet 4.6 drift on
+    long-context turns); the rest of the schema is fine. Distinguishing this
+    failure mode lets us re-prompt with a tightly-targeted nudge — much
+    cheaper than a full degrade-to-fallback that costs the persona's pick.
+    """
+    for err in exc.errors():
+        loc = err.get("loc") or ()
+        msg = (err.get("msg") or "").lower()
+        if loc and loc[0] == "displayed_order" and "exactly 3 ids" in msg:
+            return True
+    return False
+
+
+def _build_count_correction_message(*, displayed_order: list[str]) -> str:
+    """Re-prompt user message used when the prior turn returned a
+    `displayed_order` list of length != 3.
+
+    Echoes the actual three ids so the model has a hard target rather than
+    re-rolling against the original user message that already failed it.
+    """
+    return (
+        "Your previous response had `displayed_order` with the wrong count "
+        "of ids. The list MUST have EXACTLY THREE strings. Re-emit the "
+        f"full per-turn JSON now with `displayed_order` set to exactly: "
+        f"{displayed_order}. Pick one of those three for `chosen_proposal_id`. "
+        "Same JSON shape as before. No prose outside the code-fence."
+    )
+
+
 def _validate_quotes_against_dashboard(
     output: PersonaTurnOutput, user_message: str
 ) -> PersonaTurnOutput:
@@ -283,6 +332,89 @@ class PersonaSession:
         self.model = model
         self.session_id: str | None = None
 
+    def _run_subprocess(self, cmd: list[str], *, kind: str) -> str:
+        """Run one `claude` invocation, returning stdout. Raises typed
+        exceptions on timeout / non-zero exit so callers can dispatch."""
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=self.shell_dir,
+                capture_output=True,
+                text=True,
+                timeout=self.per_turn_timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise PersonaTimeout(f"{kind} timeout after {exc.timeout}s") from exc
+
+        if proc.returncode != 0:
+            raise PersonaSubprocessError(
+                f"{kind} subprocess returned {proc.returncode}: {proc.stderr[:500]}"
+            )
+        return proc.stdout
+
+    def _resume_cmd(self, user_message: str) -> list[str]:
+        """Build the `claude --resume` invocation used by subsequent_turn,
+        the count-correction re-prompt, and final_verdict."""
+        if self.session_id is None:
+            raise RuntimeError("session_id not set — call first_turn() first")
+        return [
+            "claude",
+            "--resume",
+            self.session_id,
+            "--print",
+            "--output-format",
+            "json",
+            "--effort",
+            self.effort,
+            user_message,
+        ]
+
+    def _parse_per_turn_with_count_retry(
+        self,
+        *,
+        stdout: str,
+        displayed_order: list[str],
+        kind: str,
+    ) -> PersonaTurnOutput:
+        """Parse the per-turn payload from `stdout`. If the only validation
+        failure is `displayed_order` count mismatch (sub-bug i), re-prompt
+        ONCE with the actual displayed_order echoed verbatim. Any other
+        failure (or a second count mismatch) raises `PersonaParseError` so
+        the pool's retry/fallback machinery handles it.
+
+        The re-prompt always uses `--resume` because we are guaranteed to
+        have a session_id at this point: first_turn captures it from the
+        envelope BEFORE attempting validation, and subsequent_turn requires
+        one as a precondition.
+        """
+        _, inner = _parse_envelope_and_inner(stdout)
+
+        try:
+            output = PersonaTurnOutput.model_validate(inner)
+        except ValidationError as exc:
+            if not _displayed_order_count_mismatch(exc):
+                raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
+
+            logger.warning(
+                "%s: displayed_order count mismatch on first attempt; "
+                "re-prompting with explicit ids %r",
+                kind,
+                displayed_order,
+            )
+            correction_msg = _build_count_correction_message(displayed_order=displayed_order)
+            retry_stdout = self._run_subprocess(
+                self._resume_cmd(correction_msg), kind=f"{kind}-count-retry"
+            )
+            _, retry_inner = _parse_envelope_and_inner(retry_stdout)
+            try:
+                output = PersonaTurnOutput.model_validate(retry_inner)
+            except ValidationError as retry_exc:
+                raise PersonaParseError(
+                    f"per-turn output failed validation after count-retry: {retry_exc}"
+                ) from retry_exc
+        return output
+
     def first_turn(
         self, *, turn_input: dict[str, Any], displayed_order: list[str]
     ) -> PersonaTurnOutput:
@@ -305,30 +437,16 @@ class PersonaSession:
             user_message,
         ]
 
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=self.shell_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.per_turn_timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise PersonaTimeout(f"first-turn timeout after {exc.timeout}s") from exc
-
-        if proc.returncode != 0:
-            raise PersonaSubprocessError(
-                f"first-turn subprocess returned {proc.returncode}: {proc.stderr[:500]}"
-            )
-
-        session_id, inner = _parse_envelope_and_inner(proc.stdout)
+        stdout = self._run_subprocess(cmd, kind="first-turn")
+        # Capture session_id BEFORE attempting per-turn validation — the
+        # count-retry path needs `--resume` and that requires session_id
+        # to be set.
+        session_id, _ = _parse_envelope_and_inner(stdout)
         self.session_id = session_id
 
-        try:
-            output = PersonaTurnOutput.model_validate(inner)
-        except ValidationError as exc:
-            raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
+        output = self._parse_per_turn_with_count_retry(
+            stdout=stdout, displayed_order=displayed_order, kind="first-turn"
+        )
         return _validate_quotes_against_dashboard(output, user_message)
 
     def subsequent_turn(
@@ -341,43 +459,10 @@ class PersonaSession:
         user_message = _format_turn_user_message(
             turn_input=turn_input, displayed_order=displayed_order
         )
-        cmd = [
-            "claude",
-            "--resume",
-            self.session_id,
-            "--print",
-            "--output-format",
-            "json",
-            "--effort",
-            self.effort,
-            user_message,
-        ]
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=self.shell_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.per_turn_timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise PersonaTimeout(f"subsequent-turn timeout after {exc.timeout}s") from exc
-
-        if proc.returncode != 0:
-            raise PersonaSubprocessError(
-                f"subsequent-turn subprocess returned {proc.returncode}: {proc.stderr[:500]}"
-            )
-
-        # session_id from envelope should match self.session_id; we don't
-        # re-assign because resume preserves it.
-        _, inner = _parse_envelope_and_inner(proc.stdout)
-
-        try:
-            output = PersonaTurnOutput.model_validate(inner)
-        except ValidationError as exc:
-            raise PersonaParseError(f"per-turn output failed validation: {exc}") from exc
+        stdout = self._run_subprocess(self._resume_cmd(user_message), kind="subsequent-turn")
+        output = self._parse_per_turn_with_count_retry(
+            stdout=stdout, displayed_order=displayed_order, kind="subsequent-turn"
+        )
         return _validate_quotes_against_dashboard(output, user_message)
 
     def final_verdict(self, *, post_mortem_json: dict[str, Any]) -> PersonaRunVerdict:
@@ -408,36 +493,8 @@ class PersonaSession:
             f"```json\n{json.dumps(post_mortem_json, indent=2, default=str)}\n```"
         )
 
-        cmd = [
-            "claude",
-            "--resume",
-            self.session_id,
-            "--print",
-            "--output-format",
-            "json",
-            "--effort",
-            self.effort,
-            user_message,
-        ]
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=self.shell_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.per_turn_timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise PersonaTimeout(f"final-verdict timeout after {exc.timeout}s") from exc
-
-        if proc.returncode != 0:
-            raise PersonaSubprocessError(
-                f"final-verdict subprocess returned {proc.returncode}: {proc.stderr[:500]}"
-            )
-
-        _, inner = _parse_envelope_and_inner(proc.stdout)
+        stdout = self._run_subprocess(self._resume_cmd(user_message), kind="final-verdict")
+        _, inner = _parse_envelope_and_inner(stdout)
 
         try:
             return PersonaRunVerdict.model_validate(inner)

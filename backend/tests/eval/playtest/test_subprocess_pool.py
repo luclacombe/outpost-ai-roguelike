@@ -208,11 +208,11 @@ def test_invalid_pick_recorded_only_as_invalid_pick(
 
 
 @pytest.mark.parametrize(
-    "exception_class,counter_name,counter_target",
+    "exception_class,counter_name,counter_target,expected_error_substring",
     [
-        ("PersonaTimeout", "subprocess_hangs", 2),
-        ("PersonaSubprocessError", "subprocess_crashes", 2),
-        ("PersonaParseError", "malformed_json_count", 2),
+        ("PersonaTimeout", "subprocess_hangs", 2, "timeout"),
+        ("PersonaSubprocessError", "subprocess_crashes", 2, "subprocess"),
+        ("PersonaParseError", "malformed_json_count", 2, "parse"),
     ],
 )
 def test_run_final_verdict_failure_modes(
@@ -221,9 +221,13 @@ def test_run_final_verdict_failure_modes(
     exception_class: str,
     counter_name: str,
     counter_target: int,
+    expected_error_substring: str,
 ) -> None:
     """Each typed exception triggered by final_verdict increments the
-    matching counter; second failure returns None per spec §10."""
+    matching counter; second failure surfaces a `VerdictResult` with
+    `verdict=None` AND a non-empty `error` describing the failure mode
+    so the orchestrator can mark the run as `verdict_failed` (sub-bug iii).
+    """
     from app.eval.playtest.persona_session import (
         PersonaParseError,
         PersonaSubprocessError,
@@ -248,5 +252,42 @@ def test_run_final_verdict_failure_modes(
     pool = SubprocessPool(max_concurrency=1)
     result = pool.run_final_verdict(session=session, post_mortem_json={"end_state": "ENDURED"})
 
-    assert result is None
+    # New: result is a VerdictResult, not a bare PersonaRunVerdict | None.
+    assert result.verdict is None
+    assert result.error is not None
+    assert expected_error_substring in result.error.lower()
     assert getattr(pool.findings, counter_name) == counter_target
+
+
+def test_run_final_verdict_success_returns_verdict_with_no_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_shell_dir
+) -> None:
+    """Happy path: VerdictResult.verdict carries the parsed verdict and
+    error is None. Preserves callers' "did the verdict succeed?" check."""
+    from app.eval.playtest.schemas import (
+        AxisScore,
+        ContinueTomorrow,
+        PersonaRunVerdict,
+        VerdictAxes,
+    )
+
+    fake_verdict = PersonaRunVerdict(
+        axes=VerdictAxes(
+            stakes_felt_real=AxisScore(score=4, rationale="...", turn_citations=[]),
+            tonal_coherence=AxisScore(score=5, rationale="...", turn_citations=[]),
+            advisor_distinctness=AxisScore(score=3, rationale="...", turn_citations=[]),
+            dramatic_arc=AxisScore(score=4, rationale="...", turn_citations=[]),
+        ),
+        continue_tomorrow=ContinueTomorrow(decision=True, reason="run earned its end"),
+        closing_paragraph="...",
+    )
+
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
+    session.session_id = "preset"
+    monkeypatch.setattr(session, "final_verdict", lambda **_kw: fake_verdict)
+
+    pool = SubprocessPool(max_concurrency=1)
+    result = pool.run_final_verdict(session=session, post_mortem_json={"end_state": "ENDURED"})
+
+    assert result.verdict is fake_verdict
+    assert result.error is None

@@ -66,6 +66,22 @@ class PoolPickResult:
         return self.output.chosen_proposal_id
 
 
+@dataclass
+class VerdictResult:
+    """End-of-run verdict outcome. Carries either the parsed verdict or a
+    description of the failure mode — never `None` silently.
+
+    Sub-bug (iii): the prior return type was `PersonaRunVerdict | None`,
+    which made `verdict_failed` runs indistinguishable from "game didn't
+    end" in the archive. The orchestrator now propagates `error` into
+    `PerRunArchive.verdict_error` so the meta-aggregator can flag silent
+    failures distinctly from never-finished runs.
+    """
+
+    verdict: PersonaRunVerdict | None
+    error: str | None  # None on success; populated with the last failure message on degrade
+
+
 def _synthesize_fallback(*, turn: int, displayed_order: list[str]) -> PersonaTurnOutput:
     """Fallback pick when the persona fails twice. Picks the first proposal
     in shuffled `displayed_order`. Reaction explicitly notes the failure."""
@@ -129,41 +145,52 @@ class SubprocessPool:
 
     def run_final_verdict(
         self, *, session: PersonaSession, post_mortem_json: dict[str, Any]
-    ) -> PersonaRunVerdict | None:
-        """End-of-run verdict. Single retry; on second failure returns None
-        (the run's verdict is recorded as missing in runs.json)."""
+    ) -> VerdictResult:
+        """End-of-run verdict. Single retry; on second failure returns a
+        `VerdictResult` with `verdict=None` and `error` populated with the
+        last failure message — the orchestrator surfaces this as
+        `PerRunArchive.verdict_error` so silent failures are distinguishable
+        from never-finished runs (sub-bug iii).
+        """
+        last_error: str | None = None
         with self._sema:
             for attempt in (1, 2):
                 try:
-                    return session.final_verdict(post_mortem_json=post_mortem_json)
+                    verdict = session.final_verdict(post_mortem_json=post_mortem_json)
+                    return VerdictResult(verdict=verdict, error=None)
                 except PersonaTimeout as exc:
+                    last_error = f"timeout: {exc}"
                     logger.warning(
                         "final_verdict timeout (attempt %d/2) for %s: %s",
                         attempt,
                         session.persona.id,
                         exc,
+                        exc_info=True,
                     )
                     self.findings.subprocess_hangs += 1
                 except PersonaSubprocessError as exc:
+                    last_error = f"subprocess crash: {exc}"
                     logger.warning(
                         "final_verdict subprocess crash (attempt %d/2) for %s: %s",
                         attempt,
                         session.persona.id,
                         exc,
+                        exc_info=True,
                     )
                     self.findings.subprocess_crashes += 1
                 except PersonaParseError as exc:
+                    last_error = f"parse error: {exc}"
                     logger.warning(
                         "final_verdict parse error (attempt %d/2) for %s: %s",
                         attempt,
                         session.persona.id,
                         exc,
+                        exc_info=True,
                     )
                     self.findings.malformed_json_count += 1
                     self.findings.by_persona[session.persona.id]["malformed"] += 1
-                if attempt == 2:
-                    return None
-        return None
+        # Both attempts failed.
+        return VerdictResult(verdict=None, error=f"{last_error} (after 2 attempts)")
 
     def _run_with_retry(
         self,
