@@ -10,11 +10,14 @@ Priority (highest first):
 3. Weighted random draw from the setting's pool, respecting cooldown (no
    severity-5 back-to-back), min_turn gating, can_kill_agent turn-4 gating,
    and wealth-scaling (Rimworld threat budget boost on high-severity events).
+   Caller-supplied `recently_fired_event_ids` further filters the pool so
+   the same template doesn't recycle within the cooldown window.
 
-Empty-pool fallback: if nothing is eligible after all filters, returns a
-sentinel `respite` event — severity 1, origin NATURAL, generic body. This
-is the one case where the selector invents an event rather than drawing
-from the pool.
+Empty-pool fallback: if nothing is eligible after all filters (including
+cooldown), returns a respite event drawn from a 10-template pool keyed
+deterministically off (setting_id, seed, turn_number). This guards both
+the daily-determinism property of the run and the "92% of runs ship the
+same hardcoded fallback" bug from playtest report §4.1.
 
 Pure: no I/O, no global state. All randomness flows through the caller-
 supplied `random.Random`.
@@ -23,6 +26,7 @@ supplied `random.Random`.
 from __future__ import annotations
 
 import random
+import zlib
 
 from app.game.difficulty import wealth_scale_factor
 from app.game.schemas import ColonyState, Event, EventOrigin
@@ -50,6 +54,7 @@ def select_event(
     rng: random.Random,
     *,
     seeded_events: list[Event] | None = None,
+    recently_fired_event_ids: set[str] | None = None,
 ) -> Event:
     """Pick the event to present on this turn.
 
@@ -66,9 +71,12 @@ def select_event(
        - wealth-scaling factor applied to severity weights for sev >= 3
        - can_kill_agent events only eligible for state.turn_number >= 4
        - forced_escalation events never picked here (only via rule 2)
+       - `recently_fired_event_ids` excludes recently-used category ids so
+         the same template doesn't recycle (playtest report §1.9)
 
-    If no pool event is eligible after filters, returns a sentinel `respite`
-    event (severity 1, origin NATURAL).
+    If no pool event is eligible after filters, returns a respite event
+    drawn from a 10-template pool, deterministic per (setting_id, seed,
+    turn_number).
     """
     # Rule 1: seed priority.
     if seeded_events:
@@ -82,13 +90,16 @@ def select_event(
         prob = forced_escalation_probability(turn)
         if rng.random() < prob:
             forced = _find_forced_escalation_category(setting)
+            # Forced-escalation events ignore the cooldown set: the
+            # "exactly once per run" guarantee outranks recycling concerns.
             if forced is not None:
                 return _build_event(forced, rng, EventOrigin.FORCED_ESCALATION)
 
     # Rule 3: weighted random from eligible pool.
-    category = _weighted_pick(state, setting, rng)
+    excluded = recently_fired_event_ids or set()
+    category = _weighted_pick(state, setting, rng, excluded_ids=excluded)
     if category is None:
-        return _respite_event()
+        return _respite_event(state.setting_id, state.seed, state.turn_number)
     return _build_event(category, rng, EventOrigin.NATURAL)
 
 
@@ -149,8 +160,14 @@ def _last_event_severity(state: ColonyState) -> int | None:
     return latest.event.severity
 
 
-def _eligible_categories(state: ColonyState, setting: Setting) -> list[EventCategory]:
-    """Filter the setting's event pool against all selection rules."""
+def _eligible_categories(
+    state: ColonyState, setting: Setting, *, excluded_ids: set[str]
+) -> list[EventCategory]:
+    """Filter the setting's event pool against all selection rules.
+
+    `excluded_ids` is the cooldown set — categories whose `id` is in this
+    set are dropped before weighting. Empty set is the no-op default.
+    """
     cooldown_blocks_sev5 = _last_event_severity(state) == _SEVERITY_COOLDOWN_THRESHOLD
 
     eligible: list[EventCategory] = []
@@ -164,14 +181,21 @@ def _eligible_categories(state: ColonyState, setting: Setting) -> list[EventCate
             continue
         if cooldown_blocks_sev5 and category.severity >= _SEVERITY_COOLDOWN_THRESHOLD:
             continue
+        if category.id in excluded_ids:
+            # Per-template cooldown — caller-provided last-N event ids.
+            continue
         eligible.append(category)
     return eligible
 
 
 def _weighted_pick(
-    state: ColonyState, setting: Setting, rng: random.Random
+    state: ColonyState,
+    setting: Setting,
+    rng: random.Random,
+    *,
+    excluded_ids: set[str],
 ) -> EventCategory | None:
-    eligible = _eligible_categories(state, setting)
+    eligible = _eligible_categories(state, setting, excluded_ids=excluded_ids)
     if not eligible:
         return None
 
@@ -217,17 +241,87 @@ def _derive_title(prompt_template: str) -> str:
     return title or "Event"
 
 
-def _respite_event() -> Event:
-    """Sentinel used when no pool event is eligible.
+_RESPITE_TEMPLATES: tuple[tuple[str, str], ...] = (
+    (
+        "The wind shifts",
+        "The wind shifts. Not a storm, not yet. Someone in the next room is "
+        "counting cans of something out loud and starting over.",
+    ),
+    (
+        "Generator pitch",
+        "The generator hum drops half a step and holds. No alarm. Nobody mentions "
+        "it. Whoever is on shift writes the time in the logbook anyway.",
+    ),
+    (
+        "Half-cold coffee",
+        "Half a mug of coffee on the comms desk has gone cold. The owner is "
+        "either asleep or pretending to be. Nobody picks it up.",
+    ),
+    (
+        "Inventory recount",
+        "Inventory comes up two short. They recount. The numbers match the second "
+        "time. Nobody asks which count was wrong.",
+    ),
+    (
+        "Quiet corridor",
+        "Footsteps in the corridor, then nothing. Whoever it was turned back. "
+        "The lights flicker once and steady out.",
+    ),
+    (
+        "Old radio chatter",
+        "The radio catches half a sentence in a language nobody here speaks, then "
+        "static. It happens sometimes. Nobody touches the dial.",
+    ),
+    (
+        "Maintenance log",
+        "The maintenance log gets a new line: a valve that nobody remembers "
+        "tightening is tight. Initialed and dated. Filed.",
+    ),
+    (
+        "Cold hands",
+        "Two of the crew sit at the table not talking. One of them is rubbing "
+        "feeling back into his hands. The other refills his cup.",
+    ),
+    (
+        "Shift change",
+        "Shift change goes by the book. The handover sheet has nothing on it "
+        "worth reading aloud. The relief takes the chair without a word.",
+    ),
+    (
+        "Window frost",
+        "Frost on the inside of the porthole, finger-thick at the corner. "
+        "Someone scrapes a small clear circle with a thumbnail and walks past.",
+    ),
+)
 
-    Severity 1, category='respite', origin NATURAL. The engine treats this as
-    a regular natural event; content is deliberately minimal.
+
+def _respite_event(setting_id: str, seed: int, turn_number: int) -> Event:
+    """Pick one of ten respite templates deterministically.
+
+    Replaces the single hardcoded "A quiet turn" fallback that was firing on
+    92% of corpus runs at turn 1 (playtest report §4.1). The same
+    `(setting_id, seed)` always yields the same first respite — preserving
+    the daily-determinism invariant — but `turn_number` mixes into the hash
+    so a single run that hits respite multiple times gets variety.
+
+    The 10 strings are project-thematic colony beats: a wind shift, a
+    generator hum shift, a half-emptied coffee cup, the maintenance log
+    getting a quiet line, etc. Severity 1, origin NATURAL, category
+    'respite'. Eval can detect cross-turn repetition via the indexed id.
+
+    Uses zlib.crc32 (not the builtin `hash`) for setting_id mixing so the
+    same input gives the same output across interpreter restarts —
+    `hash(str)` is salted by PYTHONHASHSEED and would break daily
+    determinism across server reboots.
     """
+    setting_hash = zlib.crc32(setting_id.encode("utf-8"))
+    index = (seed ^ setting_hash ^ turn_number) % len(_RESPITE_TEMPLATES)
+    title, body = _RESPITE_TEMPLATES[index]
     return Event(
-        id="respite:quiet_turn",
+        id=f"respite:quiet_turn:{index}",
         category="respite",
-        title="A quiet turn",
-        body="A quiet turn. Nothing demands a decision.",
+        title=title,
+        body=body,
         severity=1,
         origin=EventOrigin.NATURAL,
     )

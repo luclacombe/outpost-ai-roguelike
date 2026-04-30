@@ -84,6 +84,12 @@ _FLAVOR_LEGITIMACY_SHIFT: dict[ProposalFlavor, int] = {
     ProposalFlavor.WILDCARD: -3,
 }
 
+# Within-run event-template cooldown: the last N resolved events' category
+# ids are excluded from the next pick. Wide enough to kill the within-run
+# recycling reported in playtest §1.9 (recycler event repeating across
+# turns 1-4) without starving the early-game pool.
+_COOLDOWN_WINDOW = 4
+
 
 async def generate_event(state: GameTurnState) -> GameTurnState:
     """Turn-start node: fire due seeds, pick the event, reset per-turn keys.
@@ -104,15 +110,26 @@ async def generate_event(state: GameTurnState) -> GameTurnState:
     #    library-specific seeding scheme.
     rng = random.Random(new_state.seed ^ (new_state.turn_number + 1) ^ 0x4C3D5E6F)
 
-    # 4. Select event — seed-fired events take priority when present.
+    # 4. Build the per-template cooldown set: category ids of the last N
+    #    resolved events in this run. Cross-run cooldown would need a DB
+    #    query threaded into the node; we scoped to within-run because the
+    #    LangGraph nodes don't have a checkpointable db_session. This still
+    #    kills the within-run recycling cited in playtest report §1.9
+    #    (recycler event repeating verbatim across turns 1-4).
+    recently_fired = {
+        resolved.event.category for resolved in new_state.event_log[-_COOLDOWN_WINDOW:]
+    }
+
+    # 5. Select event — seed-fired events take priority when present.
     event = events.select_event(
         new_state,
         setting,
         rng,
         seeded_events=(fired_events or None),
+        recently_fired_event_ids=recently_fired,
     )
 
-    # 5. Surface the event both on ColonyState (persistent) and on the
+    # 6. Surface the event both on ColonyState (persistent) and on the
     #    node-level key (convenience for downstream nodes and the API
     #    layer). Reset every per-turn field so a replay/resume starts
     #    from a clean slate.

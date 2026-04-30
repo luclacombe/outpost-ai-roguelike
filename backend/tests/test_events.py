@@ -500,3 +500,253 @@ def test_has_forced_escalation_fired_detects_prior() -> None:
 def test_has_forced_escalation_fired_no_history() -> None:
     state = _colony(turn_number=6)
     assert has_forced_escalation_fired(state) is False
+
+
+# ---------------------------------------------------------------------------
+# Respite pool (Sub-bug A) — 10 deterministic templates instead of one
+# ---------------------------------------------------------------------------
+
+
+def _force_respite_setting() -> Setting:
+    """Build a setting whose pool is empty for early turns -> always respite."""
+    categories = [_category(cid=f"future_{i}", severity=2, min_turn=99) for i in range(5)]
+    categories.append(_forced_escalation_category())
+    return _setting_with_events(categories)
+
+
+def test_respite_pool_deterministic_per_setting_seed_turn() -> None:
+    """Same (setting_id, seed, turn_number) -> same respite event id every call."""
+    setting = _force_respite_setting()
+
+    for trial in range(5):
+        state_a = _colony(turn_number=1)
+        state_a = state_a.model_copy(update={"seed": 12345 + trial, "turn_number": 1})
+        state_b = state_a.model_copy()  # same setting_id, seed, turn_number
+
+        # rng is irrelevant for respite content — pick is keyed off (setting, seed, turn).
+        a = select_event(state_a, setting, random.Random(99))
+        b = select_event(state_b, setting, random.Random(7))
+
+        assert a.id == b.id
+        assert a.body == b.body
+        assert a.title == b.title
+
+
+def test_respite_pool_uses_stable_hash_not_builtin_hash() -> None:
+    """The pick must be stable across Python interpreter restarts.
+
+    `hash(str)` is salted by PYTHONHASHSEED on each interpreter run, so
+    using it for the index would break the daily-determinism invariant
+    across server reboots. Pin the expected index for a known input set
+    so a future change to a non-stable hash trips this test.
+    """
+    import zlib
+
+    setting = _force_respite_setting()
+    # _colony defaults setting_id="arctic_station_v1"; that is the value
+    # that flows into _respite_event, not the Setting object's id.
+    state = _colony(turn_number=1)
+    state = state.model_copy(update={"seed": 42, "turn_number": 1})
+    evt = select_event(state, setting, random.Random(0))
+
+    expected_idx = (42 ^ zlib.crc32(b"arctic_station_v1") ^ 1) % 10
+    assert evt.id == f"respite:quiet_turn:{expected_idx}"
+
+
+def test_respite_pool_actually_reaches_multiple_templates() -> None:
+    """Across 10 different seeds for one setting/turn, at least 5 distinct
+    respite ids surface — proves the pool is not collapsing to one template.
+    """
+    setting = _force_respite_setting()
+    seen_ids: set[str] = set()
+    for s in range(10):
+        state = _colony(turn_number=2)
+        state = state.model_copy(update={"seed": s})
+        evt = select_event(state, setting, random.Random(0))
+        assert evt.category == "respite"
+        seen_ids.add(evt.id)
+    assert len(seen_ids) >= 5, (
+        f"respite pool only surfaced {len(seen_ids)} distinct ids across 10 seeds; "
+        f"expected >= 5. Got: {sorted(seen_ids)}"
+    )
+
+
+def test_respite_pool_all_templates_pass_event_validation() -> None:
+    """Every one of the 10 templates yields a schema-valid Event.
+
+    We exercise indices 0..9 by exhausting different (seed, turn_number)
+    combinations until each id is hit — pure black-box coverage. Stay
+    outside the forced-escalation window (turns 5-9) so only respite
+    events surface.
+    """
+    setting = _force_respite_setting()
+    seen: dict[str, Event] = {}
+    # 200+ combinations is plenty to cover a 10-slot pool with a hash mod.
+    for s in range(40):
+        for t in (1, 2, 3, 4, 10, 11, 12):  # outside forced-escalation window
+            state = _colony(turn_number=t)
+            state = state.model_copy(update={"seed": s, "turn_number": t})
+            evt = select_event(state, setting, random.Random(0))
+            assert evt.category == "respite", (
+                f"unexpected non-respite event at seed={s}, turn={t}: {evt.id}"
+            )
+            seen[evt.id] = evt
+    assert len(seen) == 10, (
+        f"expected exactly 10 distinct respite ids; got {len(seen)}: {sorted(seen.keys())}"
+    )
+    for evt in seen.values():
+        # Re-validate via Pydantic's model_validate to catch any drift.
+        Event.model_validate(evt.model_dump())
+        assert evt.severity == 1
+        assert evt.origin is EventOrigin.NATURAL
+        assert evt.category == "respite"
+        assert evt.body  # non-empty
+        assert evt.title  # non-empty
+        # Stable id format so eval can detect cross-turn repetition.
+        assert evt.id.startswith("respite:quiet_turn:")
+
+
+def test_respite_pool_avoids_ai_tell_phrases() -> None:
+    """No template body contains the AI-tell phrases listed in
+    app/agent/prompts.py:138-144 (case-insensitive).
+    """
+    setting = _force_respite_setting()
+    seen_bodies: set[str] = set()
+    for s in range(40):
+        for t in (1, 2, 3, 4, 10, 11, 12):  # outside forced-escalation window
+            state = _colony(turn_number=t)
+            state = state.model_copy(update={"seed": s, "turn_number": t})
+            evt = select_event(state, setting, random.Random(0))
+            assert evt.category == "respite"
+            seen_bodies.add(evt.body)
+    assert len(seen_bodies) == 10
+    banned_phrases = [
+        "unfortunately",
+        "it seems that",
+        "delve into",
+        "a tapestry of",
+        "in the realm of",
+        "navigating the landscape",
+        "it is important to note",
+        "crucial",
+        "pivotal",
+        "essential",
+        "robust",
+        "comprehensive",
+        "meticulous",
+        "leverage",
+        "synergy",
+        "paradigm",
+        "not only",
+    ]
+    for body in seen_bodies:
+        lowered = body.lower()
+        for phrase in banned_phrases:
+            assert phrase not in lowered, (
+                f"respite body contains AI-tell phrase {phrase!r}: {body!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Cooldown (Sub-bug B) — recently-fired event ids excluded from pool
+# ---------------------------------------------------------------------------
+
+
+def test_cooldown_excludes_recently_fired_event_ids() -> None:
+    """select_event(... recently_fired_event_ids={"foo"}) drops cat id 'foo'."""
+    categories = [
+        _category(cid="foo", severity=2, min_turn=1, weight=10.0),
+        _category(cid="bar", severity=2, min_turn=1, weight=10.0),
+        _forced_escalation_category(),
+    ]
+    setting = _setting_with_events(categories)
+    state = _colony(turn_number=2)
+
+    for seed in range(50):
+        result = select_event(
+            state,
+            setting,
+            random.Random(seed),
+            recently_fired_event_ids={"foo"},
+        )
+        assert result.category != "foo", f"seed {seed} returned excluded id 'foo'"
+
+
+def test_cooldown_falls_back_to_respite_when_pool_empty() -> None:
+    """When all eligible categories are excluded, fall back to a respite event."""
+    categories = [
+        _category(cid="foo", severity=2, min_turn=1, weight=10.0),
+        _category(cid="bar", severity=2, min_turn=1, weight=10.0),
+        _forced_escalation_category(),
+    ]
+    setting = _setting_with_events(categories)
+    state = _colony(turn_number=2)
+
+    result = select_event(
+        state,
+        setting,
+        random.Random(0),
+        recently_fired_event_ids={"foo", "bar"},
+    )
+    assert result.category == "respite"
+    assert result.severity == 1
+    assert result.origin is EventOrigin.NATURAL
+
+
+def test_cooldown_default_empty_set_is_no_op() -> None:
+    """Without `recently_fired_event_ids`, behaviour matches pre-existing."""
+    categories = [
+        _category(cid="foo", severity=2, min_turn=1, weight=10.0),
+        _category(cid="bar", severity=2, min_turn=1, weight=10.0),
+        _forced_escalation_category(),
+    ]
+    setting = _setting_with_events(categories)
+    state = _colony(turn_number=2)
+
+    a = select_event(state, setting, random.Random(42))
+    b = select_event(state, setting, random.Random(42), recently_fired_event_ids=set())
+    c = select_event(state, setting, random.Random(42), recently_fired_event_ids=None)
+
+    assert a.id == b.id == c.id
+    assert a.category == b.category == c.category
+
+
+# ---------------------------------------------------------------------------
+# Within-run recycling — the report's actual bite
+# ---------------------------------------------------------------------------
+
+
+def test_select_event_skips_categories_in_recent_event_log_when_caller_passes_them() -> None:
+    """Caller can derive the cooldown set from `state.event_log` and pass it
+    in. With the categories of the last 4 events excluded, those categories
+    cannot recur — proving the wiring kills within-run recycling.
+    """
+    categories = [
+        _category(cid="recycler", severity=2, min_turn=1, weight=10.0),
+        _category(cid="alt_a", severity=2, min_turn=1, weight=1.0),
+        _category(cid="alt_b", severity=2, min_turn=1, weight=1.0),
+        _forced_escalation_category(),
+    ]
+    setting = _setting_with_events(categories)
+
+    # Build an event_log where 'recycler' fired on the previous turn.
+    prev = Event(
+        id="recycler:abc",
+        category="recycler",
+        title="t",
+        body="b",
+        severity=2,
+        origin=EventOrigin.NATURAL,
+    )
+    state = _colony(turn_number=3, event_log=[_resolved(turn=2, event=prev)])
+
+    for seed in range(50):
+        result = select_event(
+            state,
+            setting,
+            random.Random(seed),
+            recently_fired_event_ids={"recycler"},
+        )
+        assert result.category != "recycler", (
+            f"seed {seed}: 'recycler' fired again despite cooldown set"
+        )
