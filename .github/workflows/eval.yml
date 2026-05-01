@@ -36,17 +36,35 @@ jobs:
           --health-retries 5
 
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # ANTHROPIC_API_KEY MUST be non-empty: AsyncAnthropic() in
+      # app/agent/anthropic_client.py is constructed at module import (during
+      # test collection) and raises on an empty key — which fails the mocked
+      # tests too, even though they intercept HTTP via respx. Fall back to a
+      # placeholder string when the secret isn't configured. The real-LLM
+      # marker (OUTPOST_EVAL_REAL_LLM below) is gated on actual secret
+      # presence, so the placeholder only ever flows into mocked paths.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-ci-placeholder' }}
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: https://cloud.langfuse.com
       LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-      OUTPOST_EVAL_REAL_LLM: "1"
+      # "1" only when ANTHROPIC_API_KEY secret is actually present. Without
+      # it, test_real_llm_simulated_run's @skipif sees an empty marker and
+      # skips. Mocked tests still run.
+      OUTPOST_EVAL_REAL_LLM: ${{ secrets.ANTHROPIC_API_KEY && '1' || '' }}
       # Per-run ceiling enforced as a hard pytest assertion in
       # tests/eval/test_eval_pipeline.py::test_real_llm_simulated_run.
       # The job MUST fail (red ❌) if any single run exceeds this.
       OUTPOST_EVAL_BUDGET_CENTS: "50"
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      # Settings() runs at module import (see backend/CLAUDE.md). Alembic env.py
+      # imports app.config, so these placeholders must exist or the migration
+      # step crashes before the eval pipeline even loads. Same shape as test.yml.
+      # JWT secret must be ≥32 bytes to avoid pyjwt's HMAC length warning.
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_JWT_SECRET: ci-placeholder-secret-not-real-must-be-32-bytes-min
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      FRONTEND_URL: http://localhost:3000
       # Re-use the runner-level cache directory across jobs; pre-warm step below
       # downloads MiniLM-L6-v2 once and the test never pays the 80MB cost.
       SENTENCE_TRANSFORMERS_HOME: /home/runner/.cache/sentence-transformers
@@ -66,11 +84,13 @@ jobs:
         run: uv sync --frozen
 
       - name: Bootstrap Postgres schema
-        # The Alembic migration for `profiles` has a cross-schema FK to
-        # `auth.users` (a Supabase-managed table that doesn't exist in a
-        # vanilla Postgres image). Create a minimal auth schema + users
-        # table here so Alembic can apply cleanly and the eval pipeline's
-        # auth-user seed inserts succeed.
+        # Vanilla Postgres has neither the auth schema/table nor auth.uid()
+        # that Supabase provides at runtime. Alembic migrations reference
+        # both: cross-schema FK on profiles → auth.users, and RLS policies
+        # using auth.uid() = user_id. Stub them here so Alembic can apply
+        # cleanly and the eval pipeline's auth-user seed inserts succeed.
+        # auth.uid() returns NULL in CI (no JWT claim is set); the eval
+        # pipeline's service-role queries bypass RLS via dependency override.
         env:
           PGPASSWORD: postgres
         run: |
@@ -88,6 +108,12 @@ jobs:
               created_at TIMESTAMPTZ DEFAULT now(),
               updated_at TIMESTAMPTZ DEFAULT now()
           );
+          CREATE OR REPLACE FUNCTION auth.uid()
+          RETURNS UUID
+          LANGUAGE SQL STABLE
+          AS $$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
 
       - name: Apply Alembic migrations
