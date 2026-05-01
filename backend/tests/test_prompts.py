@@ -478,7 +478,7 @@ def test_preamble_forbids_turn_number_narration():
 def test_colony_state_block_renders_status_attribute():
     from app.agent.prompts import build_colony_state_block
     from app.game.schemas import AdvisorStatus
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     detained = _agent(name="A", status=AdvisorStatus.DETAINED)
     state = _colony(agents=[detained, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -496,7 +496,7 @@ def test_cast_filter_includes_only_active_alive_advisors():
     """
     from app.agent.nodes import filter_cast
     from app.game.schemas import AdvisorStatus
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")  # ACTIVE alive — authors
     b = _agent(name="B", status=AdvisorStatus.DETAINED)  # detained — silent

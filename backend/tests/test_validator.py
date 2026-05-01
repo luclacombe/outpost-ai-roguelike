@@ -689,7 +689,7 @@ def test_validation_result_invalid_has_reason() -> None:
 
 
 def test_modify_legitimacy_valid_when_engine_emitted():
-    from tests.test_engine import _colony
+    from tests._factories import _colony
 
     state = _colony(legitimacy=50)
     tc = ToolCall(
@@ -703,7 +703,7 @@ def test_modify_legitimacy_valid_when_engine_emitted():
 
 def test_modify_legitimacy_rejects_caller_id():
     """Engine-only tool: any caller_id is invalid."""
-    from tests.test_engine import _colony
+    from tests._factories import _colony
 
     tc = ToolCall(
         name="modify_legitimacy",
@@ -716,7 +716,7 @@ def test_modify_legitimacy_rejects_caller_id():
 
 
 def test_modify_legitimacy_rejects_out_of_range_delta():
-    from tests.test_engine import _colony
+    from tests._factories import _colony
 
     tc = ToolCall(
         name="modify_legitimacy",
@@ -729,7 +729,7 @@ def test_modify_legitimacy_rejects_out_of_range_delta():
 
 
 def test_modify_legitimacy_requires_reason():
-    from tests.test_engine import _colony
+    from tests._factories import _colony
 
     tc = ToolCall(name="modify_legitimacy", caller_id=None, args={"delta": -5})
     result = validate_tool_call(tc, _colony())
@@ -747,7 +747,7 @@ def _status_args(target_id: str, new_status: str = "DETAINED", reason: str = "x"
 
 
 def test_set_advisor_status_active_to_detained_valid():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")
     state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -761,7 +761,7 @@ def test_set_advisor_status_active_to_detained_valid():
 
 def test_set_advisor_status_detained_to_active_valid():
     from app.game.schemas import AdvisorStatus
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     detained = _agent(name="A", status=AdvisorStatus.DETAINED)
     state = _colony(agents=[detained, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -776,7 +776,7 @@ def test_set_advisor_status_detained_to_active_valid():
 def test_set_advisor_status_dismissed_one_way():
     """DISMISSED → ACTIVE / DETAINED is rejected."""
     from app.game.schemas import AdvisorStatus
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     dismissed = _agent(name="A", status=AdvisorStatus.DISMISSED)
     state = _colony(agents=[dismissed, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -791,7 +791,7 @@ def test_set_advisor_status_dismissed_one_way():
 
 
 def test_set_advisor_status_dead_target_rejected():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     dead = _agent(name="A", alive=False, health=0)
     state = _colony(agents=[dead, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -807,7 +807,7 @@ def test_set_advisor_status_dead_target_rejected():
 
 def test_set_advisor_status_dismiss_blocked_by_cast_floor():
     """Dismissing when only 2 active+detained others remain is blocked."""
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")
     b = _agent(name="B")
@@ -825,7 +825,7 @@ def test_set_advisor_status_dismiss_blocked_by_cast_floor():
 
 
 def test_set_advisor_status_dismiss_allowed_with_three_others_active():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
     state = _colony(agents=[a, b, c, d])
@@ -838,7 +838,7 @@ def test_set_advisor_status_dismiss_allowed_with_three_others_active():
 
 
 def test_set_advisor_status_rejects_caller_id():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")
     state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -853,7 +853,7 @@ def test_set_advisor_status_rejects_caller_id():
 
 
 def test_set_advisor_status_unknown_target():
-    from tests.test_engine import _colony
+    from tests._factories import _colony
 
     tc = ToolCall(
         name="set_advisor_status",
@@ -866,7 +866,7 @@ def test_set_advisor_status_unknown_target():
 
 
 def test_set_advisor_status_unknown_status_string():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")
     state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
@@ -881,7 +881,7 @@ def test_set_advisor_status_unknown_status_string():
 
 
 def test_set_advisor_status_requires_reason():
-    from tests.test_engine import _agent, _colony
+    from tests._factories import _agent, _colony
 
     a = _agent(name="A")
     state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
