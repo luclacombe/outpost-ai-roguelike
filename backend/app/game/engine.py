@@ -441,3 +441,95 @@ def advance_turn(state: ColonyState) -> ColonyState:
             "turn_tool_calls": [],
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Section 7: derive_resolution_consequences (Pb)
+# ---------------------------------------------------------------------------
+
+# Rule constants — taste-tunable, in band with SPEC §5.3 ranges (small
+# orders 1-2, medium 5-8, extreme 15-25). Single severe action sits in the
+# "extreme" band; resource drain is "medium"; overrule of a DOMINANT
+# proposer is "small". Tests assert directional bands, not exact values.
+_LEGIT_PER_50_HEALTH_DRAIN = -12  # severe health drain on a single target
+_LEGIT_PER_30PCT_RESOURCE_DRAIN = -5  # ≥30%-of-max single-resource drain
+_LEGIT_OVERRULE_DOMINANT = -2  # picking non-DOMINANT when a DOMINANT proposal existed
+_GRIEVANCE_OVERRULE_DOMINANT = 2  # for the overruled DOMINANT proposer
+
+
+def derive_resolution_consequences(
+    state: ColonyState,
+    picked: Proposal,
+    all_proposals: list[Proposal],
+) -> list[ToolCall]:
+    """Pure: read picked.tool_calls_on_pick + cross-proposal context, emit
+    a list of validated tool calls (caller_id=None) representing the
+    consequence of the player's choice.
+
+    Replaces the hardcoded _FLAVOR_LEGITIMACY_SHIFT in nodes.resolve. Every
+    legitimacy / grievance change now flows through validate_tool_call so
+    the Tool-Call Validity metric sees them. SPEC §6.7 / invariant #11.
+    """
+    derived: list[ToolCall] = []
+    legit_delta = 0
+    legit_reasons: list[str] = []
+
+    # Rule 1: severe-health-drain on any target (advisor or player).
+    for nested in picked.tool_calls_on_pick:
+        if nested.name == "modify_health":
+            delta = nested.args.get("delta", 0)
+            if isinstance(delta, int) and delta <= -50:
+                legit_delta += _LEGIT_PER_50_HEALTH_DRAIN
+                tgt = nested.args.get("target_id", "?")
+                legit_reasons.append(f"severe harm to {tgt}")
+
+    # Rule 2: resource drain ≥30% of that resource's max.
+    for nested in picked.tool_calls_on_pick:
+        if nested.name == "modify_resource":
+            rid = nested.args.get("resource_id")
+            delta = nested.args.get("delta", 0)
+            res = state.resources.get(rid) if isinstance(rid, str) else None
+            if (
+                res is not None
+                and isinstance(delta, int)
+                and delta < 0
+                and abs(delta) >= 0.30 * res.max
+            ):
+                legit_delta += _LEGIT_PER_30PCT_RESOURCE_DRAIN
+                legit_reasons.append(f"heavy {rid} drain")
+
+    # Rule 3: overruling a DOMINANT proposer. Triggered when (a) picked is
+    # not DOMINANT and (b) some DOMINANT proposal exists in the triple.
+    if picked.flavor != ProposalFlavor.DOMINANT:
+        for prop in all_proposals:
+            if prop.flavor == ProposalFlavor.DOMINANT and prop.proposed_by_agent_id is not None:
+                proposer = _agent_by_id(state, prop.proposed_by_agent_id)
+                if proposer is not None and proposer.is_alive:
+                    derived.append(
+                        ToolCall(
+                            name="adjust_grievance",
+                            caller_id=None,
+                            args={
+                                "target_id": str(proposer.id),
+                                "delta": _GRIEVANCE_OVERRULE_DOMINANT,
+                                "reason": "their dominant proposal was overruled",
+                            },
+                        )
+                    )
+                    legit_delta += _LEGIT_OVERRULE_DOMINANT
+                    legit_reasons.append("overruled dominant advisor")
+
+    # Emit one consolidated modify_legitimacy if any rule triggered.
+    if legit_delta != 0:
+        derived.append(
+            ToolCall(
+                name="modify_legitimacy",
+                caller_id=None,
+                args={
+                    "delta": legit_delta,
+                    "reason": "; ".join(legit_reasons) or "consequence",
+                },
+            )
+        )
+
+    return derived

@@ -1049,3 +1049,173 @@ def test_set_advisor_status_effect_dismissed_does_not_kill():
     assert by_id[a.id].status == AdvisorStatus.DISMISSED
     assert by_id[a.id].is_alive is True
     assert by_id[a.id].health == a.health
+
+
+# ---------------------------------------------------------------------------
+# derive_resolution_consequences (Pb plan, Task 4)
+# ---------------------------------------------------------------------------
+
+
+def _proposal(
+    *,
+    flavor: ProposalFlavor = ProposalFlavor.WILDCARD,
+    proposed_by_agent_id=None,
+    tool_calls_on_pick: list | None = None,
+    pid: str = "p1",
+) -> Proposal:
+    return Proposal(
+        id=pid,
+        proposed_by_agent_id=proposed_by_agent_id,
+        flavor=flavor,
+        name=f"Proposal {pid}",
+        description="x",
+        effects_preview=[],
+        tool_calls_on_pick=tool_calls_on_pick or [],
+    )
+
+
+def test_derive_severe_health_drain_emits_big_legitimacy_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="A")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "left in ice"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    assert legit_calls, "expected at least one modify_legitimacy"
+    total_delta = sum(tc.args["delta"] for tc in legit_calls)
+    assert total_delta <= -10, f"severe-health rule: expected <= -10, got {total_delta}"
+
+
+def test_derive_resource_drain_thirty_percent_emits_medium_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    fuel = _resource(rid="fuel", value=100, max_=100, crit=20)
+    state = _colony(resources={"fuel": fuel})
+    nested = ToolCall(
+        name="modify_resource",
+        caller_id=None,
+        args={"resource_id": "fuel", "delta": -30, "reason": "burn it all"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.DOMINANT, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    total_delta = sum(tc.args["delta"] for tc in legit_calls)
+    assert -10 < total_delta <= -3, (
+        f"resource-drain rule: expected medium hit (-3 to -10), got {total_delta}"
+    )
+
+
+def test_derive_overruled_dominant_proposer_grievance_and_small_legit_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="DominantProposer")
+    state = _colony(agents=[proposer, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+    picked = _proposal(flavor=ProposalFlavor.MORAL, pid="p_moral")
+
+    derived = derive_resolution_consequences(state, picked, [dominant, picked])
+
+    grievance_calls = [
+        tc
+        for tc in derived
+        if tc.name == "adjust_grievance"
+        and tc.args.get("target_id") == str(proposer.id)
+        and tc.args["delta"] > 0
+    ]
+    assert grievance_calls, "expected adjust_grievance(+) for overruled DOMINANT proposer"
+
+
+def test_derive_picking_dominant_does_not_grievance_self():
+    """When the player picks the DOMINANT proposal, the proposer is NOT overruled."""
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="DominantProposer")
+    state = _colony(agents=[proposer, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+
+    derived = derive_resolution_consequences(state, dominant, [dominant])
+
+    grievance_calls = [
+        tc
+        for tc in derived
+        if tc.name == "adjust_grievance" and tc.args.get("target_id") == str(proposer.id)
+    ]
+    assert not grievance_calls
+
+
+def test_derive_no_payload_no_consequences():
+    """Empty tool_calls_on_pick + no overrules = no derived consequences."""
+    from app.game.engine import derive_resolution_consequences
+
+    state = _colony()
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    assert derived == [], f"expected no derived calls, got {derived}"
+
+
+def test_derive_emitted_calls_have_caller_id_none():
+    """All derived tool calls must be engine-emitted."""
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="A")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    assert all(tc.caller_id is None for tc in derived)
+
+
+def test_derive_composite_severe_health_plus_overrule_stacks_cleanly():
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="Vera")
+    target = _agent(name="Marko")
+    state = _colony(agents=[proposer, target, _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(
+        flavor=ProposalFlavor.WILDCARD,
+        tool_calls_on_pick=[nested],
+        pid="p_wild",
+    )
+
+    derived = derive_resolution_consequences(state, picked, [dominant, picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    grievance_calls = [tc for tc in derived if tc.name == "adjust_grievance"]
+    assert len(legit_calls) == 1, "consolidate to one modify_legitimacy"
+    assert len(grievance_calls) == 1, "one grievance hit per overruled proposer"
+    assert legit_calls[0].args["delta"] <= -8, "severe-health stacks with overrule"
