@@ -36,6 +36,9 @@ jobs:
           --health-retries 5
 
     env:
+      # Real-LLM credentials. Empty when secrets aren't configured (e.g. forks);
+      # the eval test SKIPs the real-LLM path in that case (see backend
+      # CLAUDE.md).
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
@@ -47,6 +50,14 @@ jobs:
       # The job MUST fail (red ❌) if any single run exceeds this.
       OUTPOST_EVAL_BUDGET_CENTS: "50"
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      # Settings() runs at module import (see backend/CLAUDE.md). Alembic env.py
+      # imports app.config, so these placeholders must exist or the migration
+      # step crashes before the eval pipeline even loads. Same shape as test.yml.
+      # JWT secret must be ≥32 bytes to avoid pyjwt's HMAC length warning.
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_JWT_SECRET: ci-placeholder-secret-not-real-must-be-32-bytes-min
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+      FRONTEND_URL: http://localhost:3000
       # Re-use the runner-level cache directory across jobs; pre-warm step below
       # downloads MiniLM-L6-v2 once and the test never pays the 80MB cost.
       SENTENCE_TRANSFORMERS_HOME: /home/runner/.cache/sentence-transformers
