@@ -525,3 +525,80 @@ def test_decision_choices_offered_requires_exactly_3():
             grievance_shifts={},
             legitimacy_cost=0,
         )
+
+
+# ---------------------------------------------------------------------------
+# AdvisorStatus + Agent.status field (Pb/P1 plan, Task 1)
+# ---------------------------------------------------------------------------
+
+
+def test_agent_status_defaults_to_active():
+    """Agents are ACTIVE by default; existing test fixtures keep working."""
+    from app.game.schemas import AdvisorStatus
+
+    agent = Agent(
+        id=uuid.uuid4(),
+        game_id=GAME_ID,
+        name="Vera",
+        role="Quartermaster",
+        archetype_quadrant=Quadrant.ACCOUNTANT,
+        ethics=0.0,
+        temperament=0.0,
+        loyalty=0.0,
+        portrait_seed="seed",
+        health=100,
+        morale=50,
+        grievance=0,
+        is_alive=True,
+    )
+    assert agent.status == AdvisorStatus.ACTIVE
+
+
+def test_agent_status_round_trips_through_jsonb_dump():
+    """StrEnum serializes to its .value (per backend/app/game/CLAUDE.md);
+    a JSON dump → model_validate cycle preserves status."""
+    from app.game.schemas import AdvisorStatus
+
+    agent = Agent(
+        id=uuid.uuid4(),
+        game_id=GAME_ID,
+        name="Vera",
+        role="Quartermaster",
+        archetype_quadrant=Quadrant.ACCOUNTANT,
+        ethics=0.0,
+        temperament=0.0,
+        loyalty=0.0,
+        portrait_seed="seed",
+        health=100,
+        morale=50,
+        grievance=0,
+        is_alive=True,
+        status=AdvisorStatus.DETAINED,
+    )
+    payload = agent.model_dump(mode="json")
+    assert payload["status"] == "DETAINED"
+    revived = Agent.model_validate(payload)
+    assert revived.status == AdvisorStatus.DETAINED
+
+
+def test_agent_status_rejects_unknown_value():
+    """Unknown status strings raise on model_validate."""
+    with pytest.raises(ValidationError):
+        Agent.model_validate(
+            {
+                "id": "11111111-0000-0000-0000-000000000001",
+                "game_id": str(GAME_ID),
+                "name": "Vera",
+                "role": "Quartermaster",
+                "archetype_quadrant": "ACCOUNTANT",
+                "ethics": 0.0,
+                "temperament": 0.0,
+                "loyalty": 0.0,
+                "portrait_seed": "seed",
+                "health": 100,
+                "morale": 50,
+                "grievance": 0,
+                "is_alive": True,
+                "status": "BANISHED_TO_THE_VOID",
+            }
+        )

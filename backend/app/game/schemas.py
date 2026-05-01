@@ -46,6 +46,19 @@ class EndState(StrEnum):
     KILLED = "KILLED"
 
 
+class AdvisorStatus(StrEnum):
+    """Non-death lifecycle for an advisor.
+
+    Death stays orthogonal via Agent.is_alive (SPEC §3 invariant: dead means
+    dead). DISMISSED is terminal-alive (one-way), parallels death for cast
+    purposes without entangling the death pipeline.
+    """
+
+    ACTIVE = "ACTIVE"
+    DETAINED = "DETAINED"  # reversible; doesn't author proposals
+    DISMISSED = "DISMISSED"  # one-way; removed from cast
+
+
 # ---------------------------------------------------------------------------
 # Leaf / primitive models
 # ---------------------------------------------------------------------------
@@ -216,6 +229,7 @@ class Agent(BaseModel):
     morale: Annotated[int, Field(ge=0, le=100)]
     grievance: Annotated[int, Field(ge=0, le=10)]
     is_alive: bool
+    status: AdvisorStatus = AdvisorStatus.ACTIVE
 
     # Multi-turn state
     memory: list[str] = Field(default_factory=list)  # FIFO cap-10 enforced in engine
