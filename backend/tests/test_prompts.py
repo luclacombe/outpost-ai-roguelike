@@ -468,3 +468,38 @@ def test_preamble_forbids_turn_number_narration():
     block = build_preamble_block()
     text = block["text"].lower()
     assert "turn number" in text, "preamble must explicitly forbid narrating turn numbers in prose"
+
+
+# ---------------------------------------------------------------------------
+# AdvisorStatus rendering and cast filter (P1 plan, Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_colony_state_block_renders_status_attribute():
+    from app.agent.prompts import build_colony_state_block
+    from app.game.schemas import AdvisorStatus
+    from tests.test_engine import _agent, _colony
+
+    detained = _agent(name="A", status=AdvisorStatus.DETAINED)
+    state = _colony(agents=[detained, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+
+    text = build_colony_state_block(state)["text"]
+    assert 'status="DETAINED"' in text
+    assert 'status="ACTIVE"' in text  # the other three
+
+
+def test_cast_filter_excludes_dismissed_for_persona_block():
+    """Helper used by agent_debate / autonomous_actions: alive AND not DISMISSED."""
+    from app.agent.nodes import filter_cast
+    from app.game.schemas import AdvisorStatus
+    from tests.test_engine import _agent, _colony
+
+    a = _agent(name="A")
+    b = _agent(name="B", status=AdvisorStatus.DETAINED)
+    c = _agent(name="C", status=AdvisorStatus.DISMISSED)
+    d = _agent(name="D", alive=False, health=0)
+    state = _colony(agents=[a, b, c, d])
+
+    cast = filter_cast(state.agents)
+    names = {ag.name for ag in cast}
+    assert names == {"A", "B"}, f"expected ACTIVE+DETAINED only, got {names}"

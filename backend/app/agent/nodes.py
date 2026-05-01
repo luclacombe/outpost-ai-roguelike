@@ -42,7 +42,7 @@ from app.agent.state import GameTurnState
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import DecisionRef, ResolvedEvent, SeedPayload
+from app.game.schemas import AdvisorStatus, Agent, DecisionRef, ResolvedEvent, SeedPayload
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,18 @@ del _known_tool_names, _unknown
 # recycling reported in playtest §1.9 (recycler event repeating across
 # turns 1-4) without starving the early-game pool.
 _COOLDOWN_WINDOW = 4
+
+
+def filter_cast(agents: list[Agent]) -> list[Agent]:
+    """Authors of proposals / debate participants: alive AND not DISMISSED.
+
+    DETAINED stays in the cast (the persona block is cache-stable on
+    is_alive-only filtering; status is rendered per-turn via the colony
+    state block, so the model knows when an advisor is detained without
+    invalidating the personas cache). DISMISSED removes from cast: persona
+    block does change, accepting one cache miss at the dismissal turn.
+    """
+    return [a for a in agents if a.is_alive and a.status != AdvisorStatus.DISMISSED]
 
 
 async def generate_event(state: GameTurnState) -> GameTurnState:
@@ -146,7 +158,7 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     """
     colony_state = state["colony_state"]
     event = state["current_event"]
-    alive_agents = [a for a in colony_state.agents if a.is_alive]
+    alive_agents = filter_cast(colony_state.agents)
 
     # Cache layout: preamble + personas in system with cache_control on the
     # LAST block (personas). Colony state moves into the user message — it
@@ -289,7 +301,7 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     propose new actions or move resources behind the player's back.
     """
     colony_state = state["colony_state"]
-    alive_agents = [a for a in colony_state.agents if a.is_alive]
+    alive_agents = filter_cast(colony_state.agents)
 
     if not alive_agents:
         return {"autonomous_tool_calls": []}

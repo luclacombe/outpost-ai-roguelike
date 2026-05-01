@@ -297,10 +297,12 @@ def build_personas_block(agents: list[Agent]) -> dict[str, Any]:
 
 def _render_agent_state(agent: Agent) -> str:
     alive_flag = "true" if agent.is_alive else "false"
+    status_value = agent.status.value if hasattr(agent.status, "value") else str(agent.status)
     lines = [
         f'<agent_state id="{agent.id}" name="{agent.name}" '
         f'grievance="{agent.grievance}" morale="{agent.morale}" '
-        f'health="{agent.health}" is_alive="{alive_flag}">',
+        f'health="{agent.health}" is_alive="{alive_flag}" '
+        f'status="{status_value}">',
     ]
     if agent.memory:
         lines.append("  memories:")
