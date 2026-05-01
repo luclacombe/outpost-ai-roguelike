@@ -5,6 +5,7 @@ runs.json / report.md scaffolding lands."""
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -28,17 +29,43 @@ async def test_orchestrator_writes_artifacts(
     the test DB clean."""
     from tests.fixtures._factories import make_haiku_debate_side_effect
 
-    # Subprocess side: always return a canned valid PersonaTurnOutput
-    # for the first proposal id we see in the prompt's displayed_order.
+    # Subprocess side: dispatch on the user_message shape.
+    #   - Turn calls (first/subsequent_turn) include 'displayed_order' in the
+    #     prompt; return a canned PersonaTurnOutput pinned to the first option.
+    #   - Final-verdict calls don't include 'displayed_order'; return a canned
+    #     PersonaRunVerdict so PersonaRunVerdict.model_validate succeeds.
     def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
         import ast
 
         user_msg = cmd[-1]
-        line = next(line for line in user_msg.splitlines() if "displayed_order" in line)
-        bracket_start = line.find("[")
-        bracket_end = line.rfind("]") + 1
-        order = ast.literal_eval(line[bracket_start:bracket_end])
-        canned = canned_persona_response_factory(chosen_proposal_id=order[0], displayed_order=order)
+        if "displayed_order" in user_msg:
+            line = next(line for line in user_msg.splitlines() if "displayed_order" in line)
+            bracket_start = line.find("[")
+            bracket_end = line.rfind("]") + 1
+            order = ast.literal_eval(line[bracket_start:bracket_end])
+            canned = canned_persona_response_factory(
+                chosen_proposal_id=order[0], displayed_order=order
+            )
+        else:
+            verdict_inner = {
+                "axes": {
+                    "stakes_felt_real": {"score": 3, "rationale": "ok", "turn_citations": []},
+                    "tonal_coherence": {"score": 3, "rationale": "ok", "turn_citations": []},
+                    "advisor_distinctness": {"score": 3, "rationale": "ok", "turn_citations": []},
+                    "dramatic_arc": {"score": 3, "rationale": "ok", "turn_citations": []},
+                },
+                "continue_tomorrow": {"decision": True, "reason": "ok"},
+                "closing_paragraph": "ok",
+            }
+            envelope = {
+                "type": "result",
+                "session_id": "test-session-abc123",
+                "duration_ms": 1500,
+                "stop_reason": "end_turn",
+                "result": "```json\n" + json.dumps(verdict_inner) + "\n```",
+                "usage": {"input_tokens": 1500, "output_tokens": 80},
+            }
+            canned = json.dumps(envelope)
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=canned, stderr="")
 
     monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
