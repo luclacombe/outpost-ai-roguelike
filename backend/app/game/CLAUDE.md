@@ -23,6 +23,16 @@ grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
+## When to split engine.py
+
+`engine.py` has a 300-line soft-target waiver (root CLAUDE.md). Section 7
+(`derive_resolution_consequences` + rule constants) is the natural split
+point — it's a self-contained pure function with its own constants and
+helpers, no shared state with Sections 1-6, and is the most likely
+section to grow as new severe-payload semantics emerge. If the file
+crosses ~600 lines, extract Section 7 to `engine_consequences.py` (or
+`consequence_rules.py`) before adding more.
+
 ## Engine-only tools
 
 `tools.ENGINE_TOOL_NAMES` lists tools that do NOT appear in

@@ -1090,6 +1090,85 @@ def test_derive_no_payload_no_consequences():
     assert derived == [], f"expected no derived calls, got {derived}"
 
 
+def test_derive_severe_health_reason_resolves_target_name():
+    """Reason string names the advisor instead of leaking the UUID (M3)."""
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="Vasil")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    assert legit_calls
+    assert "Vasil" in legit_calls[0].args["reason"]
+    assert str(target.id) not in legit_calls[0].args["reason"]
+
+
+def test_derive_severe_health_reason_handles_player_target():
+    from app.game.engine import derive_resolution_consequences
+
+    state = _colony()
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": "player", "delta": -60, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
+    assert "the player" in legit.args["reason"]
+
+
+def test_derive_multi_target_severe_health_stacks_legitimately():
+    """Three severe-health drains in one proposal compound (M1).
+
+    A bigger atrocity should hurt more — multi-target compounding is
+    intentional. This test pins the behavior so a future "clamp to one
+    trigger per rule" change is a deliberate decision, not a regression.
+    """
+    from app.game.engine import derive_resolution_consequences
+
+    a = _agent(name="A")
+    b = _agent(name="B")
+    c = _agent(name="C")
+    d = _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    picked = _proposal(
+        flavor=ProposalFlavor.WILDCARD,
+        tool_calls_on_pick=[
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(a.id), "delta": -60, "reason": "x"},
+            ),
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(b.id), "delta": -60, "reason": "x"},
+            ),
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(c.id), "delta": -60, "reason": "x"},
+            ),
+        ],
+    )
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
+    # Three triggers; legitimacy delta should be deeper than a single trigger.
+    assert legit.args["delta"] <= -30, (
+        f"expected <= -30 for triple drain, got {legit.args['delta']}"
+    )
+
+
 def test_derive_emitted_calls_have_caller_id_none():
     """All derived tool calls must be engine-emitted."""
     from app.game.engine import derive_resolution_consequences

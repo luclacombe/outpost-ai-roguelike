@@ -451,10 +451,39 @@ def advance_turn(state: ColonyState) -> ColonyState:
 # orders 1-2, medium 5-8, extreme 15-25). Single severe action sits in the
 # "extreme" band; resource drain is "medium"; overrule of a DOMINANT
 # proposer is "small". Tests assert directional bands, not exact values.
+#
+# Each rule fires ONCE PER QUALIFYING NESTED CALL — multi-target proposals
+# stack legitimately. A `tool_calls_on_pick` that drains 50 health from
+# three advisors costs -36 legitimacy, not -12. This is intentional: a
+# bigger atrocity should hurt more than a smaller one.
+#
+# Tuning signals (the symptom that would flip a constant):
+#   _LEGIT_PER_50_HEALTH_DRAIN: raise toward -15 if severe-health proposals
+#     don't visibly hurt the dashboard in playtests.
+#   _LEGIT_PER_30PCT_RESOURCE_DRAIN: lower toward -3 if mid-game resource
+#     reshuffles get penalised more than they should.
+#   _LEGIT_OVERRULE_DOMINANT: lower toward -1 if the player feels punished
+#     for non-dominant picks too often (overrule should sting, not gate).
+#   _GRIEVANCE_OVERRULE_DOMINANT: raise toward 3 if dominant-proposer coups
+#     never trigger; lower toward 1 if they trigger too easily.
 _LEGIT_PER_50_HEALTH_DRAIN = -12  # severe health drain on a single target
 _LEGIT_PER_30PCT_RESOURCE_DRAIN = -5  # ≥30%-of-max single-resource drain
 _LEGIT_OVERRULE_DOMINANT = -2  # picking non-DOMINANT when a DOMINANT proposal existed
 _GRIEVANCE_OVERRULE_DOMINANT = 2  # for the overruled DOMINANT proposer
+
+
+def _resolve_target_name(state: ColonyState, target_id: object) -> str:
+    """Render a target_id for a reason string. UUID → agent name, "player"
+    → "the player", anything else (including missing) → "an advisor"."""
+    if target_id == "player":
+        return "the player"
+    if not isinstance(target_id, str):
+        return "an advisor"
+    try:
+        agent = _agent_by_id(state, UUID(target_id))
+    except ValueError:
+        return "an advisor"
+    return agent.name if agent is not None else "an advisor"
 
 
 def derive_resolution_consequences(
@@ -480,8 +509,8 @@ def derive_resolution_consequences(
             delta = nested.args.get("delta", 0)
             if isinstance(delta, int) and delta <= -50:
                 legit_delta += _LEGIT_PER_50_HEALTH_DRAIN
-                tgt = nested.args.get("target_id", "?")
-                legit_reasons.append(f"severe harm to {tgt}")
+                tgt_name = _resolve_target_name(state, nested.args.get("target_id"))
+                legit_reasons.append(f"severe harm to {tgt_name}")
 
     # Rule 2: resource drain ≥30% of that resource's max.
     for nested in picked.tool_calls_on_pick:

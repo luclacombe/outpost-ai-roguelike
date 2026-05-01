@@ -78,6 +78,14 @@ personas block.** Putting per-turn memories inside personas would mutate the
 personas block's content every turn and break cache stability even if it sat
 at the right cache_control position.
 
+**`filter_cast` excludes DETAINED + DISMISSED, so the personas block
+changes on advisor status transitions** (one cache miss when entering or
+leaving DETAINED, permanent for DISMISSED). This is an intentional cost
+of the acceptance gate "detained advisor doesn't author next turn"; do
+not reintroduce a DETAINED-stays-in-cast optimization without a hard
+look at whether the gate has changed. Status transitions are rare events
+authored by LLM-emitted `set_advisor_status` in `tool_calls_on_pick`.
+
 Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 `tests/integration/test_full_run.py`'s wrapped `cost_cents_of` that records
 `cache_read_input_tokens` per call.
