@@ -488,18 +488,22 @@ def test_colony_state_block_renders_status_attribute():
     assert 'status="ACTIVE"' in text  # the other three
 
 
-def test_cast_filter_excludes_dismissed_for_persona_block():
-    """Helper used by agent_debate / autonomous_actions: alive AND not DISMISSED."""
+def test_cast_filter_includes_only_active_alive_advisors():
+    """Helper used by agent_debate / autonomous_actions: alive AND ACTIVE only.
+
+    Detained advisors do not author next turn (acceptance gate P1). Dismissed
+    are gone permanently. Dead are gone permanently. Only ACTIVE+alive author.
+    """
     from app.agent.nodes import filter_cast
     from app.game.schemas import AdvisorStatus
     from tests.test_engine import _agent, _colony
 
-    a = _agent(name="A")
-    b = _agent(name="B", status=AdvisorStatus.DETAINED)
-    c = _agent(name="C", status=AdvisorStatus.DISMISSED)
-    d = _agent(name="D", alive=False, health=0)
+    a = _agent(name="A")  # ACTIVE alive — authors
+    b = _agent(name="B", status=AdvisorStatus.DETAINED)  # detained — silent
+    c = _agent(name="C", status=AdvisorStatus.DISMISSED)  # dismissed — gone
+    d = _agent(name="D", alive=False, health=0)  # dead — gone
     state = _colony(agents=[a, b, c, d])
 
     cast = filter_cast(state.agents)
     names = {ag.name for ag in cast}
-    assert names == {"A", "B"}, f"expected ACTIVE+DETAINED only, got {names}"
+    assert names == {"A"}, f"expected ACTIVE alive only, got {names}"

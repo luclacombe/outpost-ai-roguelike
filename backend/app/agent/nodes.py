@@ -83,15 +83,14 @@ _COOLDOWN_WINDOW = 4
 
 
 def filter_cast(agents: list[Agent]) -> list[Agent]:
-    """Authors of proposals / debate participants: alive AND not DISMISSED.
+    """Authors of proposals / debate participants: alive AND ACTIVE only.
 
-    DETAINED stays in the cast (the persona block is cache-stable on
-    is_alive-only filtering; status is rendered per-turn via the colony
-    state block, so the model knows when an advisor is detained without
-    invalidating the personas cache). DISMISSED removes from cast: persona
-    block does change, accepting one cache miss at the dismissal turn.
+    DETAINED and DISMISSED advisors do not author. Status transitions
+    invalidate the personas cache (one miss at enter, one at leave for
+    DETAINED; permanent for DISMISSED). The colony state block still
+    renders their status so the model has narrative continuity.
     """
-    return [a for a in agents if a.is_alive and a.status != AdvisorStatus.DISMISSED]
+    return [a for a in agents if a.is_alive and a.status == AdvisorStatus.ACTIVE]
 
 
 async def generate_event(state: GameTurnState) -> GameTurnState:

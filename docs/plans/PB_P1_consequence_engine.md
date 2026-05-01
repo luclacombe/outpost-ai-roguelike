@@ -1670,3 +1670,11 @@ After Task 6 ships:
 - **Root cause:** `app/agent/checkpointer.py` pins an explicit allowlist (`_ALLOWED_MSGPACK_TYPES`) of types the LangGraph checkpoint serializer accepts. Adding a new enum to `Agent` requires extending the list — the plan's File Map missed this.
 - **Fix:** Added `("app.game.schemas", "AdvisorStatus")` to `_ALLOWED_MSGPACK_TYPES` in `app/agent/checkpointer.py`.
 - **General lesson:** any new schema enum or class introduced into `ColonyState` must be added to this allowlist. Reasonable place to flag this in `backend/app/agent/CLAUDE.md`.
+
+### Phase 4: filter_cast did not match the user's acceptance gate for DETAINED
+
+- **Symptom:** Phase 1 brainstorming output said "DETAINED stays in cast (cache-stable)"; user's acceptance gate said "Detaining advisor X means X does not author a proposal next turn." Implementation matched the brainstorm, not the gate.
+- **Root cause:** I optimized for cache stability (one fewer persona-block invalidation) over the explicit acceptance criterion. The brainstorm's nuanced "severity 4+ exception" never got built; only the colony-state status rendering did.
+- **Fix:** `filter_cast` in `backend/app/agent/nodes.py` now returns `alive AND status == ACTIVE` only. DETAINED and DISMISSED both excluded. Cost: one cache miss when an advisor enters/leaves DETAINED (rare event; acceptable).
+- **Test update:** `test_cast_filter_excludes_dismissed_for_persona_block` renamed to `test_cast_filter_includes_only_active_alive_advisors` with updated assertion `names == {"A"}`.
+- **General lesson:** when a brainstormed design conflicts with an explicit acceptance gate, the gate wins. Verify the gate against the implementation before claiming Phase 3 done — don't wait for Phase 4 to surface this.
