@@ -77,11 +77,13 @@ jobs:
         run: uv sync --frozen
 
       - name: Bootstrap Postgres schema
-        # The Alembic migration for `profiles` has a cross-schema FK to
-        # `auth.users` (a Supabase-managed table that doesn't exist in a
-        # vanilla Postgres image). Create a minimal auth schema + users
-        # table here so Alembic can apply cleanly and the eval pipeline's
-        # auth-user seed inserts succeed.
+        # Vanilla Postgres has neither the auth schema/table nor auth.uid()
+        # that Supabase provides at runtime. Alembic migrations reference
+        # both: cross-schema FK on profiles → auth.users, and RLS policies
+        # using auth.uid() = user_id. Stub them here so Alembic can apply
+        # cleanly and the eval pipeline's auth-user seed inserts succeed.
+        # auth.uid() returns NULL in CI (no JWT claim is set); the eval
+        # pipeline's service-role queries bypass RLS via dependency override.
         env:
           PGPASSWORD: postgres
         run: |
@@ -99,6 +101,12 @@ jobs:
               created_at TIMESTAMPTZ DEFAULT now(),
               updated_at TIMESTAMPTZ DEFAULT now()
           );
+          CREATE OR REPLACE FUNCTION auth.uid()
+          RETURNS UUID
+          LANGUAGE SQL STABLE
+          AS $$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
           SQL
 
       - name: Apply Alembic migrations
