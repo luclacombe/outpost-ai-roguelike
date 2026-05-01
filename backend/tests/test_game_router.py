@@ -161,8 +161,11 @@ async def test_create_session_returns_public_view(client, seeded_user) -> None:
             "morale",
             "grievance",
             "is_alive",
+            "status",
         ):
             assert key in agent, f"missing public field {key!r} on agent"
+        # Fresh agents are ACTIVE; status surfaces detain/dismiss to the UI.
+        assert agent["status"] == "ACTIVE"
         # Private fields must NOT leak.
         for private in (
             "ethics",

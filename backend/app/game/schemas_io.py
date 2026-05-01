@@ -22,7 +22,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.game.schemas import EndState, Event, ProposalFlavor, Quadrant
+from app.game.schemas import AdvisorStatus, EndState, Event, ProposalFlavor, Quadrant
 
 
 class GameSessionCreateRequest(BaseModel):
@@ -50,6 +50,7 @@ class AgentPublic(BaseModel):
     morale: int
     grievance: int
     is_alive: bool
+    status: AdvisorStatus
 
 
 class ResourcePublic(BaseModel):
@@ -117,6 +118,7 @@ class PostMortemAgent(BaseModel):
     is_alive: bool
     final_grievance: int
     final_health: int
+    final_status: AdvisorStatus
     transformed: bool
 
 

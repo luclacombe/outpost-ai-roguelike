@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.game import models as game_models
 from app.game.exceptions import GameNotEnded, GameNotFound
-from app.game.schemas import EndState, Quadrant
+from app.game.schemas import AdvisorStatus, EndState, Quadrant
 from app.game.schemas_io import (
     PostMortem,
     PostMortemAdvisorLine,
@@ -148,6 +148,7 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
     turn_models: list[PostMortemTurn] = []
     final_grievance_by_agent: dict[UUID, int] = {a.id: 0 for a in agents}
     final_alive_by_agent: dict[UUID, bool] = {a.id: True for a in agents}
+    final_status_by_agent: dict[UUID, str] = {a.id: "ACTIVE" for a in agents}
     grievance_history: list[dict[UUID, int]] = []  # per turn
 
     for tl in turn_logs:
@@ -205,6 +206,7 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
             agent_grievance[aid] = int(a.get("grievance", 0))
             final_grievance_by_agent[aid] = agent_grievance[aid]
             final_alive_by_agent[aid] = bool(a.get("is_alive", True))
+            final_status_by_agent[aid] = str(a.get("status", "ACTIVE"))
         grievance_history.append(agent_grievance)
 
         # Seeds firing this turn: prefer seed-table membership where the
@@ -253,6 +255,7 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
             is_alive=final_alive_by_agent.get(a.id, True),
             final_grievance=final_grievance_by_agent.get(a.id, 0),
             final_health=int((a.state or {}).get("health", 100)),
+            final_status=AdvisorStatus(final_status_by_agent.get(a.id, "ACTIVE")),
             transformed=(a.state or {}).get("transformation") is not None,
         )
         for a in agents
