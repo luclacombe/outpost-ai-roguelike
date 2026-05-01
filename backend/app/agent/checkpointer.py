@@ -32,6 +32,7 @@ _ALLOWED_MSGPACK_TYPES: tuple[tuple[str, str], ...] = (
     ("app.game.schemas", "ProposalFlavor"),
     ("app.game.schemas", "EventOrigin"),
     ("app.game.schemas", "EndState"),
+    ("app.game.schemas", "AdvisorStatus"),
     # Direct GameTurnState members
     ("app.game.schemas", "ColonyState"),
     ("app.game.schemas", "Event"),

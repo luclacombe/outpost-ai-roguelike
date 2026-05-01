@@ -12,10 +12,10 @@ Invariants enforced here:
     one `call_haiku` regardless of how many advisors are alive.
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
-    The one documented exception: `resolve` applies a small legitimacy
-    shift based on the picked proposal's flavor directly via
-    `model_copy`, because `modify_legitimacy` is not a tool in the
-    autonomous-tool surface. See the comment in `resolve` for details.
+    `resolve` derives consequence tool calls (modify_legitimacy,
+    adjust_grievance) from the picked proposal's payload via
+    `engine.derive_resolution_consequences` and folds them through the
+    same validated pipeline as the proposal's own nested calls.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from app.agent.state import GameTurnState
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import DecisionRef, ProposalFlavor, ResolvedEvent, SeedPayload
+from app.game.schemas import DecisionRef, ResolvedEvent, SeedPayload
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
@@ -74,15 +74,6 @@ if _unknown:
         "Update nodes.py or tools.py."
     )
 del _known_tool_names, _unknown
-
-# Legitimacy shifts applied in `resolve` based on the picked proposal's
-# flavor. Applied directly on ColonyState via `model_copy` — see the
-# invariant #11 exception note in `resolve` for rationale.
-_FLAVOR_LEGITIMACY_SHIFT: dict[ProposalFlavor, int] = {
-    ProposalFlavor.DOMINANT: 0,
-    ProposalFlavor.MORAL: 2,
-    ProposalFlavor.WILDCARD: -3,
-}
 
 # Within-run event-template cooldown: the last N resolved events' category
 # ids are excluded from the next pick. Wide enough to kill the within-run
@@ -234,10 +225,14 @@ async def resolve(state: GameTurnState) -> GameTurnState:
     if picked is None:
         raise ValueError("player_choice did not match any surfaced proposal")
 
-    # Phase 3 populates `tool_calls_on_pick=[]`; the call is kept so that
-    # when proposals grow teeth, every state change flows through the
-    # single validated mutation pipeline (invariant #11).
-    new_colony = engine.apply_tool_calls(colony_state, picked.tool_calls_on_pick)
+    # Apply the picked proposal's nested effects + the engine's derived
+    # consequences (legitimacy, grievance overrules) — all through the
+    # single validated mutation pipeline. SPEC §6.7 / invariant #11.
+    derived = engine.derive_resolution_consequences(colony_state, picked, proposals)
+    new_colony = engine.apply_tool_calls(
+        colony_state,
+        [*picked.tool_calls_on_pick, *derived],
+    )
 
     # Append the resolved event to the colony's log.
     current_event = state["current_event"]
@@ -248,15 +243,6 @@ async def resolve(state: GameTurnState) -> GameTurnState:
         summary=picked.description,
     )
     new_colony = new_colony.model_copy(update={"event_log": [*new_colony.event_log, resolved]})
-
-    # Engine-direct legitimacy shift — not routed through apply_tool_call
-    # because `modify_legitimacy` is not a tool. Acceptable per the
-    # documented invariant #11 exception for flavor-canonical effects
-    # (see ARCHITECTURE.md Phase 4 notes and the module docstring).
-    shift = _FLAVOR_LEGITIMACY_SHIFT[picked.flavor]
-    if shift:
-        new_legit = max(0, min(100, new_colony.legitimacy + shift))
-        new_colony = new_colony.model_copy(update={"legitimacy": new_legit})
 
     # Consequence-seed scheduling — severity >= 3 events leave a trace.
     if current_event.severity >= 3:

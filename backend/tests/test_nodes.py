@@ -632,40 +632,58 @@ async def test_resolve_raises_on_unknown_player_choice():
         await resolve(state)
 
 
-async def test_resolve_applies_flavor_legitimacy_shift():
-    colony = make_colony_state(turn=2)
+async def test_resolve_uses_payload_driven_consequences_not_flavor_label():
+    """A WILDCARD with no real effects costs 0 legitimacy; a WILDCARD with
+    severe-health payload craters legitimacy ≥10. Confirms Pb fix —
+    consequence is derived from picked.tool_calls_on_pick, not the label."""
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    marko = make_alive_agent(name="Marko", quadrant=Quadrant.OPERATOR)
+    irina = make_alive_agent(name="Irina", quadrant=Quadrant.CONSCIENCE)
+    viktor = make_alive_agent(name="Viktor", quadrant=Quadrant.CRUSADER)
+    colony = make_colony_state(turn=2, agents=[nadia, marko, irina, viktor])
     base_legit = colony.legitimacy
-    event = _make_event(severity=2)  # no seeding
+    event = _make_event(severity=2)  # no consequence seed
 
-    # MORAL: +2
-    moral_state: dict[str, Any] = {
+    # Benign WILDCARD: empty payload, single-proposal triple = no overrule.
+    benign = _make_proposal(
+        pid="benign",
+        flavor=ProposalFlavor.WILDCARD,
+        proposer_id=nadia.id,
+        tool_calls_on_pick=[],
+    )
+    benign_state: dict[str, Any] = {
         "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_m", flavor=ProposalFlavor.MORAL)],
-        "player_choice": "p_m",
+        "proposals": [benign],
+        "player_choice": "benign",
         "current_event": event,
     }
-    r = await resolve(moral_state)
-    assert r["colony_state"].legitimacy == base_legit + 2
+    r = await resolve(benign_state)
+    assert r["colony_state"].legitimacy == base_legit, (
+        f"benign WILDCARD should not move legitimacy, got delta {base_legit - r['colony_state'].legitimacy}"
+    )
 
-    # WILDCARD: -3
-    wild_state: dict[str, Any] = {
+    # Severe WILDCARD: kills an advisor. Should crater legitimacy ≥10.
+    severe = _make_proposal(
+        pid="severe",
+        flavor=ProposalFlavor.WILDCARD,
+        proposer_id=nadia.id,
+        tool_calls_on_pick=[
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(marko.id), "delta": -100, "reason": "ice"},
+            )
+        ],
+    )
+    severe_state: dict[str, Any] = {
         "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_w", flavor=ProposalFlavor.WILDCARD)],
-        "player_choice": "p_w",
+        "proposals": [severe],
+        "player_choice": "severe",
         "current_event": event,
     }
-    r = await resolve(wild_state)
-    assert r["colony_state"].legitimacy == base_legit - 3
-
-    # DOMINANT: unchanged
-    dom_state: dict[str, Any] = {
-        "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_d", flavor=ProposalFlavor.DOMINANT)],
-        "player_choice": "p_d",
-        "current_event": event,
-    }
-    r = await resolve(dom_state)
-    assert r["colony_state"].legitimacy == base_legit
+    r = await resolve(severe_state)
+    drop = base_legit - r["colony_state"].legitimacy
+    assert drop >= 10, f"severe-health WILDCARD should crater legitimacy ≥10, got drop {drop}"
 
 
 async def test_resolve_schedules_consequence_seed_on_severe_event():

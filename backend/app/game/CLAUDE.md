@@ -23,6 +23,27 @@ grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
+## Engine-only tools
+
+`tools.ENGINE_TOOL_NAMES` lists tools that do NOT appear in
+`AGENT_TOOL_SCHEMAS` and that the LLM never authors. Validator rejects any
+instance with `caller_id is not None` (reason: `engine_only_tool`). Current
+members:
+
+- `modify_legitimacy(delta, reason)` — emitted by
+  `engine.derive_resolution_consequences` when a picked proposal's payload
+  or cross-proposal context warrants a legitimacy shift.
+- `set_advisor_status(target_id, new_status, reason)` — emitted by the
+  engine at pick time when an advisor-status transition rides in
+  `tool_calls_on_pick`. Allowed transitions: `ACTIVE↔DETAINED`,
+  `{ACTIVE,DETAINED}→DISMISSED`. Dismiss requires ≥3 other ACTIVE-or-
+  DETAINED advisors remaining, so SPEC §7.3's three-action triple stays
+  one-author-per-proposal.
+
+`set_advisor_status` is in `_NESTED_TOOL_WHITELIST` (LLM may include it in
+a proposal's `tool_calls_on_pick`). `modify_legitimacy` is NOT — only
+`derive_resolution_consequences` emits it.
+
 ## propose_action: two-stage validation
 
 `tool_calls_on_pick` is the proposal's effect list — nested tool calls
@@ -32,7 +53,7 @@ that fire at pick time. Validation is deliberately split:
   item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
   Rejects on bad shape (`nested_tool_malformed`) or off-whitelist tool
   (`nested_tool_not_allowed`). Whitelist: `modify_resource`,
-  `modify_health`, `adjust_grievance`.
+  `modify_health`, `adjust_grievance`, `set_advisor_status`.
 - **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
   nested call re-validates against current state. State-dependent
   rejects (e.g. `would_underflow` when resources have shifted between

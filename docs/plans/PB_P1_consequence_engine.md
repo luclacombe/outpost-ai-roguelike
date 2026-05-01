@@ -1663,3 +1663,10 @@ After Task 6 ships:
 ### Task 2: dropped a dangling `AGENT_TOOL_NAMES` import
 
 - The plan had `from app.game.tools import AGENT_TOOL_NAMES, KNOWN_TOOL_NAMES` in `validator.py`, but `AGENT_TOOL_NAMES` was no longer referenced after the unknown-tool gate switched to `KNOWN_TOOL_NAMES`. Ruff caught it; dropped the unused name.
+
+### Task 5: AdvisorStatus needs to be in the LangGraph checkpointer allowlist
+
+- **Symptom:** `tests/test_checkpointer.py::test_round_trip_emits_no_unregistered_warnings` failed with `Blocked deserialization of app.game.schemas.AdvisorStatus`.
+- **Root cause:** `app/agent/checkpointer.py` pins an explicit allowlist (`_ALLOWED_MSGPACK_TYPES`) of types the LangGraph checkpoint serializer accepts. Adding a new enum to `Agent` requires extending the list — the plan's File Map missed this.
+- **Fix:** Added `("app.game.schemas", "AdvisorStatus")` to `_ALLOWED_MSGPACK_TYPES` in `app/agent/checkpointer.py`.
+- **General lesson:** any new schema enum or class introduced into `ColonyState` must be added to this allowlist. Reasonable place to flag this in `backend/app/agent/CLAUDE.md`.

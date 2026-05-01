@@ -23,10 +23,14 @@ Every state-changing tool call MUST route through `engine.apply_tool_calls` so
 `engine._apply_valid_effect` applies valid ones. Nodes never call
 `state.colony_state.model_copy(update={"resources": ...})` directly.
 
-**One documented exception:** `resolve` applies a flavor-based legitimacy shift
-(`DOMINANT=0, MORAL=+2, WILDCARD=-3`) via `model_copy` because
-`modify_legitimacy` is not a tool in our surface. The shift is engine-canonical
-(not agent-proposed) and bounded; see the comment in `nodes.resolve`.
+**No exceptions.** Every state mutation, including legitimacy shifts, flows
+through `engine.apply_tool_calls`. The `resolve` node calls
+`engine.derive_resolution_consequences(state, picked, all_proposals)` to
+turn the picked proposal's payload + cross-proposal context into a list of
+validated tool calls (`modify_legitimacy`, `adjust_grievance`), then folds
+them through `engine.apply_tool_calls` alongside `picked.tool_calls_on_pick`.
+The previous flavor → legitimacy table (`_FLAVOR_LEGITIMACY_SHIFT`) was
+removed in favour of payload-driven dispatch — see `engine.py` Section 7.
 
 ## Debate response parsing
 
@@ -144,6 +148,12 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 - `stream_mode="updates"` yields `{node_name: partial_state}` dicts in node
   order. Pattern-match on node name in the SSE translator; LangGraph's
   internal keys (`__interrupt__`, etc.) are filtered defensively.
+- **Checkpointer allowlist:** `app/agent/checkpointer.py::_ALLOWED_MSGPACK_TYPES`
+  pins the exact set of `app.game.schemas` types the LangGraph serializer
+  will round-trip. Adding a new schema enum or class that ends up inside
+  `ColonyState` requires extending this tuple, otherwise the saver logs
+  `Blocked deserialization of ...` and refuses the read. Test:
+  `tests/test_checkpointer.py::test_round_trip_emits_no_unregistered_warnings`.
 
 ## Pause / resume semantics
 
