@@ -166,6 +166,8 @@ def _apply_valid_effect(state: ColonyState, tc: ToolCall) -> ColonyState:  # noq
         return resolve_coup(state, initiator_id=tc.caller_id)
     if name == "back_leader":
         return _effect_back_leader(state, args)
+    if name == "modify_legitimacy":
+        return _effect_modify_legitimacy(state, args)
 
     # Should be unreachable — validator would have caught unknown_tool.
     return state  # pragma: no cover
@@ -275,6 +277,12 @@ def _effect_remember(state: ColonyState, tc: ToolCall, args: dict) -> ColonyStat
 def _effect_back_leader(state: ColonyState, args: dict) -> ColonyState:
     bonus: int = args["legitimacy_bonus"]
     new_legitimacy = _clamp(state.legitimacy + bonus, 0, 100)
+    return state.model_copy(update={"legitimacy": new_legitimacy})
+
+
+def _effect_modify_legitimacy(state: ColonyState, args: dict) -> ColonyState:
+    delta: int = args["delta"]
+    new_legitimacy = _clamp(state.legitimacy + delta, 0, 100)
     return state.model_copy(update={"legitimacy": new_legitimacy})
 
 

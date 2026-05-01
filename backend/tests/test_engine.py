@@ -982,3 +982,31 @@ def test_resolve_coup_boldness_strict_inequality(bold_sum: float, expected: EndS
     state = _colony(agents=[init, acc], legitimacy=5)
     new = resolve_coup(state, initiator_id=init.id)
     assert new.end_state == expected
+
+
+# ---------------------------------------------------------------------------
+# modify_legitimacy effect — Pb plan, Task 2
+# ---------------------------------------------------------------------------
+
+
+def test_modify_legitimacy_effect_clamps_to_bounds():
+    state = _colony(legitimacy=5)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": -100, "reason": "catastrophic"},
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.legitimacy == 0  # clamped
+    assert new_state.turn_tool_calls[-1].rejection_reason is None
+
+
+def test_modify_legitimacy_effect_clamps_high():
+    state = _colony(legitimacy=98)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": 50, "reason": "broad backing"},
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.legitimacy == 100

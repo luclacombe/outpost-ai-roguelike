@@ -21,6 +21,16 @@ AGENT_TOOL_NAMES = {
     "back_leader",
 }
 
+# Engine-only tools — never exposed to the LLM, never in AGENT_TOOL_SCHEMAS.
+# Constructed by the engine with caller_id=None; validator rejects any
+# caller_id-bearing instance with reason "engine_only_tool".
+ENGINE_TOOL_NAMES = {
+    "modify_legitimacy",
+    "set_advisor_status",
+}
+
+KNOWN_TOOL_NAMES = AGENT_TOOL_NAMES | ENGINE_TOOL_NAMES
+
 AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "name": "propose_action",

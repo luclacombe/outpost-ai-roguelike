@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.game.schemas import Agent, ColonyState, ToolCall
-from app.game.tools import AGENT_TOOL_NAMES
+from app.game.tools import KNOWN_TOOL_NAMES
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -329,6 +329,25 @@ def _validate_back_leader(tc: ToolCall, state: ColonyState) -> ValidationResult:
     return _OK
 
 
+def _validate_modify_legitimacy(tc: ToolCall, state: ColonyState) -> ValidationResult:
+    """Engine-only tool. Rejects any caller_id."""
+    if tc.caller_id is not None:
+        return _fail("engine_only_tool")
+
+    args = tc.args
+    delta = args.get("delta")
+    if delta is None or not isinstance(delta, int) or isinstance(delta, bool):
+        return _fail("missing_delta")
+    if not (-100 <= delta <= 100):
+        return _fail("delta_out_of_range")
+
+    fail_reason = _require_reason(args)
+    if fail_reason:
+        return _fail(fail_reason)
+
+    return _OK
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -344,6 +363,7 @@ _VALIDATORS = {
     "remember": _validate_remember,
     "initiate_coup": _validate_initiate_coup,
     "back_leader": _validate_back_leader,
+    "modify_legitimacy": _validate_modify_legitimacy,
 }
 
 
@@ -353,7 +373,7 @@ def validate_tool_call(tc: ToolCall, state: ColonyState) -> ValidationResult:
     Never mutates state. Never raises; all failures flow through
     ValidationResult(valid=False, reason=...).
     """
-    if tc.name not in AGENT_TOOL_NAMES:
+    if tc.name not in KNOWN_TOOL_NAMES:
         return _fail("unknown_tool")
 
     validator = _VALIDATORS[tc.name]

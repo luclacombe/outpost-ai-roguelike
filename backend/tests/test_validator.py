@@ -681,3 +681,57 @@ def test_validation_result_invalid_has_reason() -> None:
     r = ValidationResult(valid=False, reason="something_wrong")
     assert r.valid is False
     assert r.reason == "something_wrong"
+
+
+# ---------------------------------------------------------------------------
+# modify_legitimacy (engine-only) — Pb plan, Task 2
+# ---------------------------------------------------------------------------
+
+
+def test_modify_legitimacy_valid_when_engine_emitted():
+    from tests.test_engine import _colony
+
+    state = _colony(legitimacy=50)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": -5, "reason": "overrode dominant advisor"},
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid
+
+
+def test_modify_legitimacy_rejects_caller_id():
+    """Engine-only tool: any caller_id is invalid."""
+    from tests.test_engine import _colony
+
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=uuid4(),
+        args={"delta": -5, "reason": "x"},
+    )
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "engine_only_tool"
+
+
+def test_modify_legitimacy_rejects_out_of_range_delta():
+    from tests.test_engine import _colony
+
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": 999, "reason": "x"},
+    )
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "delta_out_of_range"
+
+
+def test_modify_legitimacy_requires_reason():
+    from tests.test_engine import _colony
+
+    tc = ToolCall(name="modify_legitimacy", caller_id=None, args={"delta": -5})
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "missing_reason"
