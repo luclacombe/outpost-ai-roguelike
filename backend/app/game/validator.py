@@ -74,7 +74,7 @@ def _require_integer_delta(args: dict[str, Any], lo: int, hi: int) -> tuple[int 
 
 
 _NESTED_TOOL_WHITELIST: frozenset[str] = frozenset(
-    {"modify_resource", "modify_health", "adjust_grievance"}
+    {"modify_resource", "modify_health", "adjust_grievance", "set_advisor_status"}
 )
 
 
@@ -348,6 +348,61 @@ def _validate_modify_legitimacy(tc: ToolCall, state: ColonyState) -> ValidationR
     return _OK
 
 
+_ALLOWED_STATUS_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("ACTIVE", "DETAINED"),
+        ("DETAINED", "ACTIVE"),
+        ("ACTIVE", "DISMISSED"),
+        ("DETAINED", "DISMISSED"),
+    }
+)
+
+
+def _validate_set_advisor_status(tc: ToolCall, state: ColonyState) -> ValidationResult:
+    """Engine-only. Allowed transitions in _ALLOWED_STATUS_TRANSITIONS.
+
+    Dismiss requires ≥2 other ACTIVE-or-DETAINED advisors remaining post-
+    transition so the cast cannot collapse mid-run via status manipulation.
+    """
+    if tc.caller_id is not None:
+        return _fail("engine_only_tool")
+
+    args = tc.args
+    target_id = args.get("target_id")
+    agent = _get_agent_by_id(state, str(target_id)) if target_id is not None else None
+    if agent is None:
+        return _fail("unknown_target")
+
+    if not agent.is_alive:
+        return _fail("target_dead")
+
+    new_status = args.get("new_status")
+    if new_status not in {"ACTIVE", "DETAINED", "DISMISSED"}:
+        return _fail("invalid_status_transition")
+
+    current = agent.status.value if hasattr(agent.status, "value") else str(agent.status)
+    if (current, new_status) not in _ALLOWED_STATUS_TRANSITIONS:
+        return _fail("invalid_status_transition")
+
+    fail_reason = _require_reason(args)
+    if fail_reason:
+        return _fail(fail_reason)
+
+    if new_status == "DISMISSED":
+        # Count alive ACTIVE + DETAINED *other* advisors. Require ≥3 to
+        # preserve SPEC §7.3 "exactly three actions" — one advisor per
+        # proposal in the post-dismissal triple.
+        others_in_cast = sum(
+            1
+            for a in state.agents
+            if a.is_alive and a.id != agent.id and a.status.value in ("ACTIVE", "DETAINED")
+        )
+        if others_in_cast < 3:
+            return _fail("cast_collapse_blocked")
+
+    return _OK
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -364,6 +419,7 @@ _VALIDATORS = {
     "initiate_coup": _validate_initiate_coup,
     "back_leader": _validate_back_leader,
     "modify_legitimacy": _validate_modify_legitimacy,
+    "set_advisor_status": _validate_set_advisor_status,
 }
 
 

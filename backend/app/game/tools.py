@@ -58,9 +58,11 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "description": (
                         "Nested mutations that fire when the player picks this proposal. "
                         "Each item is a structured tool call with its own name + args. "
-                        "Allowed names: modify_resource, modify_health, adjust_grievance. "
-                        "Args mirror the standalone tool's args; do NOT include caller_agent_id "
-                        "(these calls are engine-emitted at pick time)."
+                        "Allowed names: modify_resource, modify_health, adjust_grievance, "
+                        "set_advisor_status. Args mirror the standalone tool's args; do NOT "
+                        "include caller_agent_id (these calls are engine-emitted at pick time). "
+                        "set_advisor_status takes target_id (advisor UUID), new_status "
+                        "(ACTIVE | DETAINED | DISMISSED), reason."
                     ),
                     "items": {
                         "type": "object",
@@ -71,6 +73,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                                     "modify_resource",
                                     "modify_health",
                                     "adjust_grievance",
+                                    "set_advisor_status",
                                 ],
                             },
                             "args": {

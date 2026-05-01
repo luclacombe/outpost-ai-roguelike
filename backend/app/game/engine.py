@@ -14,6 +14,7 @@ import functools
 from uuid import UUID, uuid4
 
 from app.game.schemas import (
+    AdvisorStatus,
     Agent,
     ColonyState,
     EndState,
@@ -168,6 +169,8 @@ def _apply_valid_effect(state: ColonyState, tc: ToolCall) -> ColonyState:  # noq
         return _effect_back_leader(state, args)
     if name == "modify_legitimacy":
         return _effect_modify_legitimacy(state, args)
+    if name == "set_advisor_status":
+        return _effect_set_advisor_status(state, args)
 
     # Should be unreachable — validator would have caught unknown_tool.
     return state  # pragma: no cover
@@ -284,6 +287,15 @@ def _effect_modify_legitimacy(state: ColonyState, args: dict) -> ColonyState:
     delta: int = args["delta"]
     new_legitimacy = _clamp(state.legitimacy + delta, 0, 100)
     return state.model_copy(update={"legitimacy": new_legitimacy})
+
+
+def _effect_set_advisor_status(state: ColonyState, args: dict) -> ColonyState:
+    target_id = UUID(args["target_id"])
+    new_status = AdvisorStatus(args["new_status"])
+    agent = _agent_by_id(state, target_id)
+    assert agent is not None  # validator already checked
+    updated = agent.model_copy(update={"status": new_status})
+    return _replace_agent(state, updated)
 
 
 # ---------------------------------------------------------------------------

@@ -1010,3 +1010,42 @@ def test_modify_legitimacy_effect_clamps_high():
     )
     new_state = apply_tool_call(state, tc)
     assert new_state.legitimacy == 100
+
+
+# ---------------------------------------------------------------------------
+# set_advisor_status effect — P1 plan, Task 3
+# ---------------------------------------------------------------------------
+
+
+def test_set_advisor_status_effect_active_to_detained():
+    from app.game.schemas import AdvisorStatus
+
+    a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args={"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+    )
+    new_state = apply_tool_call(state, tc)
+    by_id = {ag.id: ag for ag in new_state.agents}
+    assert by_id[a.id].status == AdvisorStatus.DETAINED
+    assert by_id[a.id].is_alive is True  # is_alive untouched
+
+
+def test_set_advisor_status_effect_dismissed_does_not_kill():
+    """DISMISSED is alive but out of cast — distinct from death."""
+    from app.game.schemas import AdvisorStatus
+
+    a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args={"target_id": str(a.id), "new_status": "DISMISSED", "reason": "x"},
+    )
+    new_state = apply_tool_call(state, tc)
+    by_id = {ag.id: ag for ag in new_state.agents}
+    assert by_id[a.id].status == AdvisorStatus.DISMISSED
+    assert by_id[a.id].is_alive is True
+    assert by_id[a.id].health == a.health

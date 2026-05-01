@@ -1653,4 +1653,13 @@ After Task 6 ships:
 
 ## Notes & Errors-and-Learnings (live document — append as you go)
 
-(Empty — fill in during execution if anything surprising surfaces.)
+### Task 3: cast-collapse floor was off-by-one in the plan
+
+- **Symptom:** `test_set_advisor_status_dismiss_blocked_by_cast_floor` failed when the validator allowed dismissal with exactly 2 others remaining.
+- **Root cause:** The plan's prose said "≥2 other ACTIVE-or-DETAINED advisors remaining" (allows when 2), but the same plan's test (and the user's acceptance criterion "subsequent turns produce 3-advisor proposal triples") imply ≥3 others are required to preserve SPEC §7.3's exactly-three-actions invariant with one advisor per proposal.
+- **Fix:** Changed the validator threshold from `< 2` to `< 3`. The test was the source of truth; my prose was wrong.
+- **File:** `backend/app/game/validator.py` `_validate_set_advisor_status`.
+
+### Task 2: dropped a dangling `AGENT_TOOL_NAMES` import
+
+- The plan had `from app.game.tools import AGENT_TOOL_NAMES, KNOWN_TOOL_NAMES` in `validator.py`, but `AGENT_TOOL_NAMES` was no longer referenced after the unknown-tool gate switched to `KNOWN_TOOL_NAMES`. Ruff caught it; dropped the unused name.
