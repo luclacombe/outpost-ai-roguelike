@@ -667,6 +667,68 @@ def test_propose_action_invalid_flavor() -> None:
     assert "invalid_flavor" in result.reason
 
 
+def test_propose_action_rejects_multiple_set_advisor_status_in_nested() -> None:
+    """A single proposal can't ride two simultaneous status mutations.
+
+    Without this cap, an LLM could author `tool_calls_on_pick` that detains
+    three of four advisors in one turn, breaking SPEC §7.3's three-author
+    triple property the next turn (only one ACTIVE advisor would remain to
+    propose). Cast-collapse floor only kicks in for DISMISSED, not DETAINED.
+    """
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    b = _agent(name="B")
+    c = _agent(name="C")
+    d = _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Mass detention",
+            "description": "Detain three advisors at once.",
+            "flavor": "WILDCARD",
+            "tool_calls_on_pick": [
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+                },
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(b.id), "new_status": "DETAINED", "reason": "x"},
+                },
+            ],
+        },
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid is False
+    assert "multiple_status_mutations" in result.reason
+
+
+def test_propose_action_allows_single_set_advisor_status_in_nested() -> None:
+    """Single status mutation per proposal is the supported case."""
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a])
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Detain Vasil",
+            "description": "Detain him for sedition.",
+            "flavor": "WILDCARD",
+            "tool_calls_on_pick": [
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+                },
+            ],
+        },
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid is True
+
+
 # ---------------------------------------------------------------------------
 # ValidationResult dataclass sanity
 # ---------------------------------------------------------------------------

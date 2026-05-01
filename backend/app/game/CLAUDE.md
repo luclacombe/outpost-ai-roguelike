@@ -53,7 +53,10 @@ that fire at pick time. Validation is deliberately split:
   item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
   Rejects on bad shape (`nested_tool_malformed`) or off-whitelist tool
   (`nested_tool_not_allowed`). Whitelist: `modify_resource`,
-  `modify_health`, `adjust_grievance`, `set_advisor_status`.
+  `modify_health`, `adjust_grievance`, `set_advisor_status`. At most ONE
+  `set_advisor_status` per `tool_calls_on_pick`
+  (`multiple_status_mutations`) — mass-DETAIN would otherwise leave next
+  turn with one ACTIVE author and break SPEC §7.3's three-author triple.
 - **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
   nested call re-validates against current state. State-dependent
   rejects (e.g. `would_underflow` when resources have shifted between

@@ -104,6 +104,7 @@ def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResu
     if nested is not None:
         if not isinstance(nested, list):
             return _fail("nested_tool_malformed")
+        status_mutations = 0
         for item in nested:
             if not isinstance(item, dict):
                 return _fail("nested_tool_malformed")
@@ -111,6 +112,15 @@ def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResu
                 return _fail("nested_tool_malformed")
             if item["name"] not in _NESTED_TOOL_WHITELIST:
                 return _fail("nested_tool_not_allowed")
+            if item["name"] == "set_advisor_status":
+                status_mutations += 1
+        # At most one status mutation per proposal. A WILDCARD proposal that
+        # detained three of four advisors would leave the next turn with one
+        # author for three proposal flavors — breaking SPEC §7.3. The
+        # cast-collapse floor on _validate_set_advisor_status only catches
+        # DISMISSED; this guard catches mass-DETAIN.
+        if status_mutations > 1:
+            return _fail("multiple_status_mutations")
 
     return _OK
 
