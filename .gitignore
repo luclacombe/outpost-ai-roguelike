@@ -58,5 +58,15 @@ phase*-*.jpeg
 # Claude local overrides
 .claude/settings.local.json
 
+# Schedule skill runtime lock
+.claude/scheduled_tasks.lock
+
+# Playtest run artifacts (dated subdirs); README.md stays tracked
+docs/playtest/[0-9][0-9][0-9][0-9]-*/
+
+# Ad-hoc landing/UI screenshots (broader than phase*-*.png)
+outpost-*.png
+outpost-*.jpeg
+
 # Git worktrees (per superpowers:using-git-worktrees skill)
 .worktrees/

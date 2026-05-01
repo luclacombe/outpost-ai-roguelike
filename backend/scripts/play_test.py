@@ -33,16 +33,17 @@ from app.eval.playtest.oracles import compute_corpus_oracles, compute_per_run_or
 from app.eval.playtest.output import (
     PerRunArchive,
     write_corpus_artifacts,
-    write_per_run_archives,
+    write_one_archive,
 )
 from app.eval.playtest.personas import PERSONAS, get_persona
 from app.eval.playtest.schemas import PersonaId
 from app.eval.playtest.subprocess_pool import SubprocessPool
 from app.eval.types import RunRecord
+from app.game.engine import compute_end_state
 from app.game.exceptions import GameNotEnded
 from app.game.models import GameSession
 from app.game.post_mortem import build_post_mortem
-from app.game.schemas import ColonyState
+from app.game.schemas import ColonyState, EndState
 from app.game.service import _pick_setting_id
 from app.game.setting_loader import list_available_settings
 
@@ -71,6 +72,50 @@ class PlaytestConfig:
     # run completes. Default False: synthetic users persist for forensic
     # re-analysis. Smoke tests set this True to keep the test DB clean.
     cleanup_after_run: bool = False
+
+
+def resolve_unfinished_end_state(state: ColonyState) -> EndState:
+    """Derive a terminal `EndState` for a run the harness left ambiguous.
+
+    Sub-bug (ii) fix: if the harness loop exits with `state.end_state is
+    None` (e.g. the iteration counter exhausted before `/decide` ran for
+    the terminal turn, or a defensive `pr is None` break fired), the run
+    is recorded as `UNKNOWN` and the verdict step never runs. This
+    function fills in the gap per SPEC §10 — every run resolves to one
+    of {ENDURED, COLLAPSED, OUSTED, KILLED}.
+
+    Strategy:
+      1. If `end_state` is already set, return it (idempotent).
+      2. Reuse `engine.compute_end_state` priority order via a synthetic
+         state with `turn_number == max_turns`. This forces the
+         turn-limit branch to fire when the early branches (player dead,
+         all agents dead, resource at 0) don't apply, so we get the same
+         ENDURED-vs-COLLAPSED arbitration the engine would have used at
+         a clean max-turn boundary.
+      3. If `compute_end_state` still returns None (defensive — should
+         not happen with the synthetic state), default to COLLAPSED so
+         the run is at least labelled and verdict-eligible.
+
+    The function does NOT mutate the engine's persisted state — the
+    orchestrator is responsible for writing the resolved `end_state`
+    back to `game_sessions.end_state` if it wants to enable the
+    post-mortem path.
+    """
+    if state.end_state is not None:
+        return state.end_state
+
+    # Force the turn-limit branch by setting turn_number = max_turns. If
+    # the colony is otherwise viable, compute_end_state returns ENDURED;
+    # if any rail is broken (resources, legitimacy, agent count) it
+    # returns COLLAPSED.
+    synthetic = state.model_copy(update={"turn_number": state.max_turns})
+    derived = compute_end_state(synthetic)
+    if derived is not None:
+        return derived
+    # compute_end_state returned None despite turn_number >= max_turns —
+    # only possible if every gate passed somehow. Default to COLLAPSED
+    # rather than silently leaving end_state unset.
+    return EndState.COLLAPSED
 
 
 async def _provision_synthetic_user(user_id: UUID, email: str) -> None:
@@ -229,25 +274,62 @@ async def _drive_one_game(
                     .limit(1)
                 )
             ).scalar_one()
+
+            # Sub-bug (ii) defensive resolution: if the harness loop exited
+            # leaving end_state=None, derive a terminal state per SPEC §10
+            # and persist it back so build_post_mortem succeeds and the
+            # verdict step has something to score. The harness loop exits
+            # without setting end_state when its iteration counter exhausts
+            # before /decide fires for the terminal turn, OR when a defensive
+            # break (`pr is None`, `not proposals`) trips on a healthy run.
+            final_state = ColonyState.model_validate(session_row.state)
+            if final_state.end_state is None:
+                resolved = resolve_unfinished_end_state(final_state)
+                logger.warning(
+                    "harness exit with end_state=None for game %s "
+                    "(persona=%s setting=%s seed=%s turns=%s); "
+                    "resolving defensively to %s",
+                    session_row.id,
+                    persona_id,
+                    setting_id,
+                    seed,
+                    final_state.turn_number,
+                    resolved.value,
+                )
+                final_state = final_state.model_copy(update={"end_state": resolved})
+                session_row.state = final_state.model_dump(mode="json")
+                session_row.end_state = resolved.value
+                if session_row.ended_at is None:
+                    session_row.ended_at = datetime.now(UTC)
+                await session.commit()
+                # Mirror into the run_record so the per-run summary reflects
+                # the resolution (the run aggregator already loaded a stale
+                # snapshot before resolution).
+                run_record = run_record.model_copy(update={"end_state": resolved})
+
             try:
                 post_mortem = await build_post_mortem(game_id=session_row.id, db=session)
             except GameNotEnded:
-                # max_turns exhausted before a terminal event — no post-mortem.
+                # Should not happen now that we always resolve end_state
+                # above, but keep the guard so the orchestrator still
+                # records the run if a future regression breaks the
+                # resolver.
                 post_mortem = None
 
+        verdict_error: str | None = None
+        verdict_obj = None
         if post_mortem is not None:
             # Same blocking-subprocess concern as `player.pick` — run in a
             # thread so concurrent games' verdict calls don't serialize.
-            verdict = await asyncio.to_thread(
+            verdict_result = await asyncio.to_thread(
                 pool.run_final_verdict,
                 session=player._session,  # noqa: SLF001 — orchestrator is the only legit consumer
-                post_mortem_json=post_mortem.model_dump(),
+                post_mortem_json=post_mortem.model_dump(mode="json"),
             )
-        else:
-            verdict = None
+            verdict_obj = verdict_result.verdict
+            verdict_error = verdict_result.error
 
         # Compute per-run oracles using agents from the final ColonyState.
-        final_state = ColonyState.model_validate(session_row.state)
         per_run_oracles = compute_per_run_oracles(run_record, agents=final_state.agents)
 
         return PerRunArchive(
@@ -261,7 +343,8 @@ async def _drive_one_game(
             end_state=str(run_record.end_state.value if run_record.end_state else "UNKNOWN"),
             turns_played=run_record.turns_played,
             per_turn_outputs=player.per_turn_outputs,
-            verdict=verdict,
+            verdict=verdict_obj,
+            verdict_error=verdict_error,
             run_record_summary={
                 "end_state": run_record.end_state,
                 "final_player_health": run_record.final_player_health,
@@ -313,6 +396,9 @@ async def run_harness(*, config: PlaytestConfig) -> None:
                     pool=pool,
                     config=config,
                 )
+                # Persist before append so a SIGTERM mid-orchestrator-loop still
+                # leaves a recoverable corpus on disk.
+                write_one_archive(config.out_dir, arc)
                 archives.append(arc)
             except Exception as exc:  # noqa: BLE001 — log and continue
                 logger.exception("game %s/%s/%s failed: %s", persona_id, setting_id, seed, exc)
@@ -359,7 +445,6 @@ async def run_harness(*, config: PlaytestConfig) -> None:
         "by_persona": dict(pool.findings.by_persona),
     }
 
-    write_per_run_archives(config.out_dir, archives)
     write_corpus_artifacts(
         config.out_dir,
         archives=archives,

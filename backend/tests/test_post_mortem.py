@@ -353,6 +353,11 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
     final_g = {a.id: a.final_grievance for a in post_mortem.agents}
     assert final_g[agent_a] == 5
     assert final_g[agent_b] == 5
+    # Final status surfaces detain/dismiss to the post-mortem timeline.
+    # No status mutations happened in this fixture, so both stay ACTIVE.
+    final_status = {a.id: a.final_status for a in post_mortem.agents}
+    assert final_status[agent_a] == "ACTIVE"
+    assert final_status[agent_b] == "ACTIVE"
 
     # Turn 0: advisor lines collapsed to single sentence.
     line_a_t0 = next(

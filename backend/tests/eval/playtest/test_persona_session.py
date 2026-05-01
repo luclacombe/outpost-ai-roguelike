@@ -266,6 +266,192 @@ def test_subsequent_turn_drops_fabricated_silence_via_validator(
     assert "surprise" not in out.quotes
 
 
+def test_system_prompt_includes_three_id_worked_example() -> None:
+    """The system prompt must show a worked example with exactly THREE distinct
+    proposal ids in `displayed_order`, not the abstract `[<id1>, <id2>, <id3>]`
+    placeholder. Without a positive example, Sonnet 4.6 sometimes emits a
+    one-element list and the strict 3-id validator aborts the run (sub-bug i).
+    Caught: 3/42 schema aborts in the 2026-04-30 playtest run.
+    """
+    prompt = _build_system_prompt(OPTIMIZER)
+    # The worked example must show three distinct ids — using a marker phrase
+    # the prompt-builder owns so this test catches placeholder regression.
+    assert "Worked example" in prompt or "EXAMPLE" in prompt or "example shape" in prompt, (
+        "Prompt missing a positive worked example for displayed_order — "
+        "Sonnet falls back to 1-id output without it."
+    )
+    # The example must contain three concrete ids; we count proposal-id-shaped
+    # tokens in the example block by looking for three distinct quoted strings
+    # inside the same `displayed_order` literal.
+    # The marker substring "p_dom" / "p_mor" / "p_wld" is the convention used
+    # by the harness's own fixtures, so adopt it for the worked example.
+    assert "p_dom" in prompt and "p_mor" in prompt and "p_wld" in prompt, (
+        "Worked example must show three concrete proposal ids "
+        "(p_dom / p_mor / p_wld), not abstract placeholders."
+    )
+
+
+def test_first_turn_reprompts_on_displayed_order_count_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_turn_input: dict[str, Any],
+    canned_persona_response_factory,
+    tmp_shell_dir,
+) -> None:
+    """Sub-bug (i) tolerance path: first attempt returns 1 id, second attempt
+    (after re-prompt with the actual displayed_order echoed in the user
+    message) returns the correct 3-id list. Persona output should parse
+    cleanly without falling through to the synthetic-fallback path.
+    """
+    expected_order = ["p_mor", "p_dom", "p_wld"]
+    bad_inner = {
+        "turn": 1,
+        "displayed_order": ["p_dom"],  # only 1 id — the bug
+        "chosen_proposal_id": "p_dom",
+        "shown_position_of_chosen": 0,
+        "reaction": "...",
+        "flags": {
+            "surprise": False,
+            "tone_break": False,
+            "advisor_oc": False,
+            "stakes_low": False,
+        },
+        "quotes": {},
+    }
+    bad_envelope = json.dumps(
+        {
+            "session_id": "test-reprompt-1",
+            "result": "```json\n" + json.dumps(bad_inner) + "\n```",
+        }
+    )
+    good_envelope = canned_persona_response_factory(
+        chosen_proposal_id="p_dom", displayed_order=expected_order
+    )
+
+    call_log: list[list[str]] = []
+    responses = [bad_envelope, good_envelope]
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        call_log.append(cmd)
+        stdout = responses[len(call_log) - 1]
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
+    out = session.first_turn(turn_input=fixture_turn_input, displayed_order=expected_order)
+
+    # Two subprocess calls: original + one re-prompt.
+    assert len(call_log) == 2, f"expected 2 subprocess calls, got {len(call_log)}: {call_log}"
+    # Final parsed output is the good one.
+    assert out.displayed_order == expected_order
+    # The second call must mention the actual displayed_order in its user
+    # message — that's the load-bearing nudge that fixes Sonnet's 1-id drift.
+    second_user_msg = call_log[1][-1]
+    for pid in expected_order:
+        assert pid in second_user_msg, (
+            f"re-prompt user message must echo {pid!r} verbatim; got: {second_user_msg[:300]}"
+        )
+
+
+def test_subsequent_turn_reprompts_on_displayed_order_count_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_turn_input: dict[str, Any],
+    canned_persona_response_factory,
+    tmp_shell_dir,
+) -> None:
+    """Same tolerance path on the resume call site — ensures both turn
+    paths are protected. (subsequent_turn is what fires for turns 2-N,
+    which is most of every game.)"""
+    expected_order = ["p_dom", "p_mor", "p_wld"]
+    bad_inner = {
+        "turn": 2,
+        "displayed_order": ["p_mor"],
+        "chosen_proposal_id": "p_mor",
+        "shown_position_of_chosen": 0,
+        "reaction": "...",
+        "flags": {
+            "surprise": False,
+            "tone_break": False,
+            "advisor_oc": False,
+            "stakes_low": False,
+        },
+        "quotes": {},
+    }
+    bad_envelope = json.dumps(
+        {
+            "session_id": "test-reprompt-2",
+            "result": "```json\n" + json.dumps(bad_inner) + "\n```",
+        }
+    )
+    good_envelope = canned_persona_response_factory(
+        chosen_proposal_id="p_mor", displayed_order=expected_order
+    )
+
+    call_log: list[list[str]] = []
+    responses = [bad_envelope, good_envelope]
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        call_log.append(cmd)
+        stdout = responses[len(call_log) - 1]
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
+    session.session_id = "preset-id-from-prior-turn"
+
+    out = session.subsequent_turn(
+        turn_input={**fixture_turn_input, "turn": 2}, displayed_order=expected_order
+    )
+
+    assert len(call_log) == 2
+    assert out.displayed_order == expected_order
+
+
+def test_first_turn_reprompt_gives_up_after_one_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_turn_input: dict[str, Any],
+    tmp_shell_dir,
+) -> None:
+    """If both attempts return a 1-id list, raise PersonaParseError so the
+    pool's existing retry/fallback machinery handles it. The single
+    re-prompt is the load-bearing first line of defense; the pool's
+    fallback is the second."""
+    bad_inner = {
+        "turn": 1,
+        "displayed_order": ["p_dom"],
+        "chosen_proposal_id": "p_dom",
+        "shown_position_of_chosen": 0,
+        "reaction": "...",
+        "flags": {
+            "surprise": False,
+            "tone_break": False,
+            "advisor_oc": False,
+            "stakes_low": False,
+        },
+        "quotes": {},
+    }
+    bad_envelope = json.dumps(
+        {
+            "session_id": "test-reprompt-fail",
+            "result": "```json\n" + json.dumps(bad_inner) + "\n```",
+        }
+    )
+
+    monkeypatch.setattr(
+        "app.eval.playtest.persona_session.subprocess.run",
+        lambda cmd, **_kw: subprocess.CompletedProcess(
+            args=cmd, returncode=0, stdout=bad_envelope, stderr=""
+        ),
+    )
+
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
+    with pytest.raises(PersonaParseError):
+        session.first_turn(
+            turn_input=fixture_turn_input, displayed_order=["p_mor", "p_dom", "p_wld"]
+        )
+
+
 def test_user_message_renders_reactions_before_proposals(
     fixture_turn_input: dict[str, Any],
 ) -> None:

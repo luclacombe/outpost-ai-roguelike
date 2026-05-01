@@ -57,6 +57,12 @@ class PerRunArchive:
     verdict: PersonaRunVerdict | None
     run_record_summary: dict[str, Any]  # subset of RunRecord fields
     per_run_oracles: dict[str, Any]
+    # Sub-bug (iii): when the verdict step fails twice (timeout / crash /
+    # parse error), surface the failure message here so the meta-aggregator
+    # can flag `verdict_failed` runs distinctly from "game didn't end".
+    # `None` means either (a) the verdict succeeded or (b) the verdict
+    # was never attempted (e.g. game didn't reach a terminal state).
+    verdict_error: str | None = None
 
 
 def _archive_basename(a: PerRunArchive) -> str:
@@ -122,6 +128,21 @@ def _render_per_run_markdown(a: PerRunArchive) -> str:
                 "",
             ]
         )
+    elif a.verdict_error is not None:
+        # Verdict step ran but failed after both attempts. Surface the
+        # error so the meta-aggregator (and the dev re-running the harness)
+        # can distinguish silent verdict failures from never-finished runs.
+        lines.extend(
+            [
+                "## Run-level verdict",
+                "",
+                "**verdict_failed** — the per-run verdict step did not produce a "
+                "valid response after the harness's single retry (sub-bug iii).",
+                "",
+                f"_Failure: {a.verdict_error}_",
+                "",
+            ]
+        )
     else:
         lines.extend(
             [
@@ -145,21 +166,32 @@ def _archive_to_dict(a: PerRunArchive) -> dict[str, Any]:
         "turns_played": a.turns_played,
         "per_turn_outputs": [t.model_dump() for t in a.per_turn_outputs],
         "verdict": a.verdict.model_dump() if a.verdict else None,
+        "verdict_error": a.verdict_error,
         "run_record_summary": a.run_record_summary,
         "per_run_oracles": a.per_run_oracles,
     }
 
 
-def write_per_run_archives(out_dir: Path, archives: list[PerRunArchive]) -> None:
-    """Writes raw/<basename>.md and raw/<basename>.json for each run."""
+def write_one_archive(out_dir: Path, archive: PerRunArchive) -> None:
+    """Writes raw/<basename>.{md,json} for a single run.
+
+    Called from the orchestrator's per-game epilogue so completed games
+    persist on disk before the orchestrator can be interrupted.
+    """
     raw_dir = out_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
+    base = _archive_basename(archive)
+    (raw_dir / f"{base}.md").write_text(_render_per_run_markdown(archive))
+    (raw_dir / f"{base}.json").write_text(
+        json.dumps(_archive_to_dict(archive), indent=2, default=str)
+    )
+
+
+def write_per_run_archives(out_dir: Path, archives: list[PerRunArchive]) -> None:
+    """Writes raw/<basename>.{md,json} for each run. Batch wrapper around
+    `write_one_archive`."""
     for a in archives:
-        base = _archive_basename(a)
-        (raw_dir / f"{base}.md").write_text(_render_per_run_markdown(a))
-        (raw_dir / f"{base}.json").write_text(
-            json.dumps(_archive_to_dict(a), indent=2, default=str)
-        )
+        write_one_archive(out_dir, a)
 
 
 def write_corpus_artifacts(
@@ -209,6 +241,11 @@ def write_corpus_artifacts(
                 "end_state": a.end_state,
                 "turns_played": a.turns_played,
                 "axis_scores": axis_scores,
+                # Sub-bug (iii): expose verdict_failed/verdict_error so the
+                # aggregator can count silent verdict failures distinctly
+                # from never-finished runs.
+                "verdict_failed": a.verdict_error is not None,
+                "verdict_error": a.verdict_error,
                 "flag_counts": flag_counts,
                 "structural_oracles": a.per_run_oracles,
                 "raw_md_path": f"raw/{_archive_basename(a)}.md",

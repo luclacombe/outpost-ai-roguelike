@@ -74,7 +74,7 @@ advisor_archetypes:
       Knows every system on the station by failure mode. Has run the
       consumption numbers fourteen times and keeps getting the same answer.
       Will not soften what the numbers say.
-    verbal_tic: Prefaces assessments with the exact station time — "MET 14:07:32 —" — even in casual conversation.
+    verbal_tic: Sometimes opens with the exact station time — "MET 14:07:32 —" — when precision steadies them.
     portrait_options:
       clothing_color:
         - "3c3c5c"
@@ -96,7 +96,7 @@ advisor_archetypes:
       Mission Commander. Trained for emergencies but not for fourteen months
       of silence. Competent under pressure; less competent under prolonged
       uncertainty. Makes decisions when they need to be made.
-    verbal_tic: Speaks in orders and confirmations even in discussion, quoting back what was said before pivoting to action.
+    verbal_tic: Sometimes drops into orders and confirmations, quoting back what was just said before pivoting to action.
     portrait_options:
       clothing_color:
         - "4c4c6c"
@@ -119,7 +119,7 @@ advisor_archetypes:
       her hands. Also knows that the plants are showing stress she cannot
       fully explain. Advocates for keeping things alive because she believes
       that's the only direction that leads somewhere good.
-    verbal_tic: Uses garden-bay metaphors for crew morale — talks about what is "flowering" or "going to seed."
+    verbal_tic: Sometimes reaches for garden-bay metaphors — what is "flowering" or "going to seed" — when describing the crew.
     portrait_options:
       clothing_color:
         - "3c5c3c"
@@ -142,7 +142,7 @@ advisor_archetypes:
       three months running signal analysis on the surface transmissions.
       Believes contact is possible. Has not explained why that belief persists
       after fourteen months.
-    verbal_tic: Hedges conclusions with "the probabilities suggest" even for obvious things; certainty makes them uncomfortable.
+    verbal_tic: Sometimes hedges with "the probabilities suggest—"; a habit when uncertain, not a verbal default.
     portrait_options:
       clothing_color:
         - "5c3c5c"

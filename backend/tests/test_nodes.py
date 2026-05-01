@@ -14,6 +14,7 @@ Postgres is unreachable, matching the pattern in test_game_router.py.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -47,6 +48,7 @@ from app.game.schemas import (
     Proposal,
     ProposalFlavor,
     Quadrant,
+    ResolvedEvent,
     Resource,
     SeedPayload,
     ToolCall,
@@ -406,6 +408,93 @@ async def test_apply_tool_calls_populates_proposals_from_propose_action():
     assert len(result["rejected_tool_calls"]) == 0
 
 
+@respx.mock
+async def test_propose_pick_resolve_pipeline_mutates_resource():
+    """End-to-end (mocked Haiku): debate emits a propose_action whose
+    tool_calls_on_pick carries a modify_resource; player picks it; resource
+    moves. Guards the headline 'frozen dashboard' regression from the
+    2026-04-30 playtest.
+    """
+    nadia = make_alive_agent(name="Nadia")
+    colony = make_colony_state(agents=[nadia])
+    nadia = colony.agents[0]
+    fuel_before = colony.resources["fuel"].value
+
+    event = Event(
+        id="evt_storm",
+        category="weather",
+        title="Ice storm",
+        body="The wind is up.",
+        severity=2,
+        origin=EventOrigin.NATURAL,
+    )
+
+    # Mock Haiku to emit a single propose_action with nested tool_calls_on_pick.
+    respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(
+            200,
+            json=fake_haiku_response(
+                text_xml=f'<agent name="{nadia.name}">Burn it now.</agent>',
+                tool_uses=[
+                    {
+                        "name": "propose_action",
+                        "input": {
+                            "name": "Burn fuel for warmth",
+                            "description": "Run the heater hard.",
+                            "flavor": "DOMINANT",
+                            "effects_preview": ["-10 fuel"],
+                            "tool_calls_on_pick": [
+                                {
+                                    "name": "modify_resource",
+                                    "args": {
+                                        "resource_id": "fuel",
+                                        "delta": -10,
+                                        "reason": "heater run",
+                                    },
+                                }
+                            ],
+                            "caller_agent_id": str(nadia.id),
+                        },
+                    }
+                ],
+            ),
+        )
+    )
+
+    # 1. agent_debate parses the response into debate_tool_calls.
+    debate_state: dict[str, Any] = {
+        "colony_state": colony,
+        "current_event": event,
+        "cost_cents_this_turn": 0.0,
+    }
+    debated = await agent_debate(debate_state)
+    assert len(debated["debate_tool_calls"]) == 1
+
+    # 2. apply_tool_calls folds them through the engine; proposal carries
+    #    its nested tool_calls_on_pick.
+    apply_state: dict[str, Any] = {
+        "colony_state": colony,
+        "debate_tool_calls": debated["debate_tool_calls"],
+    }
+    applied = await apply_tool_calls(apply_state)
+    assert len(applied["proposals"]) == 1
+    proposal = applied["proposals"][0]
+    assert len(proposal.tool_calls_on_pick) == 1
+    assert proposal.tool_calls_on_pick[0].name == "modify_resource"
+    # Fuel is unchanged at proposal stage — the nested call has not fired yet.
+    assert applied["colony_state"].resources["fuel"].value == fuel_before
+
+    # 3. resolve picks this proposal and applies its nested calls.
+    resolve_state: dict[str, Any] = {
+        "colony_state": applied["colony_state"],
+        "proposals": applied["proposals"],
+        "player_choice": proposal.id,
+        "current_event": event,
+    }
+    resolved = await resolve(resolve_state)
+    assert resolved["colony_state"].resources["fuel"].value == fuel_before - 10
+
+
 async def test_apply_tool_calls_separates_applied_from_rejected():
     nadia = make_alive_agent(name="Nadia")
     colony = make_colony_state(agents=[nadia])
@@ -543,40 +632,58 @@ async def test_resolve_raises_on_unknown_player_choice():
         await resolve(state)
 
 
-async def test_resolve_applies_flavor_legitimacy_shift():
-    colony = make_colony_state(turn=2)
+async def test_resolve_uses_payload_driven_consequences_not_flavor_label():
+    """A WILDCARD with no real effects costs 0 legitimacy; a WILDCARD with
+    severe-health payload craters legitimacy ≥10. Confirms Pb fix —
+    consequence is derived from picked.tool_calls_on_pick, not the label."""
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    marko = make_alive_agent(name="Marko", quadrant=Quadrant.OPERATOR)
+    irina = make_alive_agent(name="Irina", quadrant=Quadrant.CONSCIENCE)
+    viktor = make_alive_agent(name="Viktor", quadrant=Quadrant.CRUSADER)
+    colony = make_colony_state(turn=2, agents=[nadia, marko, irina, viktor])
     base_legit = colony.legitimacy
-    event = _make_event(severity=2)  # no seeding
+    event = _make_event(severity=2)  # no consequence seed
 
-    # MORAL: +2
-    moral_state: dict[str, Any] = {
+    # Benign WILDCARD: empty payload, single-proposal triple = no overrule.
+    benign = _make_proposal(
+        pid="benign",
+        flavor=ProposalFlavor.WILDCARD,
+        proposer_id=nadia.id,
+        tool_calls_on_pick=[],
+    )
+    benign_state: dict[str, Any] = {
         "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_m", flavor=ProposalFlavor.MORAL)],
-        "player_choice": "p_m",
+        "proposals": [benign],
+        "player_choice": "benign",
         "current_event": event,
     }
-    r = await resolve(moral_state)
-    assert r["colony_state"].legitimacy == base_legit + 2
+    r = await resolve(benign_state)
+    assert r["colony_state"].legitimacy == base_legit, (
+        f"benign WILDCARD should not move legitimacy, got delta {base_legit - r['colony_state'].legitimacy}"
+    )
 
-    # WILDCARD: -3
-    wild_state: dict[str, Any] = {
+    # Severe WILDCARD: kills an advisor. Should crater legitimacy ≥10.
+    severe = _make_proposal(
+        pid="severe",
+        flavor=ProposalFlavor.WILDCARD,
+        proposer_id=nadia.id,
+        tool_calls_on_pick=[
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(marko.id), "delta": -100, "reason": "ice"},
+            )
+        ],
+    )
+    severe_state: dict[str, Any] = {
         "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_w", flavor=ProposalFlavor.WILDCARD)],
-        "player_choice": "p_w",
+        "proposals": [severe],
+        "player_choice": "severe",
         "current_event": event,
     }
-    r = await resolve(wild_state)
-    assert r["colony_state"].legitimacy == base_legit - 3
-
-    # DOMINANT: unchanged
-    dom_state: dict[str, Any] = {
-        "colony_state": colony,
-        "proposals": [_make_proposal(pid="p_d", flavor=ProposalFlavor.DOMINANT)],
-        "player_choice": "p_d",
-        "current_event": event,
-    }
-    r = await resolve(dom_state)
-    assert r["colony_state"].legitimacy == base_legit
+    r = await resolve(severe_state)
+    drop = base_legit - r["colony_state"].legitimacy
+    assert drop >= 10, f"severe-health WILDCARD should crater legitimacy ≥10, got drop {drop}"
 
 
 async def test_resolve_schedules_consequence_seed_on_severe_event():
@@ -764,6 +871,62 @@ async def test_autonomous_actions_drops_debate_only_tool_calls():
     # And the introspective call DID apply: Nadia's memory grew by one.
     nadia_post = next(a for a in new_colony.agents if a.id == nadia.id)
     assert any("Player overruled me" in m for m in nadia_post.memory)
+
+
+@respx.mock
+async def test_autonomous_actions_summary_strips_turn_counter_prose():
+    """Regression for §1.7 4th-wall leak: the synthesized summary that
+    `autonomous_actions` feeds to advisors must NOT include "Turn N"
+    prose. Advisors otherwise echo the index back into their `remember`
+    calls, which then re-surface in the next turn's persona context.
+
+    The structured `turn_number: N / M` line inside `<colony_state>` is
+    expected and required for engine-level pacing; this test isolates
+    the synthesized prose summary by stripping that one keyed line
+    before scanning.
+    """
+    # No prior narration → autonomous_actions synthesizes a summary from
+    # the most recent ResolvedEvent. Build one to force that path.
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    colony = make_colony_state(agents=[nadia], turn=5)
+    last_event = Event(
+        id="evt_storm",
+        category="weather",
+        title="Ice storm at first light",
+        body="Visibility drops to three meters; the heating core hums.",
+        severity=3,
+        origin=EventOrigin.NATURAL,
+    )
+    resolved = ResolvedEvent(
+        turn_number=5,
+        event=last_event,
+        chosen_proposal_id="p_a",
+        summary="Patch the leak and accept the temperature drop.",
+    )
+    colony = colony.model_copy(update={"event_log": [resolved]})
+
+    route = respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+    )
+
+    state: dict[str, Any] = {
+        "colony_state": colony,
+        "cost_cents_this_turn": 0.0,
+    }
+    await autonomous_actions(state)
+
+    sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
+    user_content = sent_body["messages"][0]["content"]
+
+    # Strip the structured `turn_number: N / M` line (expected and
+    # legitimate inside <colony_state>) before scanning.
+    stripped = re.sub(r"turn_number:\s*\d+\s*/\s*\d+", "", user_content)
+
+    matches = re.findall(r"\bturn\s+\d+\b", stripped, re.IGNORECASE)
+    assert not matches, (
+        f"autonomous_actions user message must not narrate 'turn N'; "
+        f"matched: {matches}.\nFull user message:\n{user_content}"
+    )
 
 
 # ---------------------------------------------------------------------------

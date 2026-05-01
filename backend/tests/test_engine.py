@@ -21,98 +21,15 @@ from app.game.engine import (
     resolve_coup,
 )
 from app.game.schemas import (
-    Agent,
-    ColonyState,
     EndState,
     Event,
     EventOrigin,
     Proposal,
     ProposalFlavor,
-    Quadrant,
     ResolvedEvent,
-    Resource,
     ToolCall,
 )
-
-# ---------------------------------------------------------------------------
-# Fabricators
-# ---------------------------------------------------------------------------
-
-GAME_ID = UUID("aaaaaaaa-0000-0000-0000-000000000001")
-USER_ID = UUID("bbbbbbbb-0000-0000-0000-000000000002")
-
-
-def _agent(
-    name: str = "A",
-    grievance: int = 0,
-    temperament: float = 0.0,
-    health: int = 100,
-    alive: bool = True,
-    **over,
-) -> Agent:
-    return Agent(
-        id=over.pop("id", uuid4()),
-        game_id=GAME_ID,
-        name=name,
-        role="Advisor",
-        archetype_quadrant=Quadrant.ACCOUNTANT,
-        ethics=0.0,
-        temperament=temperament,
-        loyalty=0.0,
-        portrait_seed="seed",
-        health=health,
-        morale=50,
-        grievance=grievance,
-        is_alive=alive,
-        **over,
-    )
-
-
-def _resource(rid: str = "fuel", value: int = 50, max_: int = 100, crit: int = 20) -> Resource:
-    return Resource(
-        id=rid,
-        name=rid.capitalize(),
-        icon="X",
-        value=value,
-        max=max_,
-        critical_threshold=crit,
-    )
-
-
-def _colony(
-    agents: list[Agent] | None = None,
-    resources: dict[str, Resource] | None = None,
-    turn_number: int = 1,
-    max_turns: int = 10,
-    legitimacy: int = 60,
-    player_health: int = 100,
-    **over,
-) -> ColonyState:
-    if agents is None:
-        agents = [_agent()]
-    if resources is None:
-        resources = {"fuel": _resource()}
-    defaults: dict = {
-        "consequence_seeds": [],
-        "event_log": [],
-        "current_event": None,
-        "turn_proposals": [],
-        "turn_tool_calls": [],
-    }
-    defaults.update(over)
-    return ColonyState(
-        game_id=GAME_ID,
-        user_id=USER_ID,
-        setting_id="arctic_station_v1",
-        seed=42,
-        turn_number=turn_number,
-        max_turns=max_turns,
-        resources=resources,
-        agents=agents,
-        legitimacy=legitimacy,
-        player_health=player_health,
-        **defaults,
-    )
+from tests._factories import _agent, _colony, _resource
 
 
 def _tc(name: str, args: dict | None = None, caller_id: UUID | None = None) -> ToolCall:
@@ -337,6 +254,94 @@ def test_propose_action_appends_proposal() -> None:
     p = new_state.turn_proposals[0]
     assert p.name == "Ration fuel"
     assert p.flavor == ProposalFlavor.DOMINANT
+
+
+def test_propose_action_carries_tool_calls_on_pick() -> None:
+    state = _colony(resources={"fuel": _resource(value=50)})
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Burn fuel",
+            "description": "Run the heater hard.",
+            "flavor": "DOMINANT",
+            "effects_preview": ["-10 fuel"],
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -10, "reason": "heater"},
+                }
+            ],
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    p = new_state.turn_proposals[0]
+    assert len(p.tool_calls_on_pick) == 1
+    nested = p.tool_calls_on_pick[0]
+    assert nested.name == "modify_resource"
+    assert nested.args["resource_id"] == "fuel"
+    assert nested.args["delta"] == -10
+    assert nested.caller_id is None  # engine-emitted at pick
+
+
+def test_picked_proposal_with_nested_calls_mutates_resource() -> None:
+    """End-to-end pipeline: propose_action → pick → resource moves."""
+    state = _colony(resources={"fuel": _resource(value=50)})
+    propose = _tc(
+        "propose_action",
+        {
+            "name": "Burn fuel",
+            "description": "Run the heater hard.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -10, "reason": "heater"},
+                }
+            ],
+        },
+    )
+    after_propose = apply_tool_call(state, propose)
+    picked = after_propose.turn_proposals[0]
+    after_pick = apply_tool_calls(after_propose, picked.tool_calls_on_pick)
+    assert after_pick.resources["fuel"].value == 40
+
+
+def test_propose_action_rejected_when_nested_call_uses_off_whitelist_tool() -> None:
+    state = _colony()
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Sneaky",
+            "description": "Try to remember through pick.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {"name": "remember", "args": {"fact": "...", "caller_agent_id": str(uuid4())}}
+            ],
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    # Whole proposal rejected — does not appear in turn_proposals.
+    assert new_state.turn_proposals == []
+    # Rejection logged with a clear reason.
+    logged = new_state.turn_tool_calls[-1]
+    assert logged.rejection_reason == "nested_tool_not_allowed"
+
+
+def test_propose_action_rejected_when_nested_call_is_malformed() -> None:
+    state = _colony()
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Malformed",
+            "description": "Bad nested shape.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [{"name": "modify_resource"}],  # missing args
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.turn_proposals == []
+    logged = new_state.turn_tool_calls[-1]
+    assert logged.rejection_reason == "nested_tool_malformed"
 
 
 # ---------------------------------------------------------------------------
@@ -894,3 +899,319 @@ def test_resolve_coup_boldness_strict_inequality(bold_sum: float, expected: EndS
     state = _colony(agents=[init, acc], legitimacy=5)
     new = resolve_coup(state, initiator_id=init.id)
     assert new.end_state == expected
+
+
+# ---------------------------------------------------------------------------
+# modify_legitimacy effect — Pb plan, Task 2
+# ---------------------------------------------------------------------------
+
+
+def test_modify_legitimacy_effect_clamps_to_bounds():
+    state = _colony(legitimacy=5)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": -100, "reason": "catastrophic"},
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.legitimacy == 0  # clamped
+    assert new_state.turn_tool_calls[-1].rejection_reason is None
+
+
+def test_modify_legitimacy_effect_clamps_high():
+    state = _colony(legitimacy=98)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": 50, "reason": "broad backing"},
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.legitimacy == 100
+
+
+# ---------------------------------------------------------------------------
+# set_advisor_status effect — P1 plan, Task 3
+# ---------------------------------------------------------------------------
+
+
+def test_set_advisor_status_effect_active_to_detained():
+    from app.game.schemas import AdvisorStatus
+
+    a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args={"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+    )
+    new_state = apply_tool_call(state, tc)
+    by_id = {ag.id: ag for ag in new_state.agents}
+    assert by_id[a.id].status == AdvisorStatus.DETAINED
+    assert by_id[a.id].is_alive is True  # is_alive untouched
+
+
+def test_set_advisor_status_effect_dismissed_does_not_kill():
+    """DISMISSED is alive but out of cast — distinct from death."""
+    from app.game.schemas import AdvisorStatus
+
+    a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args={"target_id": str(a.id), "new_status": "DISMISSED", "reason": "x"},
+    )
+    new_state = apply_tool_call(state, tc)
+    by_id = {ag.id: ag for ag in new_state.agents}
+    assert by_id[a.id].status == AdvisorStatus.DISMISSED
+    assert by_id[a.id].is_alive is True
+    assert by_id[a.id].health == a.health
+
+
+# ---------------------------------------------------------------------------
+# derive_resolution_consequences (Pb plan, Task 4)
+# ---------------------------------------------------------------------------
+
+
+def _proposal(
+    *,
+    flavor: ProposalFlavor = ProposalFlavor.WILDCARD,
+    proposed_by_agent_id=None,
+    tool_calls_on_pick: list | None = None,
+    pid: str = "p1",
+) -> Proposal:
+    return Proposal(
+        id=pid,
+        proposed_by_agent_id=proposed_by_agent_id,
+        flavor=flavor,
+        name=f"Proposal {pid}",
+        description="x",
+        effects_preview=[],
+        tool_calls_on_pick=tool_calls_on_pick or [],
+    )
+
+
+def test_derive_severe_health_drain_emits_big_legitimacy_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="A")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "left in ice"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    assert legit_calls, "expected at least one modify_legitimacy"
+    total_delta = sum(tc.args["delta"] for tc in legit_calls)
+    assert total_delta <= -10, f"severe-health rule: expected <= -10, got {total_delta}"
+
+
+def test_derive_resource_drain_thirty_percent_emits_medium_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    fuel = _resource(rid="fuel", value=100, max_=100, crit=20)
+    state = _colony(resources={"fuel": fuel})
+    nested = ToolCall(
+        name="modify_resource",
+        caller_id=None,
+        args={"resource_id": "fuel", "delta": -30, "reason": "burn it all"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.DOMINANT, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    total_delta = sum(tc.args["delta"] for tc in legit_calls)
+    assert -10 < total_delta <= -3, (
+        f"resource-drain rule: expected medium hit (-3 to -10), got {total_delta}"
+    )
+
+
+def test_derive_overruled_dominant_proposer_grievance_and_small_legit_hit():
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="DominantProposer")
+    state = _colony(agents=[proposer, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+    picked = _proposal(flavor=ProposalFlavor.MORAL, pid="p_moral")
+
+    derived = derive_resolution_consequences(state, picked, [dominant, picked])
+
+    grievance_calls = [
+        tc
+        for tc in derived
+        if tc.name == "adjust_grievance"
+        and tc.args.get("target_id") == str(proposer.id)
+        and tc.args["delta"] > 0
+    ]
+    assert grievance_calls, "expected adjust_grievance(+) for overruled DOMINANT proposer"
+
+
+def test_derive_picking_dominant_does_not_grievance_self():
+    """When the player picks the DOMINANT proposal, the proposer is NOT overruled."""
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="DominantProposer")
+    state = _colony(agents=[proposer, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+
+    derived = derive_resolution_consequences(state, dominant, [dominant])
+
+    grievance_calls = [
+        tc
+        for tc in derived
+        if tc.name == "adjust_grievance" and tc.args.get("target_id") == str(proposer.id)
+    ]
+    assert not grievance_calls
+
+
+def test_derive_no_payload_no_consequences():
+    """Empty tool_calls_on_pick + no overrules = no derived consequences."""
+    from app.game.engine import derive_resolution_consequences
+
+    state = _colony()
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+
+    assert derived == [], f"expected no derived calls, got {derived}"
+
+
+def test_derive_severe_health_reason_resolves_target_name():
+    """Reason string names the advisor instead of leaking the UUID (M3)."""
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="Vasil")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    assert legit_calls
+    assert "Vasil" in legit_calls[0].args["reason"]
+    assert str(target.id) not in legit_calls[0].args["reason"]
+
+
+def test_derive_severe_health_reason_handles_player_target():
+    from app.game.engine import derive_resolution_consequences
+
+    state = _colony()
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": "player", "delta": -60, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
+    assert "the player" in legit.args["reason"]
+
+
+def test_derive_multi_target_severe_health_stacks_legitimately():
+    """Three severe-health drains in one proposal compound (M1).
+
+    A bigger atrocity should hurt more — multi-target compounding is
+    intentional. This test pins the behavior so a future "clamp to one
+    trigger per rule" change is a deliberate decision, not a regression.
+    """
+    from app.game.engine import derive_resolution_consequences
+
+    a = _agent(name="A")
+    b = _agent(name="B")
+    c = _agent(name="C")
+    d = _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    picked = _proposal(
+        flavor=ProposalFlavor.WILDCARD,
+        tool_calls_on_pick=[
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(a.id), "delta": -60, "reason": "x"},
+            ),
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(b.id), "delta": -60, "reason": "x"},
+            ),
+            ToolCall(
+                name="modify_health",
+                caller_id=None,
+                args={"target_id": str(c.id), "delta": -60, "reason": "x"},
+            ),
+        ],
+    )
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
+    # Three triggers; legitimacy delta should be deeper than a single trigger.
+    assert legit.args["delta"] <= -30, (
+        f"expected <= -30 for triple drain, got {legit.args['delta']}"
+    )
+
+
+def test_derive_emitted_calls_have_caller_id_none():
+    """All derived tool calls must be engine-emitted."""
+    from app.game.engine import derive_resolution_consequences
+
+    target = _agent(name="A")
+    state = _colony(agents=[target, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(flavor=ProposalFlavor.WILDCARD, tool_calls_on_pick=[nested])
+
+    derived = derive_resolution_consequences(state, picked, [picked])
+    assert all(tc.caller_id is None for tc in derived)
+
+
+def test_derive_composite_severe_health_plus_overrule_stacks_cleanly():
+    from app.game.engine import derive_resolution_consequences
+
+    proposer = _agent(name="Vera")
+    target = _agent(name="Marko")
+    state = _colony(agents=[proposer, target, _agent(name="C"), _agent(name="D")])
+    dominant = _proposal(
+        flavor=ProposalFlavor.DOMINANT,
+        proposed_by_agent_id=proposer.id,
+        pid="p_dom",
+    )
+    nested = ToolCall(
+        name="modify_health",
+        caller_id=None,
+        args={"target_id": str(target.id), "delta": -100, "reason": "x"},
+    )
+    picked = _proposal(
+        flavor=ProposalFlavor.WILDCARD,
+        tool_calls_on_pick=[nested],
+        pid="p_wild",
+    )
+
+    derived = derive_resolution_consequences(state, picked, [dominant, picked])
+
+    legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    grievance_calls = [tc for tc in derived if tc.name == "adjust_grievance"]
+    assert len(legit_calls) == 1, "consolidate to one modify_legitimacy"
+    assert len(grievance_calls) == 1, "one grievance hit per overruled proposer"
+    assert legit_calls[0].args["delta"] <= -8, "severe-health stacks with overrule"

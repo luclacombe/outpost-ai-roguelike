@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.game.schemas import Agent, ColonyState, ToolCall
-from app.game.tools import AGENT_TOOL_NAMES
+from app.game.tools import KNOWN_TOOL_NAMES
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -73,6 +73,11 @@ def _require_integer_delta(args: dict[str, Any], lo: int, hi: int) -> tuple[int 
 # ---------------------------------------------------------------------------
 
 
+_NESTED_TOOL_WHITELIST: frozenset[str] = frozenset(
+    {"modify_resource", "modify_health", "adjust_grievance", "set_advisor_status"}
+)
+
+
 def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResult:
     args = tc.args
     name = args.get("name")
@@ -90,6 +95,32 @@ def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResu
     for proposal in state.turn_proposals:
         if proposal.name.strip().lower() == normalised:
             return _fail("duplicate_proposal")
+
+    # Shape-only check on nested tool_calls_on_pick. State-dependent
+    # validation (e.g. resource underflow at pick time) re-runs through
+    # apply_tool_call when the proposal is chosen; we only guard the
+    # per-item shape and tool-name whitelist here.
+    nested = args.get("tool_calls_on_pick")
+    if nested is not None:
+        if not isinstance(nested, list):
+            return _fail("nested_tool_malformed")
+        status_mutations = 0
+        for item in nested:
+            if not isinstance(item, dict):
+                return _fail("nested_tool_malformed")
+            if not isinstance(item.get("name"), str) or not isinstance(item.get("args"), dict):
+                return _fail("nested_tool_malformed")
+            if item["name"] not in _NESTED_TOOL_WHITELIST:
+                return _fail("nested_tool_not_allowed")
+            if item["name"] == "set_advisor_status":
+                status_mutations += 1
+        # At most one status mutation per proposal. A WILDCARD proposal that
+        # detained three of four advisors would leave the next turn with one
+        # author for three proposal flavors — breaking SPEC §7.3. The
+        # cast-collapse floor on _validate_set_advisor_status only catches
+        # DISMISSED; this guard catches mass-DETAIN.
+        if status_mutations > 1:
+            return _fail("multiple_status_mutations")
 
     return _OK
 
@@ -308,6 +339,80 @@ def _validate_back_leader(tc: ToolCall, state: ColonyState) -> ValidationResult:
     return _OK
 
 
+def _validate_modify_legitimacy(tc: ToolCall, state: ColonyState) -> ValidationResult:
+    """Engine-only tool. Rejects any caller_id."""
+    if tc.caller_id is not None:
+        return _fail("engine_only_tool")
+
+    args = tc.args
+    delta = args.get("delta")
+    if delta is None or not isinstance(delta, int) or isinstance(delta, bool):
+        return _fail("missing_delta")
+    if not (-100 <= delta <= 100):
+        return _fail("delta_out_of_range")
+
+    fail_reason = _require_reason(args)
+    if fail_reason:
+        return _fail(fail_reason)
+
+    return _OK
+
+
+_ALLOWED_STATUS_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("ACTIVE", "DETAINED"),
+        ("DETAINED", "ACTIVE"),
+        ("ACTIVE", "DISMISSED"),
+        ("DETAINED", "DISMISSED"),
+    }
+)
+
+
+def _validate_set_advisor_status(tc: ToolCall, state: ColonyState) -> ValidationResult:
+    """Engine-only. Allowed transitions in _ALLOWED_STATUS_TRANSITIONS.
+
+    Dismiss requires ≥2 other ACTIVE-or-DETAINED advisors remaining post-
+    transition so the cast cannot collapse mid-run via status manipulation.
+    """
+    if tc.caller_id is not None:
+        return _fail("engine_only_tool")
+
+    args = tc.args
+    target_id = args.get("target_id")
+    agent = _get_agent_by_id(state, str(target_id)) if target_id is not None else None
+    if agent is None:
+        return _fail("unknown_target")
+
+    if not agent.is_alive:
+        return _fail("target_dead")
+
+    new_status = args.get("new_status")
+    if new_status not in {"ACTIVE", "DETAINED", "DISMISSED"}:
+        return _fail("invalid_status_transition")
+
+    current = agent.status.value if hasattr(agent.status, "value") else str(agent.status)
+    if (current, new_status) not in _ALLOWED_STATUS_TRANSITIONS:
+        return _fail("invalid_status_transition")
+
+    fail_reason = _require_reason(args)
+    if fail_reason:
+        return _fail(fail_reason)
+
+    if new_status == "DISMISSED":
+        # Count alive ACTIVE + DETAINED *other* advisors. Require ≥3 to
+        # preserve SPEC §7.3 "exactly three actions" — one advisor per
+        # proposal in the post-dismissal triple.
+        others_in_cast = sum(
+            1
+            for a in state.agents
+            if a.is_alive and a.id != agent.id and a.status.value in ("ACTIVE", "DETAINED")
+        )
+        if others_in_cast < 3:
+            return _fail("cast_collapse_blocked")
+
+    return _OK
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -323,6 +428,8 @@ _VALIDATORS = {
     "remember": _validate_remember,
     "initiate_coup": _validate_initiate_coup,
     "back_leader": _validate_back_leader,
+    "modify_legitimacy": _validate_modify_legitimacy,
+    "set_advisor_status": _validate_set_advisor_status,
 }
 
 
@@ -332,7 +439,7 @@ def validate_tool_call(tc: ToolCall, state: ColonyState) -> ValidationResult:
     Never mutates state. Never raises; all failures flow through
     ValidationResult(valid=False, reason=...).
     """
-    if tc.name not in AGENT_TOOL_NAMES:
+    if tc.name not in KNOWN_TOOL_NAMES:
         return _fail("unknown_tool")
 
     validator = _VALIDATORS[tc.name]

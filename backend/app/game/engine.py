@@ -14,6 +14,7 @@ import functools
 from uuid import UUID, uuid4
 
 from app.game.schemas import (
+    AdvisorStatus,
     Agent,
     ColonyState,
     EndState,
@@ -166,6 +167,10 @@ def _apply_valid_effect(state: ColonyState, tc: ToolCall) -> ColonyState:  # noq
         return resolve_coup(state, initiator_id=tc.caller_id)
     if name == "back_leader":
         return _effect_back_leader(state, args)
+    if name == "modify_legitimacy":
+        return _effect_modify_legitimacy(state, args)
+    if name == "set_advisor_status":
+        return _effect_set_advisor_status(state, args)
 
     # Should be unreachable — validator would have caught unknown_tool.
     return state  # pragma: no cover
@@ -173,6 +178,13 @@ def _apply_valid_effect(state: ColonyState, tc: ToolCall) -> ColonyState:  # noq
 
 def _effect_propose_action(state: ColonyState, tc: ToolCall) -> ColonyState:
     args = tc.args
+    # Validator already shape-checked tool_calls_on_pick (name in whitelist,
+    # args is a dict). State-dependent rejects fire when the proposal is
+    # picked and the nested calls fold through apply_tool_call again.
+    nested_calls = [
+        ToolCall(name=item["name"], caller_id=None, args=item["args"])
+        for item in args.get("tool_calls_on_pick") or []
+    ]
     proposal = Proposal(
         id=uuid4().hex[:8],
         proposed_by_agent_id=tc.caller_id,
@@ -180,7 +192,7 @@ def _effect_propose_action(state: ColonyState, tc: ToolCall) -> ColonyState:
         name=args["name"],
         description=args["description"],
         effects_preview=args.get("effects_preview", []),
-        tool_calls_on_pick=[],  # wired in Phase 4
+        tool_calls_on_pick=nested_calls,
     )
     new_proposals = [*state.turn_proposals, proposal]
     return state.model_copy(update={"turn_proposals": new_proposals})
@@ -269,6 +281,21 @@ def _effect_back_leader(state: ColonyState, args: dict) -> ColonyState:
     bonus: int = args["legitimacy_bonus"]
     new_legitimacy = _clamp(state.legitimacy + bonus, 0, 100)
     return state.model_copy(update={"legitimacy": new_legitimacy})
+
+
+def _effect_modify_legitimacy(state: ColonyState, args: dict) -> ColonyState:
+    delta: int = args["delta"]
+    new_legitimacy = _clamp(state.legitimacy + delta, 0, 100)
+    return state.model_copy(update={"legitimacy": new_legitimacy})
+
+
+def _effect_set_advisor_status(state: ColonyState, args: dict) -> ColonyState:
+    target_id = UUID(args["target_id"])
+    new_status = AdvisorStatus(args["new_status"])
+    agent = _agent_by_id(state, target_id)
+    assert agent is not None  # validator already checked
+    updated = agent.model_copy(update={"status": new_status})
+    return _replace_agent(state, updated)
 
 
 # ---------------------------------------------------------------------------
@@ -414,3 +441,124 @@ def advance_turn(state: ColonyState) -> ColonyState:
             "turn_tool_calls": [],
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Section 7: derive_resolution_consequences (Pb)
+# ---------------------------------------------------------------------------
+
+# Rule constants — taste-tunable, in band with SPEC §5.3 ranges (small
+# orders 1-2, medium 5-8, extreme 15-25). Single severe action sits in the
+# "extreme" band; resource drain is "medium"; overrule of a DOMINANT
+# proposer is "small". Tests assert directional bands, not exact values.
+#
+# Each rule fires ONCE PER QUALIFYING NESTED CALL — multi-target proposals
+# stack legitimately. A `tool_calls_on_pick` that drains 50 health from
+# three advisors costs -36 legitimacy, not -12. This is intentional: a
+# bigger atrocity should hurt more than a smaller one.
+#
+# Tuning signals (the symptom that would flip a constant):
+#   _LEGIT_PER_50_HEALTH_DRAIN: raise toward -15 if severe-health proposals
+#     don't visibly hurt the dashboard in playtests.
+#   _LEGIT_PER_30PCT_RESOURCE_DRAIN: lower toward -3 if mid-game resource
+#     reshuffles get penalised more than they should.
+#   _LEGIT_OVERRULE_DOMINANT: lower toward -1 if the player feels punished
+#     for non-dominant picks too often (overrule should sting, not gate).
+#   _GRIEVANCE_OVERRULE_DOMINANT: raise toward 3 if dominant-proposer coups
+#     never trigger; lower toward 1 if they trigger too easily.
+_LEGIT_PER_50_HEALTH_DRAIN = -12  # severe health drain on a single target
+_LEGIT_PER_30PCT_RESOURCE_DRAIN = -5  # ≥30%-of-max single-resource drain
+_LEGIT_OVERRULE_DOMINANT = -2  # picking non-DOMINANT when a DOMINANT proposal existed
+_GRIEVANCE_OVERRULE_DOMINANT = 2  # for the overruled DOMINANT proposer
+
+
+def _resolve_target_name(state: ColonyState, target_id: object) -> str:
+    """Render a target_id for a reason string. UUID → agent name, "player"
+    → "the player", anything else (including missing) → "an advisor"."""
+    if target_id == "player":
+        return "the player"
+    if not isinstance(target_id, str):
+        return "an advisor"
+    try:
+        agent = _agent_by_id(state, UUID(target_id))
+    except ValueError:
+        return "an advisor"
+    return agent.name if agent is not None else "an advisor"
+
+
+def derive_resolution_consequences(
+    state: ColonyState,
+    picked: Proposal,
+    all_proposals: list[Proposal],
+) -> list[ToolCall]:
+    """Pure: read picked.tool_calls_on_pick + cross-proposal context, emit
+    a list of validated tool calls (caller_id=None) representing the
+    consequence of the player's choice.
+
+    Replaces the hardcoded _FLAVOR_LEGITIMACY_SHIFT in nodes.resolve. Every
+    legitimacy / grievance change now flows through validate_tool_call so
+    the Tool-Call Validity metric sees them. SPEC §6.7 / invariant #11.
+    """
+    derived: list[ToolCall] = []
+    legit_delta = 0
+    legit_reasons: list[str] = []
+
+    # Rule 1: severe-health-drain on any target (advisor or player).
+    for nested in picked.tool_calls_on_pick:
+        if nested.name == "modify_health":
+            delta = nested.args.get("delta", 0)
+            if isinstance(delta, int) and delta <= -50:
+                legit_delta += _LEGIT_PER_50_HEALTH_DRAIN
+                tgt_name = _resolve_target_name(state, nested.args.get("target_id"))
+                legit_reasons.append(f"severe harm to {tgt_name}")
+
+    # Rule 2: resource drain ≥30% of that resource's max.
+    for nested in picked.tool_calls_on_pick:
+        if nested.name == "modify_resource":
+            rid = nested.args.get("resource_id")
+            delta = nested.args.get("delta", 0)
+            res = state.resources.get(rid) if isinstance(rid, str) else None
+            if (
+                res is not None
+                and isinstance(delta, int)
+                and delta < 0
+                and abs(delta) >= 0.30 * res.max
+            ):
+                legit_delta += _LEGIT_PER_30PCT_RESOURCE_DRAIN
+                legit_reasons.append(f"heavy {rid} drain")
+
+    # Rule 3: overruling a DOMINANT proposer. Triggered when (a) picked is
+    # not DOMINANT and (b) some DOMINANT proposal exists in the triple.
+    if picked.flavor != ProposalFlavor.DOMINANT:
+        for prop in all_proposals:
+            if prop.flavor == ProposalFlavor.DOMINANT and prop.proposed_by_agent_id is not None:
+                proposer = _agent_by_id(state, prop.proposed_by_agent_id)
+                if proposer is not None and proposer.is_alive:
+                    derived.append(
+                        ToolCall(
+                            name="adjust_grievance",
+                            caller_id=None,
+                            args={
+                                "target_id": str(proposer.id),
+                                "delta": _GRIEVANCE_OVERRULE_DOMINANT,
+                                "reason": "their dominant proposal was overruled",
+                            },
+                        )
+                    )
+                    legit_delta += _LEGIT_OVERRULE_DOMINANT
+                    legit_reasons.append("overruled dominant advisor")
+
+    # Emit one consolidated modify_legitimacy if any rule triggered.
+    if legit_delta != 0:
+        derived.append(
+            ToolCall(
+                name="modify_legitimacy",
+                caller_id=None,
+                args={
+                    "delta": legit_delta,
+                    "reason": "; ".join(legit_reasons) or "consequence",
+                },
+            )
+        )
+
+    return derived

@@ -23,6 +23,66 @@ grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
+## When to split engine.py
+
+`engine.py` has a 300-line soft-target waiver (root CLAUDE.md). Section 7
+(`derive_resolution_consequences` + rule constants) is the natural split
+point — it's a self-contained pure function with its own constants and
+helpers, no shared state with Sections 1-6, and is the most likely
+section to grow as new severe-payload semantics emerge. If the file
+crosses ~600 lines, extract Section 7 to `engine_consequences.py` (or
+`consequence_rules.py`) before adding more.
+
+## Engine-only tools
+
+`tools.ENGINE_TOOL_NAMES` lists tools that do NOT appear in
+`AGENT_TOOL_SCHEMAS` and that the LLM never authors. Validator rejects any
+instance with `caller_id is not None` (reason: `engine_only_tool`). Current
+members:
+
+- `modify_legitimacy(delta, reason)` — emitted by
+  `engine.derive_resolution_consequences` when a picked proposal's payload
+  or cross-proposal context warrants a legitimacy shift.
+- `set_advisor_status(target_id, new_status, reason)` — emitted by the
+  engine at pick time when an advisor-status transition rides in
+  `tool_calls_on_pick`. Allowed transitions: `ACTIVE↔DETAINED`,
+  `{ACTIVE,DETAINED}→DISMISSED`. Dismiss requires ≥3 other ACTIVE-or-
+  DETAINED advisors remaining, so SPEC §7.3's three-action triple stays
+  one-author-per-proposal.
+
+`set_advisor_status` is in `_NESTED_TOOL_WHITELIST` (LLM may include it in
+a proposal's `tool_calls_on_pick`). `modify_legitimacy` is NOT — only
+`derive_resolution_consequences` emits it.
+
+## propose_action: two-stage validation
+
+`tool_calls_on_pick` is the proposal's effect list — nested tool calls
+that fire at pick time. Validation is deliberately split:
+
+- **Debate time** (`_validate_propose_action`): shape-only — each nested
+  item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
+  Rejects on bad shape (`nested_tool_malformed`) or off-whitelist tool
+  (`nested_tool_not_allowed`). Whitelist: `modify_resource`,
+  `modify_health`, `adjust_grievance`, `set_advisor_status`. At most ONE
+  `set_advisor_status` per `tool_calls_on_pick`
+  (`multiple_status_mutations`) — mass-DETAIN would otherwise leave next
+  turn with one ACTIVE author and break SPEC §7.3's three-author triple.
+- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
+  nested call re-validates against current state. State-dependent
+  rejects (e.g. `would_underflow` when resources have shifted between
+  propose and pick) fire here and land in `turn_tool_calls` with
+  `rejection_reason`, not in `_validate_propose_action`.
+
+Nested calls are constructed as `ToolCall(name=..., caller_id=None,
+args=...)` — engine-emitted at pick. The proposing agent's UUID lives
+on `Proposal.proposed_by_agent_id`, not on the nested calls.
+
+Don't re-introduce a hardcoded `tool_calls_on_pick=[]` in
+`_effect_propose_action`. Phase 4 deferred this wiring; the 2026-04-30
+playtest showed the resource dashboard freezes without it (PLAN.md
+"Frozen-dashboard fix" entry). The chosen proposal is the player's
+mechanical lever — without nested calls, choice is cosmetic.
+
 ## Setting YAMLs are procedural
 
 - `app/game/settings/*.yml` is the only place setting content lives. Adding a setting is one YAML file + one test; no Python changes.

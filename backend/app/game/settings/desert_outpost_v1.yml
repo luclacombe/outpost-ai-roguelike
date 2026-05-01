@@ -74,7 +74,7 @@ advisor_archetypes:
       Keeps the ledger. Knows what every item in the stockroom cost and what
       it can fetch on the road. Does not trade sentiment; trades things.
       The calculus is not cold — it is just honest.
-    verbal_tic: Quotes prices from memory mid-sentence, as if market value is always relevant.
+    verbal_tic: Sometimes quotes a price from memory mid-sentence, as if market value were the only fixed point.
     portrait_options:
       clothing_color:
         - "5c4030"
@@ -96,7 +96,7 @@ advisor_archetypes:
       Ex-soldier. Keeps order at Carmine Junction the same way he kept it
       in the field: by establishing what he will and will not tolerate early,
       and enforcing it consistently. Does not enjoy it. Does not stop.
-    verbal_tic: Refers to everyone by last name or rank equivalent; first names mean something is wrong.
+    verbal_tic: Sometimes uses a last name or rank equivalent; a first name out of his mouth tends to mean something is wrong.
     portrait_options:
       clothing_color:
         - "4a3c2c"
@@ -118,7 +118,7 @@ advisor_archetypes:
       Was a teacher until the school closed. Learned medicine from a manual
       and practice. Believes the body tells the truth when people won't.
       Keeps faith in something she has not named.
-    verbal_tic: Quotes scripture fragments from memory, not to preach — to locate the situation in something older.
+    verbal_tic: Sometimes quotes a scripture fragment from memory, not to preach but to place the moment in something older.
     portrait_options:
       clothing_color:
         - "5c5040"
@@ -140,7 +140,7 @@ advisor_archetypes:
       Keeps things running. Believes in fixing what is broken, even when
       fixing it is not wise. Has opinions about the road and the people
       on it that are not always welcome.
-    verbal_tic: Frames every problem as a broken machine — asks what the fault is before assuming the cause.
+    verbal_tic: Sometimes frames a problem as a broken machine — asks what the fault is before assuming a cause.
     portrait_options:
       clothing_color:
         - "5c4830"

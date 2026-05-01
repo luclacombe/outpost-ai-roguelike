@@ -79,6 +79,70 @@ def test_per_run_archive_writes_md_and_json(tmp_path: Path) -> None:
     assert payload["per_turn_outputs"][0]["chosen_proposal_id"] == "a"
 
 
+def test_verdict_error_surfaces_in_md_and_json(tmp_path: Path) -> None:
+    """Sub-bug (iii): when the per-run verdict step fails twice, the harness
+    archive must record `verdict_error` (not silently emit empty axis_scores).
+    Both rendered formats expose the failure mode so the meta-aggregator
+    can flag `verdict_failed` runs cleanly."""
+    archive = PerRunArchive(
+        run_id="run_brink_orbital",
+        persona_id="brinksmanship",
+        setting_id="orbital_colony_v1",
+        seed=598501255,
+        end_state="ENDURED",  # game DID complete; only the verdict step failed
+        turns_played=12,
+        per_turn_outputs=[],
+        verdict=None,
+        verdict_error="parse error after 2 attempts: unexpected EOF",
+        run_record_summary={"tool_calls": [], "narration_per_turn": []},
+        per_run_oracles={},
+    )
+    write_per_run_archives(tmp_path, [archive])
+    md_text = (tmp_path / "raw" / "brinksmanship-orbital_colony_v1-seed598501255.md").read_text()
+    js_payload = json.loads(
+        (tmp_path / "raw" / "brinksmanship-orbital_colony_v1-seed598501255.json").read_text()
+    )
+
+    assert "verdict_failed" in md_text.lower() or "verdict failed" in md_text.lower()
+    assert "parse error" in md_text  # the failure detail must surface
+    assert js_payload["verdict_error"] == "parse error after 2 attempts: unexpected EOF"
+
+
+def test_corpus_artifacts_marks_run_with_verdict_error(tmp_path: Path) -> None:
+    """`runs.json.per_run_summaries[i]` must distinguish `verdict_failed`
+    from "verdict missing because game didn't end". The aggregator uses
+    this to count silent-failure runs separately from never-finished runs."""
+    archive = PerRunArchive(
+        run_id="run_x",
+        persona_id="optimizer",
+        setting_id="arctic_station_v1",
+        seed=1,
+        end_state="ENDURED",
+        turns_played=12,
+        per_turn_outputs=[],
+        verdict=None,
+        verdict_error="timeout after 2 attempts",
+        run_record_summary={"tool_calls": [], "narration_per_turn": []},
+        per_run_oracles={},
+    )
+    write_corpus_artifacts(
+        tmp_path,
+        archives=[archive],
+        findings={},
+        corpus_oracles={},
+        git_sha="abc",
+        wall_clock_seconds=10,
+    )
+    payload = json.loads((tmp_path / "runs.json").read_text())
+    summary = payload["per_run_summaries"][0]
+    # When the verdict step failed, axis_scores stays empty AND the run
+    # is flagged as verdict_failed so the aggregator can count silent
+    # failures distinctly from never-finished runs.
+    assert summary["axis_scores"] == {}
+    assert summary["verdict_failed"] is True
+    assert summary["verdict_error"] == "timeout after 2 attempts"
+
+
 def test_corpus_artifacts_writes_runs_json_and_report_skeleton(tmp_path: Path) -> None:
     archives = [_fake_archive()]
     findings = {"malformed_json_count": 0, "subprocess_hangs": 0}

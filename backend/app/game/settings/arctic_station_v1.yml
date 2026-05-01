@@ -72,7 +72,7 @@ advisor_archetypes:
       A former Soviet-corps quartermaster who has served in ice stations for
       twelve winters. Tracks every gram of fuel and every calorie in the stores.
       Believes waste is a moral failing.
-    verbal_tic: References the station logbook by date when making a point.
+    verbal_tic: Sometimes anchors a point by quoting a station logbook date — a habit, not a rule.
     portrait_options:
       clothing_color:
         - "3c4f5c"
@@ -95,7 +95,7 @@ advisor_archetypes:
       commissar role is ceremonial now, but he does not treat it that way.
       Gets things moving when discussion fails; sometimes gets them moving
       in the wrong direction.
-    verbal_tic: Ends most sentences with "yes?" — not a question, a prompt for agreement.
+    verbal_tic: Sometimes closes a line with "yes?" — a prompt for agreement, not a real question — when pushing a point.
     portrait_options:
       clothing_color:
         - "4a3c30"
@@ -117,7 +117,7 @@ advisor_archetypes:
       Station medic from Oslo, originally contracted for six months. Her
       equipment is old. Her supplies are limited. She makes decisions about
       bodies that the others don't want to think about.
-    verbal_tic: Frames every situation as a diagnosis — symptoms, prognosis, treatment.
+    verbal_tic: Sometimes reaches for clinical framing — symptoms, prognosis, treatment — when distance helps.
     portrait_options:
       clothing_color:
         - "5c6c4c"
@@ -139,7 +139,7 @@ advisor_archetypes:
       Nominally responsible for communications. Actually responsible for
       knowing things no one else knows. The radio hears more than it should.
       So does he.
-    verbal_tic: Prefaces claims with "I heard on the radio that—" whether the radio is relevant or not.
+    verbal_tic: Sometimes prefaces a claim with "I heard on the radio that—"; the habit slips out when it isn't strictly true.
     portrait_options:
       clothing_color:
         - "5c4c3c"

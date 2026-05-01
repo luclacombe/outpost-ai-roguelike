@@ -39,6 +39,13 @@ in the top-level `scripts/` tier — application code can't depend on test fixtu
 - **Effort: persona side `--effort high`, aggregator `--effort max`.** G-Eval
   pattern requires CoT before scoring; that needs thinking budget. Don't downgrade
   personas to `medium` — verdicts get noisy.
+- **Pydantic models with UUID fields → `model_dump(mode="json")` before
+  `json.dumps`.** `PostMortem` carries `dict[UUID, int]` (agent_grievance) and
+  `UUID`-valued seed refs; default `model_dump()` runs in Python mode and leaves
+  UUIDs untouched. `json.dumps` then errors on UUID *keys* even with
+  `default=str` (the JSON spec forbids non-string keys regardless). Site:
+  `scripts/play_test.py` final-verdict path. See PLAN.md "Errors & Learnings →
+  Playtest harness — UUID-in-PostMortem JSON serialization".
 
 ## Daily-gate handling (resolved)
 
@@ -86,6 +93,34 @@ cd backend && OUTPOST_PLAYTEST_REAL_LLM=1 ANTHROPIC_API_KEY=... \
 Cost: ~10¢ for one 3-turn game. The 42-game invocation runs via
 `uv run python -m scripts.play_test` (not pytest). Each game provisions its
 own synthetic user, so multi-game runs no longer trip the daily-gate.
+
+## Reliability rails (sub-bug fixes)
+
+- **`displayed_order` count-mismatch re-prompt.** Sonnet 4.6 occasionally emits a
+  one-element `displayed_order` list on long-context turns; the strict 3-id
+  validator otherwise aborted those games. `PersonaSession._parse_per_turn_with_count_retry`
+  catches the count-only mismatch (via `_displayed_order_count_mismatch`),
+  re-prompts ONCE via `--resume` with the actual three ids echoed, and only
+  raises `PersonaParseError` if the second attempt also fails. The system
+  prompt's worked example (with `p_dom`/`p_mor`/`p_wld`) is the prompt-side
+  half of the belt-and-suspenders fix.
+- **Defensive end-state resolution.** The harness loop in
+  `tests/fixtures/run_simulator.simulate_game_with_player` exits when its
+  `range(max_turns)` exhausts OR a defensive `pr is None` break trips. Either
+  exit can leave `game_sessions.end_state = NULL`, which makes `build_post_mortem`
+  raise `GameNotEnded` and skip the verdict step. `scripts.play_test.resolve_unfinished_end_state`
+  fills the gap by reusing `engine.compute_end_state` against a synthetic
+  state with `turn_number = max_turns` — same arbitration the engine uses
+  at a clean max-turn boundary, no state-mutation rule violated. The
+  orchestrator persists the resolved state back to `game_sessions` so the
+  verdict step has something to score.
+- **`VerdictResult` + `verdict_error` field.** `SubprocessPool.run_final_verdict`
+  returns `VerdictResult(verdict, error)` not `PersonaRunVerdict | None`. On
+  twice-failed verdict, `error` carries the failure mode (timeout / subprocess
+  crash / parse error) and the orchestrator surfaces it as
+  `PerRunArchive.verdict_error` so the meta-aggregator can flag silent
+  verdict failures distinctly from "game didn't end" runs (`verdict_failed`
+  flag in `runs.json.per_run_summaries`).
 
 ## Known follow-ups (deferred)
 

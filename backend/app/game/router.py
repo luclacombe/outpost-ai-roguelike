@@ -93,6 +93,7 @@ def _shape_response(state: ColonyState, *, setting_name: str) -> GameSessionResp
             morale=a.morale,
             grievance=a.grievance,
             is_alive=a.is_alive,
+            status=a.status,
         )
         for a in state.agents
     ]

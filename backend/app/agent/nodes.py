@@ -12,10 +12,10 @@ Invariants enforced here:
     one `call_haiku` regardless of how many advisors are alive.
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
-    The one documented exception: `resolve` applies a small legitimacy
-    shift based on the picked proposal's flavor directly via
-    `model_copy`, because `modify_legitimacy` is not a tool in the
-    autonomous-tool surface. See the comment in `resolve` for details.
+    `resolve` derives consequence tool calls (modify_legitimacy,
+    adjust_grievance) from the picked proposal's payload via
+    `engine.derive_resolution_consequences` and folds them through the
+    same validated pipeline as the proposal's own nested calls.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from app.agent.state import GameTurnState
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import DecisionRef, ProposalFlavor, ResolvedEvent, SeedPayload
+from app.game.schemas import AdvisorStatus, Agent, DecisionRef, ResolvedEvent, SeedPayload
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
@@ -75,14 +75,22 @@ if _unknown:
     )
 del _known_tool_names, _unknown
 
-# Legitimacy shifts applied in `resolve` based on the picked proposal's
-# flavor. Applied directly on ColonyState via `model_copy` — see the
-# invariant #11 exception note in `resolve` for rationale.
-_FLAVOR_LEGITIMACY_SHIFT: dict[ProposalFlavor, int] = {
-    ProposalFlavor.DOMINANT: 0,
-    ProposalFlavor.MORAL: 2,
-    ProposalFlavor.WILDCARD: -3,
-}
+# Within-run event-template cooldown: the last N resolved events' category
+# ids are excluded from the next pick. Wide enough to kill the within-run
+# recycling reported in playtest §1.9 (recycler event repeating across
+# turns 1-4) without starving the early-game pool.
+_COOLDOWN_WINDOW = 4
+
+
+def filter_cast(agents: list[Agent]) -> list[Agent]:
+    """Authors of proposals / debate participants: alive AND ACTIVE only.
+
+    DETAINED and DISMISSED advisors do not author. Status transitions
+    invalidate the personas cache (one miss at enter, one at leave for
+    DETAINED; permanent for DISMISSED). The colony state block still
+    renders their status so the model has narrative continuity.
+    """
+    return [a for a in agents if a.is_alive and a.status == AdvisorStatus.ACTIVE]
 
 
 async def generate_event(state: GameTurnState) -> GameTurnState:
@@ -104,15 +112,26 @@ async def generate_event(state: GameTurnState) -> GameTurnState:
     #    library-specific seeding scheme.
     rng = random.Random(new_state.seed ^ (new_state.turn_number + 1) ^ 0x4C3D5E6F)
 
-    # 4. Select event — seed-fired events take priority when present.
+    # 4. Build the per-template cooldown set: category ids of the last N
+    #    resolved events in this run. Cross-run cooldown would need a DB
+    #    query threaded into the node; we scoped to within-run because the
+    #    LangGraph nodes don't have a checkpointable db_session. This still
+    #    kills the within-run recycling cited in playtest report §1.9
+    #    (recycler event repeating verbatim across turns 1-4).
+    recently_fired = {
+        resolved.event.category for resolved in new_state.event_log[-_COOLDOWN_WINDOW:]
+    }
+
+    # 5. Select event — seed-fired events take priority when present.
     event = events.select_event(
         new_state,
         setting,
         rng,
         seeded_events=(fired_events or None),
+        recently_fired_event_ids=recently_fired,
     )
 
-    # 5. Surface the event both on ColonyState (persistent) and on the
+    # 6. Surface the event both on ColonyState (persistent) and on the
     #    node-level key (convenience for downstream nodes and the API
     #    layer). Reset every per-turn field so a replay/resume starts
     #    from a clean slate.
@@ -138,7 +157,7 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     """
     colony_state = state["colony_state"]
     event = state["current_event"]
-    alive_agents = [a for a in colony_state.agents if a.is_alive]
+    alive_agents = filter_cast(colony_state.agents)
 
     # Cache layout: preamble + personas in system with cache_control on the
     # LAST block (personas). Colony state moves into the user message — it
@@ -217,10 +236,14 @@ async def resolve(state: GameTurnState) -> GameTurnState:
     if picked is None:
         raise ValueError("player_choice did not match any surfaced proposal")
 
-    # Phase 3 populates `tool_calls_on_pick=[]`; the call is kept so that
-    # when proposals grow teeth, every state change flows through the
-    # single validated mutation pipeline (invariant #11).
-    new_colony = engine.apply_tool_calls(colony_state, picked.tool_calls_on_pick)
+    # Apply the picked proposal's nested effects + the engine's derived
+    # consequences (legitimacy, grievance overrules) — all through the
+    # single validated mutation pipeline. SPEC §6.7 / invariant #11.
+    derived = engine.derive_resolution_consequences(colony_state, picked, proposals)
+    new_colony = engine.apply_tool_calls(
+        colony_state,
+        [*picked.tool_calls_on_pick, *derived],
+    )
 
     # Append the resolved event to the colony's log.
     current_event = state["current_event"]
@@ -232,15 +255,6 @@ async def resolve(state: GameTurnState) -> GameTurnState:
     )
     new_colony = new_colony.model_copy(update={"event_log": [*new_colony.event_log, resolved]})
 
-    # Engine-direct legitimacy shift — not routed through apply_tool_call
-    # because `modify_legitimacy` is not a tool. Acceptable per the
-    # documented invariant #11 exception for flavor-canonical effects
-    # (see ARCHITECTURE.md Phase 4 notes and the module docstring).
-    shift = _FLAVOR_LEGITIMACY_SHIFT[picked.flavor]
-    if shift:
-        new_legit = max(0, min(100, new_colony.legitimacy + shift))
-        new_colony = new_colony.model_copy(update={"legitimacy": new_legit})
-
     # Consequence-seed scheduling — severity >= 3 events leave a trace.
     if current_event.severity >= 3:
         rng = random.Random(new_colony.seed ^ new_colony.turn_number ^ 0xD34DBEEF)
@@ -250,6 +264,12 @@ async def resolve(state: GameTurnState) -> GameTurnState:
         # to max_turns the clamp may equal turn_number — skip silently
         # rather than raise a ValidationError.
         if fires_at > new_colony.turn_number:
+            # Strip any leading `Seeded: ` / `Aftermath of ` from the source
+            # title before re-wrapping. Without this, an aftermath firing on
+            # top of an aftermath produces titles like
+            # "Aftermath of Seeded: Aftermath of X" — see report §1.3-1.4
+            # and tests/test_consequence_titles.py.
+            cleaned_title = consequence._clean_title_for_aftermath(current_event.title)
             seed = consequence.build_seed(
                 game_id=new_colony.game_id,
                 written_at_turn=new_colony.turn_number,
@@ -258,7 +278,7 @@ async def resolve(state: GameTurnState) -> GameTurnState:
                     event_id=f"aftermath_{current_event.id}",
                     severity=max(1, current_event.severity - 1),
                     category=current_event.category,
-                    description=f"Aftermath of {current_event.title}",
+                    description=f"Aftermath of {cleaned_title}",
                 ),
                 origin_decision=DecisionRef(
                     turn_number=new_colony.turn_number,
@@ -280,7 +300,7 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     propose new actions or move resources behind the player's back.
     """
     colony_state = state["colony_state"]
-    alive_agents = [a for a in colony_state.agents if a.is_alive]
+    alive_agents = filter_cast(colony_state.agents)
 
     if not alive_agents:
         return {"autonomous_tool_calls": []}
@@ -296,16 +316,20 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     # Prefer the Sonnet narration summary if the narrate node already ran;
     # otherwise synthesize one from the most recent event_log entry (which
     # `resolve` just appended). Cap at 300 chars to keep token cost bounded.
+    #
+    # IMPORTANT: keep "turn N" out of the synthesized prose. Advisors that
+    # see "Turn 5: chose ..." in their off-turn summary echo the index back
+    # into `remember(...)` calls, and the leaked turn counter then resurfaces
+    # in the next turn's persona context — the §1.7 4th-wall leak caught in
+    # the 2026-04-29 playtest. Structured turn_number lives in
+    # <colony_state>; this prose stays index-free.
     summary = state.get("narration")
     if not summary:
         last_resolved = colony_state.event_log[-1] if colony_state.event_log else None
         if last_resolved is not None:
-            summary = (
-                f"Turn {colony_state.turn_number}: chose "
-                f"'{last_resolved.summary}' for {last_resolved.event.title}."
-            )
+            summary = f"The colony chose '{last_resolved.summary}' for {last_resolved.event.title}."
         else:
-            summary = f"Turn {colony_state.turn_number}: decision resolved."
+            summary = "The decision has been resolved."
     summary = summary[:300]
 
     colony_state_text = build_colony_state_block(colony_state)["text"]

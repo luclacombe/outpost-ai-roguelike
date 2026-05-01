@@ -667,6 +667,68 @@ def test_propose_action_invalid_flavor() -> None:
     assert "invalid_flavor" in result.reason
 
 
+def test_propose_action_rejects_multiple_set_advisor_status_in_nested() -> None:
+    """A single proposal can't ride two simultaneous status mutations.
+
+    Without this cap, an LLM could author `tool_calls_on_pick` that detains
+    three of four advisors in one turn, breaking SPEC §7.3's three-author
+    triple property the next turn (only one ACTIVE advisor would remain to
+    propose). Cast-collapse floor only kicks in for DISMISSED, not DETAINED.
+    """
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    b = _agent(name="B")
+    c = _agent(name="C")
+    d = _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Mass detention",
+            "description": "Detain three advisors at once.",
+            "flavor": "WILDCARD",
+            "tool_calls_on_pick": [
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+                },
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(b.id), "new_status": "DETAINED", "reason": "x"},
+                },
+            ],
+        },
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid is False
+    assert "multiple_status_mutations" in result.reason
+
+
+def test_propose_action_allows_single_set_advisor_status_in_nested() -> None:
+    """Single status mutation per proposal is the supported case."""
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a])
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Detain Vasil",
+            "description": "Detain him for sedition.",
+            "flavor": "WILDCARD",
+            "tool_calls_on_pick": [
+                {
+                    "name": "set_advisor_status",
+                    "args": {"target_id": str(a.id), "new_status": "DETAINED", "reason": "x"},
+                },
+            ],
+        },
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid is True
+
+
 # ---------------------------------------------------------------------------
 # ValidationResult dataclass sanity
 # ---------------------------------------------------------------------------
@@ -681,3 +743,215 @@ def test_validation_result_invalid_has_reason() -> None:
     r = ValidationResult(valid=False, reason="something_wrong")
     assert r.valid is False
     assert r.reason == "something_wrong"
+
+
+# ---------------------------------------------------------------------------
+# modify_legitimacy (engine-only) — Pb plan, Task 2
+# ---------------------------------------------------------------------------
+
+
+def test_modify_legitimacy_valid_when_engine_emitted():
+    from tests._factories import _colony
+
+    state = _colony(legitimacy=50)
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": -5, "reason": "overrode dominant advisor"},
+    )
+    result = validate_tool_call(tc, state)
+    assert result.valid
+
+
+def test_modify_legitimacy_rejects_caller_id():
+    """Engine-only tool: any caller_id is invalid."""
+    from tests._factories import _colony
+
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=uuid4(),
+        args={"delta": -5, "reason": "x"},
+    )
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "engine_only_tool"
+
+
+def test_modify_legitimacy_rejects_out_of_range_delta():
+    from tests._factories import _colony
+
+    tc = ToolCall(
+        name="modify_legitimacy",
+        caller_id=None,
+        args={"delta": 999, "reason": "x"},
+    )
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "delta_out_of_range"
+
+
+def test_modify_legitimacy_requires_reason():
+    from tests._factories import _colony
+
+    tc = ToolCall(name="modify_legitimacy", caller_id=None, args={"delta": -5})
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "missing_reason"
+
+
+# ---------------------------------------------------------------------------
+# set_advisor_status (engine-only) — P1 plan, Task 3
+# ---------------------------------------------------------------------------
+
+
+def _status_args(target_id: str, new_status: str = "DETAINED", reason: str = "x") -> dict:
+    return {"target_id": target_id, "new_status": new_status, "reason": reason}
+
+
+def test_set_advisor_status_active_to_detained_valid():
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(a.id), "DETAINED", "compromised"),
+    )
+    assert validate_tool_call(tc, state).valid
+
+
+def test_set_advisor_status_detained_to_active_valid():
+    from app.game.schemas import AdvisorStatus
+    from tests._factories import _agent, _colony
+
+    detained = _agent(name="A", status=AdvisorStatus.DETAINED)
+    state = _colony(agents=[detained, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(detained.id), "ACTIVE", "released"),
+    )
+    assert validate_tool_call(tc, state).valid
+
+
+def test_set_advisor_status_dismissed_one_way():
+    """DISMISSED → ACTIVE / DETAINED is rejected."""
+    from app.game.schemas import AdvisorStatus
+    from tests._factories import _agent, _colony
+
+    dismissed = _agent(name="A", status=AdvisorStatus.DISMISSED)
+    state = _colony(agents=[dismissed, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(dismissed.id), "ACTIVE", "regret"),
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "invalid_status_transition"
+
+
+def test_set_advisor_status_dead_target_rejected():
+    from tests._factories import _agent, _colony
+
+    dead = _agent(name="A", alive=False, health=0)
+    state = _colony(agents=[dead, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(dead.id), "DETAINED", "x"),
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "target_dead"
+
+
+def test_set_advisor_status_dismiss_blocked_by_cast_floor():
+    """Dismissing when only 2 active+detained others remain is blocked."""
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    b = _agent(name="B")
+    c = _agent(name="C", alive=False, health=0)  # dead, doesn't count
+    d = _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(a.id), "DISMISSED", "treason"),
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "cast_collapse_blocked"
+
+
+def test_set_advisor_status_dismiss_allowed_with_three_others_active():
+    from tests._factories import _agent, _colony
+
+    a, b, c, d = _agent(name="A"), _agent(name="B"), _agent(name="C"), _agent(name="D")
+    state = _colony(agents=[a, b, c, d])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(a.id), "DISMISSED", "treason"),
+    )
+    assert validate_tool_call(tc, state).valid
+
+
+def test_set_advisor_status_rejects_caller_id():
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=uuid4(),
+        args=_status_args(str(a.id), "DETAINED", "x"),
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "engine_only_tool"
+
+
+def test_set_advisor_status_unknown_target():
+    from tests._factories import _colony
+
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(uuid4()), "DETAINED", "x"),
+    )
+    result = validate_tool_call(tc, _colony())
+    assert not result.valid
+    assert result.reason == "unknown_target"
+
+
+def test_set_advisor_status_unknown_status_string():
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args=_status_args(str(a.id), "BANISHED", "x"),
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "invalid_status_transition"
+
+
+def test_set_advisor_status_requires_reason():
+    from tests._factories import _agent, _colony
+
+    a = _agent(name="A")
+    state = _colony(agents=[a, _agent(name="B"), _agent(name="C"), _agent(name="D")])
+    tc = ToolCall(
+        name="set_advisor_status",
+        caller_id=None,
+        args={"target_id": str(a.id), "new_status": "DETAINED"},
+    )
+    result = validate_tool_call(tc, state)
+    assert not result.valid
+    assert result.reason == "missing_reason"

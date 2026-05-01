@@ -21,6 +21,16 @@ AGENT_TOOL_NAMES = {
     "back_leader",
 }
 
+# Engine-only tools — never exposed to the LLM, never in AGENT_TOOL_SCHEMAS.
+# Constructed by the engine with caller_id=None; validator rejects any
+# caller_id-bearing instance with reason "engine_only_tool".
+ENGINE_TOOL_NAMES = {
+    "modify_legitimacy",
+    "set_advisor_status",
+}
+
+KNOWN_TOOL_NAMES = AGENT_TOOL_NAMES | ENGINE_TOOL_NAMES
+
 AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "name": "propose_action",
@@ -44,7 +54,36 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                 },
                 "tool_calls_on_pick": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "maxItems": 5,
+                    "description": (
+                        "Nested mutations that fire when the player picks this proposal. "
+                        "Each item is a structured tool call with its own name + args. "
+                        "Allowed names: modify_resource, modify_health, adjust_grievance, "
+                        "set_advisor_status. Args mirror the standalone tool's args; do NOT "
+                        "include caller_agent_id (these calls are engine-emitted at pick time). "
+                        "set_advisor_status takes target_id (advisor UUID), new_status "
+                        "(ACTIVE | DETAINED | DISMISSED), reason."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "modify_resource",
+                                    "modify_health",
+                                    "adjust_grievance",
+                                    "set_advisor_status",
+                                ],
+                            },
+                            "args": {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "required": ["name", "args"],
+                        "additionalProperties": False,
+                    },
                 },
                 "caller_agent_id": {
                     "type": "string",

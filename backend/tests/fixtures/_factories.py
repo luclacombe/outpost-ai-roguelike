@@ -19,13 +19,39 @@ def make_haiku_debate_side_effect():
     Sonnet bodies based on the request body shape.
 
     The debate body carries three `propose_action` tool_uses (DOMINANT,
-    MORAL, WILDCARD) plus one XML reaction line per advisor. Autonomous
-    calls return an empty body (zero tool_uses) and Sonnet narration
-    returns a short-prose body.
+    MORAL, WILDCARD) plus one XML reaction line per advisor. Each proposal
+    carries a structured `tool_calls_on_pick` so picking the proposal
+    actually moves a resource — without this, simulate_game runs would
+    have a frozen dashboard regardless of policy. Autonomous calls return
+    an empty body (zero tool_uses) and Sonnet narration returns a short-
+    prose body.
+
+    Resource ids are scoped to the arctic setting (fuel, food); tests
+    using other settings should pass their own factory or extend this
+    one. Deltas are modest so a 3-turn run never underflows.
 
     Identical to `_haiku_debate_factory` in test_eval_pipeline.py but
     importable so other test modules don't duplicate it.
     """
+
+    # One nested call per flavor. Picked by SimulatedPlayer policy:
+    #   "pragmatic" → DOMINANT (fuel -5)
+    #   "moral"     → MORAL    (food +3)
+    #   "random"    → any of the three
+    _nested_per_flavor = {
+        "DOMINANT": {
+            "name": "modify_resource",
+            "args": {"resource_id": "fuel", "delta": -5, "reason": "burn fuel"},
+        },
+        "MORAL": {
+            "name": "modify_resource",
+            "args": {"resource_id": "food", "delta": 3, "reason": "share fairly"},
+        },
+        "WILDCARD": {
+            "name": "modify_resource",
+            "args": {"resource_id": "fuel", "delta": -8, "reason": "risky play"},
+        },
+    }
 
     def _make_debate_body() -> dict[str, Any]:
         xml = (
@@ -34,6 +60,7 @@ def make_haiku_debate_side_effect():
             '<agent name="Advisor3">Risky.</agent>'
             '<agent name="Advisor4">I object.</agent>'
         )
+        flavors = ["DOMINANT", "MORAL", "WILDCARD"]
         tool_uses = [
             {
                 "id": f"toolu_d_{i}",
@@ -41,8 +68,9 @@ def make_haiku_debate_side_effect():
                 "input": {
                     "name": f"Plan {i}",
                     "description": f"Option {i}.",
-                    "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
+                    "flavor": flavors[i],
                     "effects_preview": [],
+                    "tool_calls_on_pick": [_nested_per_flavor[flavors[i]]],
                 },
             }
             for i in range(3)
