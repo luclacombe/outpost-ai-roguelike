@@ -23,6 +23,32 @@ grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
+## propose_action: two-stage validation
+
+`tool_calls_on_pick` is the proposal's effect list — nested tool calls
+that fire at pick time. Validation is deliberately split:
+
+- **Debate time** (`_validate_propose_action`): shape-only — each nested
+  item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
+  Rejects on bad shape (`nested_tool_malformed`) or off-whitelist tool
+  (`nested_tool_not_allowed`). Whitelist: `modify_resource`,
+  `modify_health`, `adjust_grievance`.
+- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
+  nested call re-validates against current state. State-dependent
+  rejects (e.g. `would_underflow` when resources have shifted between
+  propose and pick) fire here and land in `turn_tool_calls` with
+  `rejection_reason`, not in `_validate_propose_action`.
+
+Nested calls are constructed as `ToolCall(name=..., caller_id=None,
+args=...)` — engine-emitted at pick. The proposing agent's UUID lives
+on `Proposal.proposed_by_agent_id`, not on the nested calls.
+
+Don't re-introduce a hardcoded `tool_calls_on_pick=[]` in
+`_effect_propose_action`. Phase 4 deferred this wiring; the 2026-04-30
+playtest showed the resource dashboard freezes without it (PLAN.md
+"Frozen-dashboard fix" entry). The chosen proposal is the player's
+mechanical lever — without nested calls, choice is cosmetic.
+
 ## Setting YAMLs are procedural
 
 - `app/game/settings/*.yml` is the only place setting content lives. Adding a setting is one YAML file + one test; no Python changes.

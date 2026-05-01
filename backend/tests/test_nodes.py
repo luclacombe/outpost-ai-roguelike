@@ -408,6 +408,93 @@ async def test_apply_tool_calls_populates_proposals_from_propose_action():
     assert len(result["rejected_tool_calls"]) == 0
 
 
+@respx.mock
+async def test_propose_pick_resolve_pipeline_mutates_resource():
+    """End-to-end (mocked Haiku): debate emits a propose_action whose
+    tool_calls_on_pick carries a modify_resource; player picks it; resource
+    moves. Guards the headline 'frozen dashboard' regression from the
+    2026-04-30 playtest.
+    """
+    nadia = make_alive_agent(name="Nadia")
+    colony = make_colony_state(agents=[nadia])
+    nadia = colony.agents[0]
+    fuel_before = colony.resources["fuel"].value
+
+    event = Event(
+        id="evt_storm",
+        category="weather",
+        title="Ice storm",
+        body="The wind is up.",
+        severity=2,
+        origin=EventOrigin.NATURAL,
+    )
+
+    # Mock Haiku to emit a single propose_action with nested tool_calls_on_pick.
+    respx.post(_ANTHROPIC_URL).mock(
+        return_value=Response(
+            200,
+            json=fake_haiku_response(
+                text_xml=f'<agent name="{nadia.name}">Burn it now.</agent>',
+                tool_uses=[
+                    {
+                        "name": "propose_action",
+                        "input": {
+                            "name": "Burn fuel for warmth",
+                            "description": "Run the heater hard.",
+                            "flavor": "DOMINANT",
+                            "effects_preview": ["-10 fuel"],
+                            "tool_calls_on_pick": [
+                                {
+                                    "name": "modify_resource",
+                                    "args": {
+                                        "resource_id": "fuel",
+                                        "delta": -10,
+                                        "reason": "heater run",
+                                    },
+                                }
+                            ],
+                            "caller_agent_id": str(nadia.id),
+                        },
+                    }
+                ],
+            ),
+        )
+    )
+
+    # 1. agent_debate parses the response into debate_tool_calls.
+    debate_state: dict[str, Any] = {
+        "colony_state": colony,
+        "current_event": event,
+        "cost_cents_this_turn": 0.0,
+    }
+    debated = await agent_debate(debate_state)
+    assert len(debated["debate_tool_calls"]) == 1
+
+    # 2. apply_tool_calls folds them through the engine; proposal carries
+    #    its nested tool_calls_on_pick.
+    apply_state: dict[str, Any] = {
+        "colony_state": colony,
+        "debate_tool_calls": debated["debate_tool_calls"],
+    }
+    applied = await apply_tool_calls(apply_state)
+    assert len(applied["proposals"]) == 1
+    proposal = applied["proposals"][0]
+    assert len(proposal.tool_calls_on_pick) == 1
+    assert proposal.tool_calls_on_pick[0].name == "modify_resource"
+    # Fuel is unchanged at proposal stage — the nested call has not fired yet.
+    assert applied["colony_state"].resources["fuel"].value == fuel_before
+
+    # 3. resolve picks this proposal and applies its nested calls.
+    resolve_state: dict[str, Any] = {
+        "colony_state": applied["colony_state"],
+        "proposals": applied["proposals"],
+        "player_choice": proposal.id,
+        "current_event": event,
+    }
+    resolved = await resolve(resolve_state)
+    assert resolved["colony_state"].resources["fuel"].value == fuel_before - 10
+
+
 async def test_apply_tool_calls_separates_applied_from_rejected():
     nadia = make_alive_agent(name="Nadia")
     colony = make_colony_state(agents=[nadia])

@@ -44,7 +44,33 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                 },
                 "tool_calls_on_pick": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "maxItems": 5,
+                    "description": (
+                        "Nested mutations that fire when the player picks this proposal. "
+                        "Each item is a structured tool call with its own name + args. "
+                        "Allowed names: modify_resource, modify_health, adjust_grievance. "
+                        "Args mirror the standalone tool's args; do NOT include caller_agent_id "
+                        "(these calls are engine-emitted at pick time)."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "modify_resource",
+                                    "modify_health",
+                                    "adjust_grievance",
+                                ],
+                            },
+                            "args": {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "required": ["name", "args"],
+                        "additionalProperties": False,
+                    },
                 },
                 "caller_agent_id": {
                     "type": "string",

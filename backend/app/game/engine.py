@@ -173,6 +173,13 @@ def _apply_valid_effect(state: ColonyState, tc: ToolCall) -> ColonyState:  # noq
 
 def _effect_propose_action(state: ColonyState, tc: ToolCall) -> ColonyState:
     args = tc.args
+    # Validator already shape-checked tool_calls_on_pick (name in whitelist,
+    # args is a dict). State-dependent rejects fire when the proposal is
+    # picked and the nested calls fold through apply_tool_call again.
+    nested_calls = [
+        ToolCall(name=item["name"], caller_id=None, args=item["args"])
+        for item in args.get("tool_calls_on_pick") or []
+    ]
     proposal = Proposal(
         id=uuid4().hex[:8],
         proposed_by_agent_id=tc.caller_id,
@@ -180,7 +187,7 @@ def _effect_propose_action(state: ColonyState, tc: ToolCall) -> ColonyState:
         name=args["name"],
         description=args["description"],
         effects_preview=args.get("effects_preview", []),
-        tool_calls_on_pick=[],  # wired in Phase 4
+        tool_calls_on_pick=nested_calls,
     )
     new_proposals = [*state.turn_proposals, proposal]
     return state.model_copy(update={"turn_proposals": new_proposals})

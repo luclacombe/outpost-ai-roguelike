@@ -69,12 +69,9 @@ async def test_tool_calls_round_trip_through_turn_logs(eval_user_id, graph_postg
     field (None or str), so the validity-rate metric can fold over them
     without re-validating.
 
-    In mocked-LLM mode `tool_calls_on_pick` is empty (Phase 3 placeholder
-    proposals carry no engine effects) and the autonomous-phase mock emits
-    zero `tool_use` blocks. So this run produces zero tool calls — that is
-    the correct outcome for a synthetic game and exercises the reconstruct
-    code path without claiming a non-empty count. The real-LLM nightly
-    asserts the populated case.
+    The mocked-Haiku factory emits propose_action with structured
+    `tool_calls_on_pick`, so the harness's `_tool_calls_from_turn_log` now
+    sees one nested call per turn (the chosen proposal's nested mutation).
     """
 
     with respx.mock(base_url="https://api.anthropic.com", assert_all_called=False) as router:
@@ -91,8 +88,7 @@ async def test_tool_calls_round_trip_through_turn_logs(eval_user_id, graph_postg
 
     assert run.turns_played >= 1
 
-    # Every entry — if any — must be a real ToolCall with rejection_reason
-    # field present. (List may legitimately be empty; see docstring.)
+    # Every entry must be a real ToolCall with rejection_reason field present.
     for tc in run.tool_calls:
         assert isinstance(tc, ToolCall), f"Expected ToolCall, got {type(tc).__name__}"
         assert hasattr(tc, "rejection_reason")
@@ -101,6 +97,38 @@ async def test_tool_calls_round_trip_through_turn_logs(eval_user_id, graph_postg
     # No engine rejections in the mocked path → vacuously valid.
     rate = tool_validity_rate(run.tool_calls)
     assert rate >= TOOL_VALIDITY_THRESHOLD
+
+
+async def test_resource_history_moves_with_picked_proposal(eval_user_id, graph_postgres) -> None:
+    """Phase 3 acceptance: in a 3-turn mocked run, ≥1 resource changes.
+
+    Guards the 2026-04-30 frozen-dashboard regression (report §1.1). The
+    mocked debate factory emits a propose_action whose tool_calls_on_pick
+    carries a modify_resource; SimulatedPlayer("moral") picks the MORAL
+    proposal, which the factory has set to food +3. So food should rise
+    monotonically across turns.
+    """
+
+    with respx.mock(base_url="https://api.anthropic.com", assert_all_called=False) as router:
+        router.post("/v1/messages").mock(side_effect=make_haiku_debate_side_effect())
+
+        run = await simulate_game(
+            setting_id="arctic_station_v1",
+            policy="moral",
+            seed=23,
+            real_llm=False,
+            max_turns=3,
+            user_id=eval_user_id,
+        )
+
+    assert run.turns_played >= 2, "need at least two turns to compare"
+    food_history = run.resource_history.get("food", [])
+    assert len(food_history) == run.turns_played
+    # Food must change at least once across the run.
+    assert len(set(food_history)) > 1, (
+        f"food history is frozen at {food_history[0]} across all "
+        f"{run.turns_played} turns — proposal effects did not apply"
+    )
 
 
 async def test_resource_history_matches_turns_played(eval_user_id, graph_postgres) -> None:

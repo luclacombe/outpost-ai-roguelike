@@ -88,8 +88,12 @@ AVAILABLE TOOLS (debate phase):
   propose_action       — add one DOMINANT / MORAL / WILDCARD choice to the
                          player's three-option pool for this turn. Include
                          a short name (≤40 chars), a description (≤200
-                         chars), and up to 5 effects_preview strings the
-                         player will see before choosing.
+                         chars), up to 5 effects_preview strings the
+                         player will see before choosing, AND a
+                         tool_calls_on_pick list (up to 5 nested calls)
+                         that fire if the player picks this proposal.
+                         The nested calls are how your proposal moves
+                         the world. See PROPOSAL EFFECTS below.
   modify_resource      — shift a colony resource by a signed integer delta
                          bounded to [-50, +50]. The validator rejects
                          resource_ids that the current setting doesn't
@@ -107,6 +111,33 @@ AVAILABLE TOOLS (debate phase):
   adjust_relationship  — shift YOUR OWN relationship score toward another
                          advisor in [-3, +3]. Requires caller_agent_id.
 
+PROPOSAL EFFECTS (how a proposal mutates state when picked):
+  Every propose_action MUST include `tool_calls_on_pick` — a list of
+  structured tool calls describing exactly what changes if the player
+  picks your proposal. Each item has shape:
+      {"name": "<tool>", "args": {<args mirroring the standalone tool>}}
+  Allowed names: modify_resource, modify_health, adjust_grievance.
+  Do NOT include `caller_agent_id` inside `args` — these calls are
+  engine-emitted at pick time. The numbers in `effects_preview` and the
+  numbers in `tool_calls_on_pick` MUST match — the player sees the
+  preview and trusts it. If preview says "-10 fuel", the nested call
+  must be modify_resource(fuel, -10).
+
+  Example propose_action input:
+      {
+        "name": "Burn fuel for warmth",
+        "description": "Run the heater hard until dawn.",
+        "flavor": "DOMINANT",
+        "effects_preview": ["-12 fuel", "+5 morale"],
+        "tool_calls_on_pick": [
+          {"name": "modify_resource",
+           "args": {"resource_id": "fuel", "delta": -12, "reason": "heater run"}},
+          {"name": "modify_resource",
+           "args": {"resource_id": "morale", "delta": 5, "reason": "warm bunks"}}
+        ],
+        "caller_agent_id": "<your-uuid>"
+      }
+
 DEBATE TARGETS (per-turn, aspirational — the engine caps at three):
   * Exactly three `propose_action` calls across the living advisors,
     one per flavor: one DOMINANT (the pragmatic / hard-edged option,
@@ -116,10 +147,12 @@ DEBATE TARGETS (per-turn, aspirational — the engine caps at three):
   * If four advisors are alive, one of them sits this turn out rather
     than duplicating a flavor. Pick the advisor whose axes least match
     the available flavor left.
-  * Side effects (modify_resource, modify_health, etc.) are reality
-    continuing around the debate — they apply regardless of which
-    proposal the player picks. Use them for the ambient cost of the
-    crisis itself, not for the player's eventual choice.
+  * Standalone modify_resource / modify_health / adjust_grievance calls
+    (i.e. NOT nested inside a propose_action) represent the ambient
+    cost of the crisis — damage that lands regardless of which proposal
+    the player picks. Use these sparingly and only for unavoidable
+    environmental damage. The proposal's tool_calls_on_pick is the
+    primary mutation channel; ambient calls are an exception.
 
 CONSEQUENCE SEEDS (context — do not invoke directly):
   When a severity-3+ event is chosen, the engine schedules an aftermath
@@ -335,8 +368,11 @@ def build_debate_user_message(event: Event) -> str:
         "Each living advisor: react in character (≤25 words) inside an "
         '<agent name="..."> tag. Then emit the tool_use blocks you want '
         "applied. Remember: exactly three `propose_action` calls across "
-        "the group (one DOMINANT, one MORAL, one WILDCARD), and every "
-        "tool_use MUST set `caller_agent_id` to your UUID."
+        "the group (one DOMINANT, one MORAL, one WILDCARD); every "
+        "propose_action MUST include `tool_calls_on_pick` (1-5 nested "
+        "modify_resource / modify_health / adjust_grievance calls) "
+        "matching the numbers in `effects_preview`; every tool_use MUST "
+        "set `caller_agent_id` to your UUID."
     )
 
 

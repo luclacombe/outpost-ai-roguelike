@@ -339,6 +339,94 @@ def test_propose_action_appends_proposal() -> None:
     assert p.flavor == ProposalFlavor.DOMINANT
 
 
+def test_propose_action_carries_tool_calls_on_pick() -> None:
+    state = _colony(resources={"fuel": _resource(value=50)})
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Burn fuel",
+            "description": "Run the heater hard.",
+            "flavor": "DOMINANT",
+            "effects_preview": ["-10 fuel"],
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -10, "reason": "heater"},
+                }
+            ],
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    p = new_state.turn_proposals[0]
+    assert len(p.tool_calls_on_pick) == 1
+    nested = p.tool_calls_on_pick[0]
+    assert nested.name == "modify_resource"
+    assert nested.args["resource_id"] == "fuel"
+    assert nested.args["delta"] == -10
+    assert nested.caller_id is None  # engine-emitted at pick
+
+
+def test_picked_proposal_with_nested_calls_mutates_resource() -> None:
+    """End-to-end pipeline: propose_action → pick → resource moves."""
+    state = _colony(resources={"fuel": _resource(value=50)})
+    propose = _tc(
+        "propose_action",
+        {
+            "name": "Burn fuel",
+            "description": "Run the heater hard.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -10, "reason": "heater"},
+                }
+            ],
+        },
+    )
+    after_propose = apply_tool_call(state, propose)
+    picked = after_propose.turn_proposals[0]
+    after_pick = apply_tool_calls(after_propose, picked.tool_calls_on_pick)
+    assert after_pick.resources["fuel"].value == 40
+
+
+def test_propose_action_rejected_when_nested_call_uses_off_whitelist_tool() -> None:
+    state = _colony()
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Sneaky",
+            "description": "Try to remember through pick.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {"name": "remember", "args": {"fact": "...", "caller_agent_id": str(uuid4())}}
+            ],
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    # Whole proposal rejected — does not appear in turn_proposals.
+    assert new_state.turn_proposals == []
+    # Rejection logged with a clear reason.
+    logged = new_state.turn_tool_calls[-1]
+    assert logged.rejection_reason == "nested_tool_not_allowed"
+
+
+def test_propose_action_rejected_when_nested_call_is_malformed() -> None:
+    state = _colony()
+    tc = _tc(
+        "propose_action",
+        {
+            "name": "Malformed",
+            "description": "Bad nested shape.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [{"name": "modify_resource"}],  # missing args
+        },
+    )
+    new_state = apply_tool_call(state, tc)
+    assert new_state.turn_proposals == []
+    logged = new_state.turn_tool_calls[-1]
+    assert logged.rejection_reason == "nested_tool_malformed"
+
+
 # ---------------------------------------------------------------------------
 # apply_tool_calls — convenience fold
 # ---------------------------------------------------------------------------

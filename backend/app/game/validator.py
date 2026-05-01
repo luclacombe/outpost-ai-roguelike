@@ -73,6 +73,11 @@ def _require_integer_delta(args: dict[str, Any], lo: int, hi: int) -> tuple[int 
 # ---------------------------------------------------------------------------
 
 
+_NESTED_TOOL_WHITELIST: frozenset[str] = frozenset(
+    {"modify_resource", "modify_health", "adjust_grievance"}
+)
+
+
 def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResult:
     args = tc.args
     name = args.get("name")
@@ -90,6 +95,22 @@ def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResu
     for proposal in state.turn_proposals:
         if proposal.name.strip().lower() == normalised:
             return _fail("duplicate_proposal")
+
+    # Shape-only check on nested tool_calls_on_pick. State-dependent
+    # validation (e.g. resource underflow at pick time) re-runs through
+    # apply_tool_call when the proposal is chosen; we only guard the
+    # per-item shape and tool-name whitelist here.
+    nested = args.get("tool_calls_on_pick")
+    if nested is not None:
+        if not isinstance(nested, list):
+            return _fail("nested_tool_malformed")
+        for item in nested:
+            if not isinstance(item, dict):
+                return _fail("nested_tool_malformed")
+            if not isinstance(item.get("name"), str) or not isinstance(item.get("args"), dict):
+                return _fail("nested_tool_malformed")
+            if item["name"] not in _NESTED_TOOL_WHITELIST:
+                return _fail("nested_tool_not_allowed")
 
     return _OK
 
