@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "7ab17ab3-6837-f2dd-99c1-ab8e131e149f",
+        "game_id": "024f9a70-5818-6b50-a447-ecd35cb3eac0",
         "grievance": 0,
         "health": 100,
-        "id": "387c9f93-02f9-4446-855e-593f8fd03fe9",
+        "id": "4c9ad55c-332f-4658-b4fd-0c9648e9147d",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "7ab17ab3-6837-f2dd-99c1-ab8e131e149f",
+        "game_id": "024f9a70-5818-6b50-a447-ecd35cb3eac0",
         "grievance": 6,
         "health": 100,
-        "id": "b0e0cb9b-ee09-436d-946b-29957c0f59d7",
+        "id": "29000908-f33e-47a0-a093-591e1c0af2fb",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "7ab17ab3-6837-f2dd-99c1-ab8e131e149f",
+        "game_id": "024f9a70-5818-6b50-a447-ecd35cb3eac0",
         "grievance": 8,
         "health": 100,
-        "id": "7ecc4b80-9082-407b-b8ff-cfa391b4e1d8",
+        "id": "3497b2b6-f790-4289-846e-707ab8e40bdc",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "7ab17ab3-6837-f2dd-99c1-ab8e131e149f",
+        "game_id": "024f9a70-5818-6b50-a447-ecd35cb3eac0",
         "grievance": 2,
         "health": 100,
-        "id": "ab94ea50-f821-4af7-b7b6-c8035656b59f",
+        "id": "2370a5e0-07e6-4ce6-87b1-5061393e8345",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "7ab17ab3-6837-f2dd-99c1-ab8e131e149f",
+    "game_id": "024f9a70-5818-6b50-a447-ecd35cb3eac0",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,25 +132,26 @@
         "value": 60
       }
     },
-    "seed": 320738463,
+    "seed": 1555294912,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "950587e6-0dc2-9da3-b8d2-049152ded47a"
+    "user_id": "6f9360f3-3c6f-0578-1ffb-34d886b66d48"
   },
   "event": {
-    "body": "Wade reports a hairline crack widening. Three days to fix; meanwhile water rationing tightens.",
-    "category": "infrastructure",
-    "id": "desert_well",
+    "body": "A man arrives bleeding from a road wound. He won't say what he was running from. Mara's bay is full.",
+    "category": "stranger_arrives",
+    "id": "desert_stranger",
     "origin": "NATURAL",
     "origin_seed_id": null,
-    "severity": 4,
-    "title": "Crack in the well casing"
+    "severity": 3,
+    "title": "A stranger bleeds through the gate"
   },
-  "iterating": true,
+  "iterating": false,
+  "mode": "fresh",
   "profile_label": "mixed",
-  "seed_id": "desert_mixed_desert_well",
+  "seed_id": "desert_fresh_mixed_desert_stranger",
   "setting_id": "desert_outpost_v1"
 }

@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
-        "grievance": 4,
+        "game_id": "7faf93af-5fd0-51aa-62da-34c4f1ec648a",
+        "grievance": 7,
         "health": 100,
-        "id": "48643cdd-8ccc-449c-942d-3155d20f56ff",
+        "id": "5ba5d4ac-af77-46e4-891c-ef68e04cb44b",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted Wade's patch (DOMINANT). Held overnight. Crack widened by morning."
+        ],
         "morale": 60,
         "name": "Rosa",
         "portrait_seed": "rosa-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
-        "grievance": 3,
+        "game_id": "7faf93af-5fd0-51aa-62da-34c4f1ec648a",
+        "grievance": 6,
         "health": 100,
-        "id": "c38a4637-9427-4326-a428-cc5ef06ee535",
+        "id": "b056c1b8-282d-480d-875e-3acfc7b848a7",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted Wade's patch (DOMINANT). Held overnight. Crack widened by morning."
+        ],
         "morale": 60,
         "name": "Eli",
         "portrait_seed": "eli-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
-        "grievance": 5,
+        "game_id": "7faf93af-5fd0-51aa-62da-34c4f1ec648a",
+        "grievance": 8,
         "health": 100,
-        "id": "187dad70-bb6b-45cc-8027-5f77d92fcc0e",
+        "id": "2bcd1100-183d-4327-9c9b-53ea3c8eddb0",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted Wade's patch (DOMINANT). Held overnight. Crack widened by morning."
+        ],
         "morale": 60,
         "name": "Mara",
         "portrait_seed": "mara-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
-        "grievance": 3,
+        "game_id": "7faf93af-5fd0-51aa-62da-34c4f1ec648a",
+        "grievance": 6,
         "health": 100,
-        "id": "9c4c485a-8a46-4221-8926-073b0b99775f",
+        "id": "aef3d1f2-ccb5-476e-b9b3-ab5ec729598f",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted Wade's patch (DOMINANT). Held overnight. Crack widened by morning."
+        ],
         "morale": 60,
         "name": "Wade",
         "portrait_seed": "wade-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
-    "legitimacy": 70,
+    "game_id": "7faf93af-5fd0-51aa-62da-34c4f1ec648a",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 555245237,
+    "seed": 4058801290,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "999d035a-990c-d7ff-e226-0aff7e0a3b88"
+    "user_id": "573dd37a-c5b1-765d-a5c1-7114a82fae03"
   },
   "event": {
-    "body": "Wade reports a hairline crack widening. Three days to fix; meanwhile water rationing tightens.",
-    "category": "infrastructure",
-    "id": "desert_well",
-    "origin": "NATURAL",
+    "body": "Wade's patch held twelve hours. Water at 35/100 now, dropping 3pp/turn. The ration we imposed last turn covered the gap exactly until it didn't. We need to do something structurally different or we're rationing dust by Tuesday.",
+    "category": "infrastructure_aftermath",
+    "id": "desert_well_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 4,
-    "title": "Crack in the well casing"
+    "severity": 5,
+    "title": "Well crack widened despite the patch"
   },
   "iterating": false,
-  "profile_label": "grievance3",
-  "seed_id": "desert_grievance3_desert_well",
+  "mode": "aftermath",
+  "profile_label": "grievance7",
+  "seed_id": "desert_aftermath_grievance7_desert_well_aftermath",
   "setting_id": "desert_outpost_v1"
 }

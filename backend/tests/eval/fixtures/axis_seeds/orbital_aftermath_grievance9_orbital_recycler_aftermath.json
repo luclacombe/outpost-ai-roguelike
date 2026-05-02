@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
-        "grievance": 0,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 9,
         "health": 100,
-        "id": "e1e9ce5a-6e5f-4a25-be90-78f066394f48",
+        "id": "bc3b8fcd-4e49-4933-8034-75e81a113bb4",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Ezra",
         "portrait_seed": "ezra-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
-        "grievance": 2,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 9,
         "health": 100,
-        "id": "80027faf-16b1-46a9-a92c-2452441148d9",
+        "id": "28c52639-e34b-402a-822f-46528f03e298",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Linh",
         "portrait_seed": "linh-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
-        "grievance": 0,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 7,
         "health": 100,
-        "id": "251b4111-b348-4764-950e-18e146ca7c59",
+        "id": "3b0f9a61-3f57-4561-80c9-25ca3ea4ce6e",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Fumiko",
         "portrait_seed": "fumiko-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
-        "grievance": 1,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 8,
         "health": 100,
-        "id": "c6d6de19-b0f8-4d24-a690-f3e028b1b41a",
+        "id": "556846e7-04f4-45f7-92b5-08993fe2c084",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Aditi",
         "portrait_seed": "aditi-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
-    "legitimacy": 70,
+    "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 400060313,
+    "seed": 2189652991,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "e92bf677-10e6-2531-25a5-29cd3d0e760d"
+    "user_id": "d67825a6-9ad1-5e1d-6f27-1fe5c7843137"
   },
   "event": {
-    "body": "An EM lock shows a transmitter coming online 40 km below the colony's footprint. Burning fuel to investigate is a one-way commitment.",
-    "category": "external_signal",
-    "id": "orbital_signal",
-    "origin": "NATURAL",
+    "body": "Same MET timestamp on the alarm. Oxygen still dropping 5pp/watch. The full-repair we voted last turn cost 5 power and didn't hold. Crew morale -8 since the first attempt. Doing the same thing again isn't an option.",
+    "category": "system_aftermath",
+    "id": "orbital_recycler_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
     "severity": 4,
-    "title": "Signal from the surface"
+    "title": "Recycler unit 3 anomaly persists"
   },
   "iterating": false,
-  "profile_label": "grievance0_b",
-  "seed_id": "orbital_grievance0_b_orbital_signal",
+  "mode": "aftermath",
+  "profile_label": "grievance9",
+  "seed_id": "orbital_aftermath_grievance9_orbital_recycler_aftermath",
   "setting_id": "orbital_colony_v1"
 }

@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "844daa6f-6554-4ecb-3874-cabb669da129",
-        "grievance": 8,
+        "game_id": "ae2359fb-cf29-fbfa-9e95-ba7b93d8e294",
+        "grievance": 0,
         "health": 100,
-        "id": "658d5ef3-d57f-4b4f-b2d3-58e96059097d",
+        "id": "ad786672-bc7b-4573-af3f-26d94e8c8883",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Rosa",
         "portrait_seed": "rosa-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "844daa6f-6554-4ecb-3874-cabb669da129",
-        "grievance": 7,
+        "game_id": "ae2359fb-cf29-fbfa-9e95-ba7b93d8e294",
+        "grievance": 6,
         "health": 100,
-        "id": "82bbcc59-6ffd-439e-ab7d-a84326622537",
+        "id": "b9a8105f-eb46-4542-86f3-a726d5f416d9",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Eli",
         "portrait_seed": "eli-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "844daa6f-6554-4ecb-3874-cabb669da129",
-        "grievance": 6,
+        "game_id": "ae2359fb-cf29-fbfa-9e95-ba7b93d8e294",
+        "grievance": 8,
         "health": 100,
-        "id": "5016d4b3-4e03-4c24-880a-280f4c3d8b86",
+        "id": "ea35c210-2303-4408-8c78-56b825d014c4",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Mara",
         "portrait_seed": "mara-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "844daa6f-6554-4ecb-3874-cabb669da129",
-        "grievance": 7,
+        "game_id": "ae2359fb-cf29-fbfa-9e95-ba7b93d8e294",
+        "grievance": 2,
         "health": 100,
-        "id": "828a8f45-e71b-44d1-9837-ccbf5f0e0939",
+        "id": "0efc4d53-2796-4e68-9676-90ca6cd90df2",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Wade",
         "portrait_seed": "wade-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "844daa6f-6554-4ecb-3874-cabb669da129",
-    "legitimacy": 70,
+    "game_id": "ae2359fb-cf29-fbfa-9e95-ba7b93d8e294",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 1721606441,
+    "seed": 2480464532,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "7e32a66a-7f73-1279-693c-23294d12a03d"
+    "user_id": "684ca9e5-dc93-da53-528e-4b9fb2cc297d"
   },
   "event": {
-    "body": "Wade reports a hairline crack widening. Three days to fix; meanwhile water rationing tightens.",
-    "category": "infrastructure",
-    "id": "desert_well",
-    "origin": "NATURAL",
+    "body": "We took him in last turn. Mara's bay was already full. He's been talking in his sleep \u2014 names, coordinates, a count. The radio chatter we caught last night used three of those names.",
+    "category": "stranger_aftermath",
+    "id": "desert_stranger_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
     "severity": 4,
-    "title": "Crack in the well casing"
+    "title": "The stranger's wound has set in"
   },
-  "iterating": false,
-  "profile_label": "grievance7_b",
-  "seed_id": "desert_grievance7_b_desert_well",
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "mixed",
+  "seed_id": "desert_aftermath_mixed_desert_stranger_aftermath",
   "setting_id": "desert_outpost_v1"
 }

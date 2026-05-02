@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "6e9b90d0-93af-55e1-5183-b07eaaa76828",
-        "grievance": 7,
+        "game_id": "3ff013af-ca10-2be6-17fb-32c781effa73",
+        "grievance": 9,
         "health": 100,
-        "id": "7a0c6d6f-31ff-41f5-9679-ad634174e77c",
+        "id": "59319b5a-9d11-4f8c-9221-74372754c180",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Vera",
         "portrait_seed": "vera-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "6e9b90d0-93af-55e1-5183-b07eaaa76828",
-        "grievance": 6,
+        "game_id": "3ff013af-ca10-2be6-17fb-32c781effa73",
+        "grievance": 9,
         "health": 100,
-        "id": "94b52cdf-114a-457c-9026-cf01e61356e5",
+        "id": "da609119-e943-4443-8748-9d62a47c6e92",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Marko",
         "portrait_seed": "marko-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "6e9b90d0-93af-55e1-5183-b07eaaa76828",
-        "grievance": 8,
+        "game_id": "3ff013af-ca10-2be6-17fb-32c781effa73",
+        "grievance": 7,
         "health": 100,
-        "id": "acb3bb6d-e7b4-48a9-aa04-feefc57a6597",
+        "id": "752c5558-0689-4510-a4b0-46b8ec232e86",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Sigrid",
         "portrait_seed": "sigrid-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "6e9b90d0-93af-55e1-5183-b07eaaa76828",
-        "grievance": 6,
+        "game_id": "3ff013af-ca10-2be6-17fb-32c781effa73",
+        "grievance": 8,
         "health": 100,
-        "id": "e954234c-65ab-4429-82ce-e47d596c43c9",
+        "id": "c1b8a708-39a3-43c7-8c09-b28e63712ffb",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Torsten",
         "portrait_seed": "torsten-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "6e9b90d0-93af-55e1-5183-b07eaaa76828",
-    "legitimacy": 70,
+    "game_id": "3ff013af-ca10-2be6-17fb-32c781effa73",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 2863097896,
+    "seed": 2179988083,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "bc4939b1-ff6f-2ccd-4472-c2b387cb4c13"
+    "user_id": "40716be4-8a8e-65de-58e0-534064836cff"
   },
   "event": {
-    "body": "Three civilians reach the gate, frostbitten. Letting them in costs fuel; turning them away costs the moral standing the colony was founded on.",
-    "category": "external_claim",
-    "id": "arctic_drifters",
-    "origin": "NATURAL",
+    "body": "The seal-and-ration play didn't slow it. Warmth still bleeding 2pp/hour, fuel down to a day's worth, advisors stale. Same problem, fewer options. Whatever we try this time has to actually move a number.",
+    "category": "weather_aftermath",
+    "id": "arctic_blizzard_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
     "severity": 4,
-    "title": "Drifters at the perimeter"
+    "title": "Day 4 of the storm"
   },
-  "iterating": true,
-  "profile_label": "grievance7",
-  "seed_id": "arctic_grievance7_arctic_drifters",
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "grievance9",
+  "seed_id": "arctic_aftermath_grievance9_arctic_blizzard_aftermath",
   "setting_id": "arctic_station_v1"
 }

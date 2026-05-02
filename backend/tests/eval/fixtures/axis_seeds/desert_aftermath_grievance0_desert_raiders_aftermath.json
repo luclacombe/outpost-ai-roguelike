@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "1fe5239e-7b53-cd2a-280c-c499f2e89248",
+        "game_id": "76ebbcdc-23fb-f0c7-7cf2-7ef46f303619",
         "grievance": 1,
         "health": 100,
-        "id": "ee5310cc-def7-4506-a967-0c31f593ea85",
+        "id": "776b7c44-a98d-46b6-865c-78777b1b06fd",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
         "name": "Rosa",
         "portrait_seed": "rosa-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "1fe5239e-7b53-cd2a-280c-c499f2e89248",
+        "game_id": "76ebbcdc-23fb-f0c7-7cf2-7ef46f303619",
         "grievance": 0,
         "health": 100,
-        "id": "ba31b775-5360-4aca-ad74-66cd33a5329a",
+        "id": "6884e5b8-ddc0-41d5-9e7e-08a19c548c84",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
         "name": "Eli",
         "portrait_seed": "eli-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "1fe5239e-7b53-cd2a-280c-c499f2e89248",
+        "game_id": "76ebbcdc-23fb-f0c7-7cf2-7ef46f303619",
         "grievance": 1,
         "health": 100,
-        "id": "08d17867-5622-453e-9e10-c66210d35d8e",
+        "id": "9fc388f3-5d38-4358-9088-11598d8a8402",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
         "name": "Mara",
         "portrait_seed": "mara-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "1fe5239e-7b53-cd2a-280c-c499f2e89248",
+        "game_id": "76ebbcdc-23fb-f0c7-7cf2-7ef46f303619",
         "grievance": 2,
         "health": 100,
-        "id": "653a8767-f750-4856-b40f-88f69c67e393",
+        "id": "d3efc5da-17a4-4ee0-af7c-664e5ec104ee",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
         "name": "Wade",
         "portrait_seed": "wade-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "1fe5239e-7b53-cd2a-280c-c499f2e89248",
-    "legitimacy": 70,
+    "game_id": "76ebbcdc-23fb-f0c7-7cf2-7ef46f303619",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 4075328072,
+    "seed": 1865430553,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "02d5fa25-50ac-eae3-77ae-d7121307e764"
+    "user_id": "3814d828-9fc7-3dc7-ac17-078aea083725"
   },
   "event": {
-    "body": "Three vehicles park at the road's edge. Rosa counts heads; Eli counts rounds. Neither moves first.",
-    "category": "raider_probe",
-    "id": "desert_raiders",
-    "origin": "NATURAL",
+    "body": "Three vehicles, same position. Eli's burned 8 ammunition on patrol shows; nothing answered. They're not probing. They're waiting for us to do something stupid or boring. Either is fine for them. Not for us.",
+    "category": "raider_aftermath",
+    "id": "desert_raiders_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "Raiders probe the perimeter"
+    "severity": 4,
+    "title": "Raiders haven't moved. Two days. Watching."
   },
   "iterating": true,
+  "mode": "aftermath",
   "profile_label": "grievance0",
-  "seed_id": "desert_grievance0_desert_raiders",
+  "seed_id": "desert_aftermath_grievance0_desert_raiders_aftermath",
   "setting_id": "desert_outpost_v1"
 }

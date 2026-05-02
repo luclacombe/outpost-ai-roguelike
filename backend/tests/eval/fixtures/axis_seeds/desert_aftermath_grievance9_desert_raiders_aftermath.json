@@ -4,18 +4,20 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "e13bba6f-fd02-9bf6-8609-07891904d0b3",
+        "game_id": "fd72852e-6a45-b866-ea25-f187bd9702aa",
         "grievance": 9,
         "health": 100,
-        "id": "a953b654-c38e-46ef-8270-900b0b90efa2",
+        "id": "0923dddb-7784-4bfd-9d98-d20b9c240ec2",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
-        "name": "Ezra",
-        "portrait_seed": "ezra-seed",
+        "name": "Rosa",
+        "portrait_seed": "rosa-seed",
         "relationships": {},
-        "role": "Flight Engineer",
+        "role": "Trader",
         "status": "ACTIVE",
         "temperament": -0.5,
         "transformation": null,
@@ -24,18 +26,20 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "e13bba6f-fd02-9bf6-8609-07891904d0b3",
+        "game_id": "fd72852e-6a45-b866-ea25-f187bd9702aa",
         "grievance": 9,
         "health": 100,
-        "id": "91ec5b72-ab78-4cae-9fec-71f6b25db826",
+        "id": "b7769034-d67c-4039-9480-a42b47e4f375",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
-        "name": "Linh",
-        "portrait_seed": "linh-seed",
+        "name": "Eli",
+        "portrait_seed": "eli-seed",
         "relationships": {},
-        "role": "Commander",
+        "role": "Sheriff",
         "status": "ACTIVE",
         "temperament": 0.6,
         "transformation": null,
@@ -44,18 +48,20 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "e13bba6f-fd02-9bf6-8609-07891904d0b3",
+        "game_id": "fd72852e-6a45-b866-ea25-f187bd9702aa",
         "grievance": 7,
         "health": 100,
-        "id": "529e65a4-6f78-425a-ba47-c038f30ecb75",
+        "id": "8d210c54-d7c4-4ef4-8d9b-148908bc3794",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
-        "name": "Fumiko",
-        "portrait_seed": "fumiko-seed",
+        "name": "Mara",
+        "portrait_seed": "mara-seed",
         "relationships": {},
-        "role": "Botanist",
+        "role": "Doctor",
         "status": "ACTIVE",
         "temperament": -0.4,
         "transformation": null,
@@ -64,18 +70,20 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "e13bba6f-fd02-9bf6-8609-07891904d0b3",
+        "game_id": "fd72852e-6a45-b866-ea25-f187bd9702aa",
         "grievance": 8,
         "health": 100,
-        "id": "d553cb8c-bf58-435b-a203-3c9021082c5a",
+        "id": "3eaf05f6-6ba4-45ef-9c1e-d6718c9f1074",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved."
+        ],
         "morale": 60,
-        "name": "Aditi",
-        "portrait_seed": "aditi-seed",
+        "name": "Wade",
+        "portrait_seed": "wade-seed",
         "relationships": {},
-        "role": "AI Specialist",
+        "role": "Mechanic",
         "status": "ACTIVE",
         "temperament": 0.6,
         "transformation": null,
@@ -86,11 +94,19 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "e13bba6f-fd02-9bf6-8609-07891904d0b3",
-    "legitimacy": 70,
+    "game_id": "fd72852e-6a45-b866-ea25-f187bd9702aa",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
+      "ammunition": {
+        "critical_threshold": 20,
+        "icon": "ammo",
+        "id": "ammunition",
+        "max": 100,
+        "name": "Ammunition",
+        "value": 60
+      },
       "food": {
         "critical_threshold": 20,
         "icon": "food",
@@ -107,20 +123,12 @@
         "name": "Morale",
         "value": 60
       },
-      "oxygen": {
+      "shelter": {
         "critical_threshold": 20,
-        "icon": "oxygen",
-        "id": "oxygen",
+        "icon": "shelter",
+        "id": "shelter",
         "max": 100,
-        "name": "Oxygen",
-        "value": 60
-      },
-      "power": {
-        "critical_threshold": 20,
-        "icon": "power",
-        "id": "power",
-        "max": 100,
-        "name": "Power",
+        "name": "Shelter",
         "value": 60
       },
       "water": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 419745971,
-    "setting_id": "orbital_colony_v1",
+    "seed": 3180790442,
+    "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "c56a871e-8918-e358-c2e8-abf826ef5e82"
+    "user_id": "2dce16ca-6959-6331-e741-3623616b5e7f"
   },
   "event": {
-    "body": "Oxygen drops 5pp in a watch. Patch, redirect, or strip a redundant unit for parts.",
-    "category": "system_failure",
-    "id": "orbital_recycler",
-    "origin": "NATURAL",
+    "body": "Three vehicles, same position. Eli's burned 8 ammunition on patrol shows; nothing answered. They're not probing. They're waiting for us to do something stupid or boring. Either is fine for them. Not for us.",
+    "category": "raider_aftermath",
+    "id": "desert_raiders_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "Recycler unit 3 anomaly"
+    "severity": 4,
+    "title": "Raiders haven't moved. Two days. Watching."
   },
   "iterating": false,
+  "mode": "aftermath",
   "profile_label": "grievance9",
-  "seed_id": "orbital_grievance9_orbital_recycler",
-  "setting_id": "orbital_colony_v1"
+  "seed_id": "desert_aftermath_grievance9_desert_raiders_aftermath",
+  "setting_id": "desert_outpost_v1"
 }

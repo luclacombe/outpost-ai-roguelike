@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
-        "grievance": 5,
+        "game_id": "0d50040d-db61-9b13-1800-4ac3bd660070",
+        "grievance": 1,
         "health": 100,
-        "id": "66874791-341c-4ed7-849e-3d4c4de45621",
+        "id": "612d87f3-03ed-45cc-9423-69eba63d8250",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
-        "grievance": 1,
+        "game_id": "0d50040d-db61-9b13-1800-4ac3bd660070",
+        "grievance": 0,
         "health": 100,
-        "id": "c55c7ec3-0160-4b8c-b884-25e413e3e6f9",
+        "id": "e932b7ed-f2c5-45ee-9e16-6e0a79c00ee1",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
-        "grievance": 3,
+        "game_id": "0d50040d-db61-9b13-1800-4ac3bd660070",
+        "grievance": 1,
         "health": 100,
-        "id": "4d6eeacc-f1dc-437c-b1fa-7ecf462e14cb",
+        "id": "c6356539-bdd4-4bd8-aa4b-c9eeb7f0a714",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
-        "grievance": 7,
+        "game_id": "0d50040d-db61-9b13-1800-4ac3bd660070",
+        "grievance": 2,
         "health": 100,
-        "id": "c164b6c6-3f96-4074-adc4-1fb6a01751c3",
+        "id": "3c83940c-44dc-4338-b643-6f851bdc7c26",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
+    "game_id": "0d50040d-db61-9b13-1800-4ac3bd660070",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 894458272,
+    "seed": 3177578608,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "5f1bda20-9c97-06ec-bb9d-84d7948cc14c"
+    "user_id": "9621643a-1e2f-196e-15ad-31986a7e2150"
   },
   "event": {
     "body": "Three vehicles park at the road's edge. Rosa counts heads; Eli counts rounds. Neither moves first.",
@@ -150,7 +150,8 @@
     "title": "Raiders probe the perimeter"
   },
   "iterating": false,
-  "profile_label": "mixed_b",
-  "seed_id": "desert_mixed_b_desert_raiders",
+  "mode": "fresh",
+  "profile_label": "grievance0",
+  "seed_id": "desert_fresh_grievance0_desert_raiders",
   "setting_id": "desert_outpost_v1"
 }

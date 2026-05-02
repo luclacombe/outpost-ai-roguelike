@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "521bf8e4-4d24-77b1-805d-9ccda5ac4c95",
-        "grievance": 7,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 4,
         "health": 100,
-        "id": "8bcb97b2-0e0c-449a-bc89-5cc0534de2ef",
+        "id": "5675c1f1-3fdf-40e2-b3e9-b5a3684c1692",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Ezra",
         "portrait_seed": "ezra-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "521bf8e4-4d24-77b1-805d-9ccda5ac4c95",
-        "grievance": 6,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 3,
         "health": 100,
-        "id": "14770723-060a-4c14-94d9-6056c32d1059",
+        "id": "27bd085b-5f25-4328-897f-0385dd02ff3e",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Linh",
         "portrait_seed": "linh-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "521bf8e4-4d24-77b1-805d-9ccda5ac4c95",
-        "grievance": 8,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 5,
         "health": 100,
-        "id": "da98a2fc-4488-40fd-b34e-1187fb5cdbc2",
+        "id": "94c753e8-9f14-44a1-8e8f-6f33db930b73",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Fumiko",
         "portrait_seed": "fumiko-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "521bf8e4-4d24-77b1-805d-9ccda5ac4c95",
-        "grievance": 6,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 3,
         "health": 100,
-        "id": "0d37a77f-2d5f-4b8d-a454-29941fd5cc83",
+        "id": "1280fad7-fba7-4a03-aed5-3ecd38744aa2",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Aditi",
         "portrait_seed": "aditi-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "521bf8e4-4d24-77b1-805d-9ccda5ac4c95",
-    "legitimacy": 70,
+    "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 2779532437,
+    "seed": 548416891,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ab9c27df-23b6-f429-93c0-877b606cec1d"
+    "user_id": "06ce6208-8f3b-d38f-844b-bdda5e4e7c4a"
   },
   "event": {
-    "body": "An EM lock shows a transmitter coming online 40 km below the colony's footprint. Burning fuel to investigate is a one-way commitment.",
-    "category": "external_signal",
-    "id": "orbital_signal",
-    "origin": "NATURAL",
+    "body": "We chose not to investigate last turn. The signal has gained 3dB and now repeats every 11 minutes \u2014 a pattern, not noise. Aditi is shaking. Whatever's down there is reaching up.",
+    "category": "signal_aftermath",
+    "id": "orbital_signal_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 4,
-    "title": "Signal from the surface"
+    "severity": 5,
+    "title": "The transmitter signal is louder now"
   },
   "iterating": false,
-  "profile_label": "grievance7",
-  "seed_id": "orbital_grievance7_orbital_signal",
+  "mode": "aftermath",
+  "profile_label": "grievance3",
+  "seed_id": "orbital_aftermath_grievance3_orbital_signal_aftermath",
   "setting_id": "orbital_colony_v1"
 }

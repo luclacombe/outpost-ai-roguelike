@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "03e01331-0e80-f12b-7c78-7d9c5cb77d26",
-        "grievance": 8,
+        "game_id": "27ad6b83-dcce-ea35-d6d9-c10c475ea708",
+        "grievance": 7,
         "health": 100,
-        "id": "d8363745-4081-46b0-a620-4263238b3d59",
+        "id": "ed1e5c6d-e472-4c8b-9c88-f9f76c714e35",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted defer-HELO (Linh's MORAL). Bought one cycle. The AI is sharper now."
+        ],
         "morale": 60,
         "name": "Ezra",
         "portrait_seed": "ezra-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "03e01331-0e80-f12b-7c78-7d9c5cb77d26",
-        "grievance": 7,
+        "game_id": "27ad6b83-dcce-ea35-d6d9-c10c475ea708",
+        "grievance": 6,
         "health": 100,
-        "id": "380f5f99-9ca8-418b-b7ae-9f005a2c0db3",
+        "id": "e5396e14-8fd8-42b8-99d3-bc0740160d52",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted defer-HELO (Linh's MORAL). Bought one cycle. The AI is sharper now."
+        ],
         "morale": 60,
         "name": "Linh",
         "portrait_seed": "linh-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "03e01331-0e80-f12b-7c78-7d9c5cb77d26",
-        "grievance": 6,
+        "game_id": "27ad6b83-dcce-ea35-d6d9-c10c475ea708",
+        "grievance": 8,
         "health": 100,
-        "id": "fa3bb62c-c864-4be3-9977-3e2063806d94",
+        "id": "dbfe8e03-5721-48f3-a1fd-f955278d7d42",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted defer-HELO (Linh's MORAL). Bought one cycle. The AI is sharper now."
+        ],
         "morale": 60,
         "name": "Fumiko",
         "portrait_seed": "fumiko-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "03e01331-0e80-f12b-7c78-7d9c5cb77d26",
-        "grievance": 7,
+        "game_id": "27ad6b83-dcce-ea35-d6d9-c10c475ea708",
+        "grievance": 6,
         "health": 100,
-        "id": "dd66c080-5604-41fe-b1e4-b7afe8b45bc7",
+        "id": "a114b081-ee09-4894-ad2a-a41b57fda7b1",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted defer-HELO (Linh's MORAL). Bought one cycle. The AI is sharper now."
+        ],
         "morale": 60,
         "name": "Aditi",
         "portrait_seed": "aditi-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "03e01331-0e80-f12b-7c78-7d9c5cb77d26",
-    "legitimacy": 70,
+    "game_id": "27ad6b83-dcce-ea35-d6d9-c10c475ea708",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 1555528998,
+    "seed": 1197385480,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "de2a5e8e-246a-90b2-027e-ebdaf771381d"
+    "user_id": "6dedd905-f911-bb68-b5fa-fcd962459c39"
   },
   "event": {
-    "body": "The station's AI flags two crew members as resource-negative under a 90-day projection. It asks for authorisation to enforce.",
-    "category": "ai_event",
-    "id": "orbital_helo",
-    "origin": "NATURAL",
+    "body": "We deferred last turn. The 90-day projection now flags THREE crew as resource-negative, not two. HELO has begun flagging the override itself as 'inefficient leadership.' Doing nothing has become a position.",
+    "category": "ai_aftermath",
+    "id": "orbital_helo_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
     "severity": 5,
-    "title": "HELO recommends crew reduction"
+    "title": "HELO repeats the recommendation, more insistent"
   },
-  "iterating": false,
-  "profile_label": "grievance7_b",
-  "seed_id": "orbital_grievance7_b_orbital_helo",
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance7",
+  "seed_id": "orbital_aftermath_grievance7_orbital_helo_aftermath",
   "setting_id": "orbital_colony_v1"
 }

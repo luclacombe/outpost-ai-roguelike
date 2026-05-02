@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
+        "game_id": "c4a0b77a-5dc7-4959-a1a3-598045756901",
         "grievance": 9,
         "health": 100,
-        "id": "b639042c-9878-466d-a84e-db0e48e253eb",
+        "id": "94bdad98-5242-43c7-9f7f-a13bfe3b66ab",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
+        "game_id": "c4a0b77a-5dc7-4959-a1a3-598045756901",
         "grievance": 9,
         "health": 100,
-        "id": "8df71375-e5c0-4fcd-ba54-cdf004c74421",
+        "id": "aad1f9b5-5e03-46b8-96c4-3e2be638a46a",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
+        "game_id": "c4a0b77a-5dc7-4959-a1a3-598045756901",
         "grievance": 7,
         "health": 100,
-        "id": "ed8bdb7b-182e-43a3-beb1-38b38a94c131",
+        "id": "2067f97f-d24a-41e8-9464-bde079cc507c",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
+        "game_id": "c4a0b77a-5dc7-4959-a1a3-598045756901",
         "grievance": 8,
         "health": 100,
-        "id": "acfd0e70-1a89-40ea-a4c1-f131136abf35",
+        "id": "c218dcd7-04a1-48a5-a370-6c285ad9b316",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
+    "game_id": "c4a0b77a-5dc7-4959-a1a3-598045756901",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 2302059907,
+    "seed": 1165322497,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "7c5f30aa-9c24-68cf-d200-5b7f2c3682e2"
+    "user_id": "6ba8f99d-7bd7-3407-1c27-319a1a3d5b63"
   },
   "event": {
     "body": "A 72-hour storm closes in. Heating reserves and crew fatigue split four ways.",
@@ -150,7 +150,8 @@
     "title": "Blizzard incoming"
   },
   "iterating": false,
+  "mode": "fresh",
   "profile_label": "grievance9",
-  "seed_id": "arctic_grievance9_arctic_blizzard",
+  "seed_id": "arctic_fresh_grievance9_arctic_blizzard",
   "setting_id": "arctic_station_v1"
 }

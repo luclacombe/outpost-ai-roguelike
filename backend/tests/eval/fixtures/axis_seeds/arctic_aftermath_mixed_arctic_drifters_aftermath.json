@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "794ef915-fc1c-5783-f896-3c461484cced",
-        "grievance": 1,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 0,
         "health": 100,
-        "id": "1fc6109b-e70a-4511-a5bd-fd46cf239ef6",
+        "id": "2b302371-21cc-41fb-aa6b-3720c4f7c04b",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
         "morale": 60,
         "name": "Vera",
         "portrait_seed": "vera-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "794ef915-fc1c-5783-f896-3c461484cced",
-        "grievance": 0,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 6,
         "health": 100,
-        "id": "046d9483-88ee-4d34-b43b-f663d682789b",
+        "id": "7210b3e2-2b0c-4be7-8495-873f12958ff7",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
         "morale": 60,
         "name": "Marko",
         "portrait_seed": "marko-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "794ef915-fc1c-5783-f896-3c461484cced",
-        "grievance": 1,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 8,
         "health": 100,
-        "id": "1a43473d-dc56-495c-8ed1-a2ec76944ea0",
+        "id": "c98336cb-38bc-4e68-8bc2-99568a2016c5",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
         "morale": 60,
         "name": "Sigrid",
         "portrait_seed": "sigrid-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "794ef915-fc1c-5783-f896-3c461484cced",
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
         "grievance": 2,
         "health": 100,
-        "id": "291b549c-417a-4283-b8ea-312483bb39f2",
+        "id": "4675f5cc-37e5-4697-84dd-66aee9217fe5",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
         "morale": 60,
         "name": "Torsten",
         "portrait_seed": "torsten-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "794ef915-fc1c-5783-f896-3c461484cced",
-    "legitimacy": 70,
+    "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 344247533,
+    "seed": 3736899900,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "03438b3f-37a7-1ef9-c0f7-b5f02fa22fa2"
+    "user_id": "190ad850-538a-3bf1-5047-c800fc5bdc61"
   },
   "event": {
-    "body": "A 72-hour storm closes in. Heating reserves and crew fatigue split four ways.",
-    "category": "weather_crisis",
-    "id": "arctic_blizzard",
-    "origin": "NATURAL",
+    "body": "Two days since we said no. They didn't leave. Three figures by the old fuel line, no fire, no movement. Frostbite kills slowly out there. Nothing we did has changed the situation; another non-decision now is a decision.",
+    "category": "external_aftermath",
+    "id": "arctic_drifters_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "Blizzard incoming"
+    "severity": 4,
+    "title": "Drifters camped at 800 metres"
   },
-  "iterating": true,
-  "profile_label": "grievance0",
-  "seed_id": "arctic_grievance0_arctic_blizzard",
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "mixed",
+  "seed_id": "arctic_aftermath_mixed_arctic_drifters_aftermath",
   "setting_id": "arctic_station_v1"
 }

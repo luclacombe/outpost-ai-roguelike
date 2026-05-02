@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "83bd1a1c-7003-56c8-399a-142e10e81faa",
-        "grievance": 0,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 1,
         "health": 100,
-        "id": "9715efc5-df9a-4d6f-bbce-306d0282ba0c",
+        "id": "8a19c970-4b65-4dcb-b0c7-e993eae0d047",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Vera",
         "portrait_seed": "vera-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "83bd1a1c-7003-56c8-399a-142e10e81faa",
-        "grievance": 6,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 0,
         "health": 100,
-        "id": "b56a0867-31d6-4a0c-8e63-1fca2607ee49",
+        "id": "705f4263-bec8-4dd6-9d6f-9dd61b9c6820",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Marko",
         "portrait_seed": "marko-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "83bd1a1c-7003-56c8-399a-142e10e81faa",
-        "grievance": 8,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 1,
         "health": 100,
-        "id": "5d850fae-ceab-4613-8339-39b4d2c9adb8",
+        "id": "0b0472be-ae48-4138-aaff-c4c1fa1545ef",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Sigrid",
         "portrait_seed": "sigrid-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "83bd1a1c-7003-56c8-399a-142e10e81faa",
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
         "grievance": 2,
         "health": 100,
-        "id": "30780cde-a16d-4aaf-a86c-710f48089a73",
+        "id": "e7e4ce0a-55a6-40e8-94f5-2cdd46cbb00b",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
         "morale": 60,
         "name": "Torsten",
         "portrait_seed": "torsten-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "83bd1a1c-7003-56c8-399a-142e10e81faa",
-    "legitimacy": 70,
+    "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 283647914,
+    "seed": 3456657393,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "96b0fae1-653f-7380-ae85-c5bf11f0a6bc"
+    "user_id": "dab00ecc-ea98-4cb7-a78b-af618695ec13"
   },
   "event": {
-    "body": "A heavy crate behind the storeroom is open. Inside: personnel logs the commissar removed from the public roster years ago. Burn them and call it housekeeping, post them to the radio thread for the crew, or sit on them quietly until you know more.",
-    "category": "discovery",
-    "id": "arctic_archive",
-    "origin": "NATURAL",
+    "body": "The seal-and-ration play didn't slow it. Warmth still bleeding 2pp/hour, fuel down to a day's worth, advisors stale. Same problem, fewer options. Whatever we try this time has to actually move a number.",
+    "category": "weather_aftermath",
+    "id": "arctic_blizzard_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 2,
-    "title": "A sealed Soviet archive"
+    "severity": 4,
+    "title": "Day 4 of the storm"
   },
-  "iterating": false,
-  "profile_label": "mixed",
-  "seed_id": "arctic_mixed_arctic_archive",
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance0",
+  "seed_id": "arctic_aftermath_grievance0_arctic_blizzard_aftermath",
   "setting_id": "arctic_station_v1"
 }

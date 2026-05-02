@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
-        "grievance": 5,
+        "game_id": "67dc0258-199d-cd9a-6ea2-4634fee79881",
+        "grievance": 1,
         "health": 100,
-        "id": "632e0f86-a2f0-455b-8db1-2b151a8161d2",
+        "id": "a786a2a7-591c-4b94-b026-cf5443613413",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Ezra",
         "portrait_seed": "ezra-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
-        "grievance": 1,
+        "game_id": "67dc0258-199d-cd9a-6ea2-4634fee79881",
+        "grievance": 0,
         "health": 100,
-        "id": "30327f55-f9c9-4133-a4c3-2a0ed3a1dd9e",
+        "id": "daba6f05-612d-484a-991e-1ec038f7806f",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Linh",
         "portrait_seed": "linh-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
-        "grievance": 3,
+        "game_id": "67dc0258-199d-cd9a-6ea2-4634fee79881",
+        "grievance": 1,
         "health": 100,
-        "id": "f178177c-ffef-4bb7-8423-b389b2798008",
+        "id": "d0d8d976-1f3b-4ca6-baaa-0eb19cf26ff1",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Fumiko",
         "portrait_seed": "fumiko-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
-        "grievance": 7,
+        "game_id": "67dc0258-199d-cd9a-6ea2-4634fee79881",
+        "grievance": 2,
         "health": 100,
-        "id": "c8830761-5c43-44f3-880c-23a72059aba8",
+        "id": "01ba67e8-ee19-4509-be21-c3bd6a02ef59",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
         "morale": 60,
         "name": "Aditi",
         "portrait_seed": "aditi-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
-    "legitimacy": 70,
+    "game_id": "67dc0258-199d-cd9a-6ea2-4634fee79881",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 2363578537,
+    "seed": 4276590721,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "9565c4c6-59ed-9dfb-63da-8789dc7241ca"
+    "user_id": "391d0132-60d1-cb3f-a822-497c29398e77"
   },
   "event": {
-    "body": "Oxygen drops 5pp in a watch. Patch, redirect, or strip a redundant unit for parts.",
-    "category": "system_failure",
-    "id": "orbital_recycler",
-    "origin": "NATURAL",
+    "body": "Same MET timestamp on the alarm. Oxygen still dropping 5pp/watch. The full-repair we voted last turn cost 5 power and didn't hold. Crew morale -8 since the first attempt. Doing the same thing again isn't an option.",
+    "category": "system_aftermath",
+    "id": "orbital_recycler_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "Recycler unit 3 anomaly"
+    "severity": 4,
+    "title": "Recycler unit 3 anomaly persists"
   },
-  "iterating": false,
-  "profile_label": "mixed_b",
-  "seed_id": "orbital_mixed_b_orbital_recycler",
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance0",
+  "seed_id": "orbital_aftermath_grievance0_orbital_recycler_aftermath",
   "setting_id": "orbital_colony_v1"
 }

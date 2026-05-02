@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
-        "grievance": 7,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 4,
         "health": 100,
-        "id": "3fa2d30f-16de-42df-8739-65128a25d649",
+        "id": "f2854bc5-df03-49ae-af82-4eefbb71cedf",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Rosa",
         "portrait_seed": "rosa-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
-        "grievance": 9,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 3,
         "health": 100,
-        "id": "f3b18828-aa3c-4de5-87eb-33ac0284a9f4",
+        "id": "b804656c-dc35-4230-b54d-4290786a91b5",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Eli",
         "portrait_seed": "eli-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
-        "grievance": 9,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 5,
         "health": 100,
-        "id": "10d877df-d88c-4c6d-acfc-1c68aa4abfe9",
+        "id": "042473b1-1654-4491-8d45-129d3a11aafb",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Mara",
         "portrait_seed": "mara-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
-        "grievance": 8,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 3,
         "health": 100,
-        "id": "14bdb2ec-27ec-46a8-ab47-99e5d5a3b8a6",
+        "id": "c153907e-7042-4dff-a0a3-92e704632eb9",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
         "morale": 60,
         "name": "Wade",
         "portrait_seed": "wade-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
-    "legitimacy": 70,
+    "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 999926594,
+    "seed": 484911393,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "12991ac2-3428-4be4-7f39-c08878184c92"
+    "user_id": "f518672e-42c7-77a6-45fb-37c5362c8152"
   },
   "event": {
-    "body": "A man arrives bleeding from a road wound. He won't say what he was running from. Mara's bay is full.",
-    "category": "stranger_arrives",
-    "id": "desert_stranger",
-    "origin": "NATURAL",
+    "body": "We took him in last turn. Mara's bay was already full. He's been talking in his sleep \u2014 names, coordinates, a count. The radio chatter we caught last night used three of those names.",
+    "category": "stranger_aftermath",
+    "id": "desert_stranger_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "A stranger bleeds through the gate"
+    "severity": 4,
+    "title": "The stranger's wound has set in"
   },
-  "iterating": false,
-  "profile_label": "grievance9_b",
-  "seed_id": "desert_grievance9_b_desert_stranger",
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance3",
+  "seed_id": "desert_aftermath_grievance3_desert_stranger_aftermath",
   "setting_id": "desert_outpost_v1"
 }

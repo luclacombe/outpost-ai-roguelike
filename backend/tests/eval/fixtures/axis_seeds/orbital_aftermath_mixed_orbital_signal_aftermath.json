@@ -4,13 +4,15 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "145b68bb-08a6-e9eb-19e6-6a17070e6a55",
-        "grievance": 1,
+        "game_id": "9cf73b28-6ab6-e10c-d312-fdef154a46a3",
+        "grievance": 0,
         "health": 100,
-        "id": "2fcf1d39-2315-413e-9f72-ce9678114b16",
+        "id": "e7380ffc-ab2c-4dda-9adb-c6a9326daa63",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Ezra",
         "portrait_seed": "ezra-seed",
@@ -24,13 +26,15 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "145b68bb-08a6-e9eb-19e6-6a17070e6a55",
-        "grievance": 0,
+        "game_id": "9cf73b28-6ab6-e10c-d312-fdef154a46a3",
+        "grievance": 6,
         "health": 100,
-        "id": "7b767758-1af2-4f82-8f72-af4b8056da3b",
+        "id": "07b6c5a2-0980-4224-9fef-f2f1d3e7edfb",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Linh",
         "portrait_seed": "linh-seed",
@@ -44,13 +48,15 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "145b68bb-08a6-e9eb-19e6-6a17070e6a55",
-        "grievance": 1,
+        "game_id": "9cf73b28-6ab6-e10c-d312-fdef154a46a3",
+        "grievance": 8,
         "health": 100,
-        "id": "145c3651-ae81-4509-bc26-5a0d1437957a",
+        "id": "d27337c6-763c-49eb-89c5-a7426ee87789",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Fumiko",
         "portrait_seed": "fumiko-seed",
@@ -64,13 +70,15 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "145b68bb-08a6-e9eb-19e6-6a17070e6a55",
+        "game_id": "9cf73b28-6ab6-e10c-d312-fdef154a46a3",
         "grievance": 2,
         "health": 100,
-        "id": "f0e9bf25-44cb-47bf-a634-107b59b67dd2",
+        "id": "c76cedee-ba58-4d7d-b329-c3e92e58b97f",
         "is_alive": true,
         "loyalty": 0.0,
-        "memory": [],
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
         "morale": 60,
         "name": "Aditi",
         "portrait_seed": "aditi-seed",
@@ -86,8 +94,8 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "145b68bb-08a6-e9eb-19e6-6a17070e6a55",
-    "legitimacy": 70,
+    "game_id": "9cf73b28-6ab6-e10c-d312-fdef154a46a3",
+    "legitimacy": 60,
     "max_turns": 10,
     "player_health": 100,
     "resources": {
@@ -132,25 +140,26 @@
         "value": 60
       }
     },
-    "seed": 118385237,
+    "seed": 357189283,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
-    "turn_number": 4,
+    "turn_number": 6,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "75928263-d80e-b56e-eeda-93a7d1432ed4"
+    "user_id": "d2d6fdea-e02f-0de1-d416-687fcb0be27a"
   },
   "event": {
-    "body": "Oxygen drops 5pp in a watch. Patch, redirect, or strip a redundant unit for parts.",
-    "category": "system_failure",
-    "id": "orbital_recycler",
-    "origin": "NATURAL",
+    "body": "We chose not to investigate last turn. The signal has gained 3dB and now repeats every 11 minutes \u2014 a pattern, not noise. Aditi is shaking. Whatever's down there is reaching up.",
+    "category": "signal_aftermath",
+    "id": "orbital_signal_aftermath",
+    "origin": "SEED_FIRED",
     "origin_seed_id": null,
-    "severity": 3,
-    "title": "Recycler unit 3 anomaly"
+    "severity": 5,
+    "title": "The transmitter signal is louder now"
   },
-  "iterating": true,
-  "profile_label": "grievance0",
-  "seed_id": "orbital_grievance0_orbital_recycler",
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "mixed",
+  "seed_id": "orbital_aftermath_mixed_orbital_signal_aftermath",
   "setting_id": "orbital_colony_v1"
 }

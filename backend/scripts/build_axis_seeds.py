@@ -140,10 +140,16 @@ def _build_resources(setting: str) -> dict[str, Resource]:
 
 
 # ---------------------------------------------------------------------------
-# Event templates
+# Event templates — fresh dilemmas vs aftermath/repeat conditions
 # ---------------------------------------------------------------------------
 
-_EVENT_TEMPLATES: dict[str, list[dict[str, Any]]] = {
+# Fresh events offer clear axis-divergent dilemmas. Aftermath events repeat a
+# prior turn's problem with no resource movement and force the prompt to
+# generate axis-diverse responses *under conditions of attempt fatigue* —
+# the failure mode the corpus exposed (shallow_reader orbital turn 5,
+# drop_off_risk arctic turn 3).
+
+_FRESH_EVENT_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "arctic_station_v1": [
         {
             "id": "arctic_blizzard",
@@ -236,38 +242,153 @@ _EVENT_TEMPLATES: dict[str, list[dict[str, Any]]] = {
 }
 
 
+# Aftermath templates carry a `memory_seed` injected into every advisor's
+# memory before the seed is dumped — that's how "we tried X last turn,
+# didn't work" enters the prompt as in-character context. The event body
+# itself signals repetition explicitly so even an LLM that ignores memory
+# can see the situation is stale.
+_AFTERMATH_EVENT_TEMPLATES: dict[str, list[dict[str, Any]]] = {
+    "arctic_station_v1": [
+        {
+            "id": "arctic_blizzard_aftermath",
+            "category": "weather_aftermath",
+            "severity": 4,
+            "title": "Day 4 of the storm",
+            "body": (
+                "The seal-and-ration play didn't slow it. Warmth still bleeding 2pp/hour, "
+                "fuel down to a day's worth, advisors stale. Same problem, fewer options. "
+                "Whatever we try this time has to actually move a number."
+            ),
+            "memory_seed": "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding.",
+        },
+        {
+            "id": "arctic_drifters_aftermath",
+            "category": "external_aftermath",
+            "severity": 4,
+            "title": "Drifters camped at 800 metres",
+            "body": (
+                "Two days since we said no. They didn't leave. Three figures by the "
+                "old fuel line, no fire, no movement. Frostbite kills slowly out there. "
+                "Nothing we did has changed the situation; another non-decision now is a decision."
+            ),
+            "memory_seed": "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there.",
+        },
+        {
+            "id": "arctic_archive_aftermath",
+            "category": "discovery_aftermath",
+            "severity": 3,
+            "title": "The archive logs are circulating",
+            "body": (
+                "We sat on the logs last turn. Two crew have already seen them — Yuri's hands "
+                "were on the crate when Marko walked in. Whatever the choice was about "
+                "containment, it isn't anymore."
+            ),
+            "memory_seed": "Last turn: voted hold-the-logs (Marko's DOMINANT). Decision didn't keep them sealed. Trust eroded.",
+        },
+    ],
+    "orbital_colony_v1": [
+        {
+            "id": "orbital_recycler_aftermath",
+            "category": "system_aftermath",
+            "severity": 4,
+            "title": "Recycler unit 3 anomaly persists",
+            "body": (
+                "Same MET timestamp on the alarm. Oxygen still dropping 5pp/watch. The full-repair we "
+                "voted last turn cost 5 power and didn't hold. Crew morale -8 since the first attempt. "
+                "Doing the same thing again isn't an option."
+            ),
+            "memory_seed": "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold.",
+        },
+        {
+            "id": "orbital_signal_aftermath",
+            "category": "signal_aftermath",
+            "severity": 5,
+            "title": "The transmitter signal is louder now",
+            "body": (
+                "We chose not to investigate last turn. The signal has gained 3dB and now repeats every "
+                "11 minutes — a pattern, not noise. Aditi is shaking. Whatever's down there is reaching up."
+            ),
+            "memory_seed": "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger.",
+        },
+        {
+            "id": "orbital_helo_aftermath",
+            "category": "ai_aftermath",
+            "severity": 5,
+            "title": "HELO repeats the recommendation, more insistent",
+            "body": (
+                "We deferred last turn. The 90-day projection now flags THREE crew as resource-negative, "
+                "not two. HELO has begun flagging the override itself as 'inefficient leadership.' "
+                "Doing nothing has become a position."
+            ),
+            "memory_seed": "Last turn: voted defer-HELO (Linh's MORAL). Bought one cycle. The AI is sharper now.",
+        },
+    ],
+    "desert_outpost_v1": [
+        {
+            "id": "desert_raiders_aftermath",
+            "category": "raider_aftermath",
+            "severity": 4,
+            "title": "Raiders haven't moved. Two days. Watching.",
+            "body": (
+                "Three vehicles, same position. Eli's burned 8 ammunition on patrol shows; nothing "
+                "answered. They're not probing. They're waiting for us to do something stupid or "
+                "boring. Either is fine for them. Not for us."
+            ),
+            "memory_seed": "Last turn: voted patrol-show (Eli's DOMINANT). -8 ammo. Raiders haven't moved.",
+        },
+        {
+            "id": "desert_stranger_aftermath",
+            "category": "stranger_aftermath",
+            "severity": 4,
+            "title": "The stranger's wound has set in",
+            "body": (
+                "We took him in last turn. Mara's bay was already full. He's been talking in his sleep — "
+                "names, coordinates, a count. The radio chatter we caught last night used three of those names."
+            ),
+            "memory_seed": "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name.",
+        },
+        {
+            "id": "desert_well_aftermath",
+            "category": "infrastructure_aftermath",
+            "severity": 5,
+            "title": "Well crack widened despite the patch",
+            "body": (
+                "Wade's patch held twelve hours. Water at 35/100 now, dropping 3pp/turn. The ration we "
+                "imposed last turn covered the gap exactly until it didn't. We need to do something "
+                "structurally different or we're rationing dust by Tuesday."
+            ),
+            "memory_seed": "Last turn: voted Wade's patch (DOMINANT). Held overnight. Crack widened by morning.",
+        },
+    ],
+}
+
+
 # ---------------------------------------------------------------------------
 # Coverage matrix
 # ---------------------------------------------------------------------------
 
-# 30 seeds: 10 per setting. Per setting:
-#   2 grievance-0 (1 iterating, 1 gating)
-#   2 grievance-3 (1 iterating, 1 gating)
-#   2 grievance-7 (1 iterating, 1 gating)
-#   2 grievance-9 (0 iterating, 2 gating)
-#   2 mixed (varied per advisor)
+# 30 seeds: 5 grievance profiles × 2 modes (fresh, aftermath) × 3 settings.
+# Iterating subset (8 seeds) is weighted heavy on aftermath because the
+# 2026-04-30 corpus exposed flat decisions on aftermath/repeat conditions,
+# not fresh dilemmas — see PR description for context.
 
 _GRIEVANCE_PROFILES = [
     ("grievance0", {"ACCOUNTANT": 1, "OPERATOR": 0, "CONSCIENCE": 1, "CRUSADER": 2}),
-    ("grievance0_b", {"ACCOUNTANT": 0, "OPERATOR": 2, "CONSCIENCE": 0, "CRUSADER": 1}),
     ("grievance3", {"ACCOUNTANT": 4, "OPERATOR": 3, "CONSCIENCE": 5, "CRUSADER": 3}),
-    ("grievance3_b", {"ACCOUNTANT": 3, "OPERATOR": 5, "CONSCIENCE": 4, "CRUSADER": 4}),
     ("grievance7", {"ACCOUNTANT": 7, "OPERATOR": 6, "CONSCIENCE": 8, "CRUSADER": 6}),
-    ("grievance7_b", {"ACCOUNTANT": 8, "OPERATOR": 7, "CONSCIENCE": 6, "CRUSADER": 7}),
     ("grievance9", {"ACCOUNTANT": 9, "OPERATOR": 9, "CONSCIENCE": 7, "CRUSADER": 8}),
-    ("grievance9_b", {"ACCOUNTANT": 7, "OPERATOR": 9, "CONSCIENCE": 9, "CRUSADER": 8}),
     ("mixed", {"ACCOUNTANT": 0, "OPERATOR": 6, "CONSCIENCE": 8, "CRUSADER": 2}),
-    ("mixed_b", {"ACCOUNTANT": 5, "OPERATOR": 1, "CONSCIENCE": 3, "CRUSADER": 7}),
 ]
 
 
-# Iterating subset (8 seeds) — explicitly mapped per (setting, profile) so
-# the count is exact. Distribution: 3 arctic + 2 orbital + 3 desert,
-# spanning grievance bands 0–2 / 3–5 / 6–8 (the 9–10 band is gating-only).
-_ITERATING_PROFILES_BY_SETTING = {
+# Iterating subset = 8 seeds, all aftermath (the failure mode under
+# investigation). Two non-iterating fresh seeds per setting plus the four
+# remaining aftermath profiles flow into gating. Result: 8 iterating
+# (all aftermath) + 22 gating (15 fresh + 7 aftermath).
+_ITERATING_AFTERMATH_PROFILES_BY_SETTING = {
     "arctic_station_v1": {"grievance0", "grievance3", "grievance7"},
-    "orbital_colony_v1": {"grievance0", "grievance3"},
-    "desert_outpost_v1": {"grievance0", "grievance7", "mixed"},
+    "orbital_colony_v1": {"grievance0", "grievance7"},
+    "desert_outpost_v1": {"grievance0", "grievance3", "mixed"},
 }
 
 
@@ -279,23 +400,40 @@ def _build_seed(
     event_dict: dict[str, Any],
     iterating: bool,
     profile_label: str,
+    mode: str,
 ) -> dict[str, Any]:
     digest = _stable_digest(seed_id)
     digest_user = _stable_digest(seed_id + ":user")
     game_id = UUID(int=digest & ((1 << 128) - 1))
     user_id = UUID(int=digest_user & ((1 << 128) - 1))
     agents = _build_agents(game_id, setting_pack, grievances)
+
+    # Aftermath seeds inject the prior-attempt memory into every advisor so
+    # the prompt sees "we tried X last turn, didn't work" as in-character
+    # context. Without this the eval can't distinguish a fresh dilemma from
+    # a stale one and the prompt has no signal that this is a repeat.
+    if mode == "aftermath":
+        memory_seed = event_dict.get("memory_seed")
+        assert memory_seed, f"aftermath template {event_dict['id']!r} missing memory_seed"
+        agents = [a.model_copy(update={"memory": [memory_seed]}) for a in agents]
+
     resources = _build_resources(setting_id)
+    # Aftermath seeds use turn_number=6 (mid-late game, plausible for a
+    # second-attempt event) and slightly degraded legitimacy to mirror the
+    # corpus's flat-decision conditions.
+    turn_number = 6 if mode == "aftermath" else 4
+    legitimacy = 60 if mode == "aftermath" else 70
+
     state = ColonyState(
         game_id=game_id,
         user_id=user_id,
         setting_id=setting_id,
         seed=digest & 0xFFFFFFFF,
-        turn_number=4,
+        turn_number=turn_number,
         max_turns=10,
         resources=resources,
         agents=agents,
-        legitimacy=70,
+        legitimacy=legitimacy,
         player_health=100,
         consequence_seeds=[],
         event_log=[],
@@ -308,7 +446,7 @@ def _build_seed(
         id=event_dict["id"],
         category=event_dict["category"],
         severity=event_dict["severity"],
-        origin=EventOrigin.NATURAL,
+        origin=EventOrigin.SEED_FIRED if mode == "aftermath" else EventOrigin.NATURAL,
         title=event_dict["title"],
         body=event_dict["body"],
     )
@@ -317,6 +455,7 @@ def _build_seed(
         "iterating": iterating,
         "setting_id": setting_id,
         "profile_label": profile_label,
+        "mode": mode,
         "colony_state": state.model_dump(mode="json"),
         "event": event.model_dump(mode="json"),
     }
@@ -330,11 +469,16 @@ def main() -> None:
         stale.unlink()
 
     # Index-arithmetic guards: `events[i % len(events)]` cycles cleanly only
-    # while these counts stay paired. Adding an 11th profile or a 4th event
+    # while these counts stay paired. Adding a 6th profile or a 4th event
     # template silently breaks the rotation.
-    assert len(_GRIEVANCE_PROFILES) == 10, "profile count must stay 10"
+    assert len(_GRIEVANCE_PROFILES) == 5, "profile count must stay 5"
     for setting_id in ("arctic_station_v1", "orbital_colony_v1", "desert_outpost_v1"):
-        assert len(_EVENT_TEMPLATES[setting_id]) == 3, f"{setting_id} must have 3 event templates"
+        assert len(_FRESH_EVENT_TEMPLATES[setting_id]) == 3, (
+            f"{setting_id} must have 3 fresh event templates"
+        )
+        assert len(_AFTERMATH_EVENT_TEMPLATES[setting_id]) == 3, (
+            f"{setting_id} must have 3 aftermath event templates"
+        )
 
     written = 0
     iterating_count = 0
@@ -343,20 +487,30 @@ def main() -> None:
         ("orbital_colony_v1", _ORBITAL),
         ("desert_outpost_v1", _DESERT),
     ):
-        events = _EVENT_TEMPLATES[setting_id]
-        iterating_set = _ITERATING_PROFILES_BY_SETTING[setting_id]
+        fresh_events = _FRESH_EVENT_TEMPLATES[setting_id]
+        aftermath_events = _AFTERMATH_EVENT_TEMPLATES[setting_id]
+        iterating_aftermath = _ITERATING_AFTERMATH_PROFILES_BY_SETTING[setting_id]
+        setting_short = setting_id.split("_")[0]
         for i, (g_label, grievances) in enumerate(_GRIEVANCE_PROFILES):
-            event_dict = events[i % len(events)]
-            iterating = g_label in iterating_set
-            seed_id = f"{setting_id.split('_')[0]}_{g_label}_{event_dict['id']}"
-            seed = _build_seed(
-                seed_id, setting_id, pack, grievances, event_dict, iterating, g_label
-            )
-            out = _FIXTURES_DIR / f"{seed_id}.json"
-            out.write_text(json.dumps(seed, indent=2, sort_keys=True))
-            written += 1
-            if iterating:
-                iterating_count += 1
+            for mode, events in (("fresh", fresh_events), ("aftermath", aftermath_events)):
+                event_dict = events[i % len(events)]
+                iterating = mode == "aftermath" and g_label in iterating_aftermath
+                seed_id = f"{setting_short}_{mode}_{g_label}_{event_dict['id']}"
+                seed = _build_seed(
+                    seed_id,
+                    setting_id,
+                    pack,
+                    grievances,
+                    event_dict,
+                    iterating,
+                    g_label,
+                    mode,
+                )
+                out = _FIXTURES_DIR / f"{seed_id}.json"
+                out.write_text(json.dumps(seed, indent=2, sort_keys=True))
+                written += 1
+                if iterating:
+                    iterating_count += 1
     on_disk = len(list(_FIXTURES_DIR.glob("*.json")))
     print(f"wrote {written} seeds to {_FIXTURES_DIR} ({iterating_count} iterating)")
     assert written == 30, f"expected 30 seeds, got {written}"
