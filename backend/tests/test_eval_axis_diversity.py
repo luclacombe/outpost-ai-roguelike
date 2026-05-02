@@ -111,3 +111,12 @@ async def test_unparseable_judge_returns_neutral():
 async def test_threshold_constant_exposed():
     assert AXIS_DIVERSITY_THRESHOLD >= 0.0
     assert AXIS_DIVERSITY_THRESHOLD <= 1.0
+
+
+async def test_wrong_proposal_count_raises():
+    with pytest.raises(ValueError, match="expected exactly 3"):
+        await score_axis_diversity(
+            event_text="x",
+            proposals=[_proposal(uuid4()), _proposal(uuid4())],
+            anthropic_client=_fake_client(""),
+        )
