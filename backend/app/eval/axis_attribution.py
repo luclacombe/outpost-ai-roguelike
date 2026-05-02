@@ -94,7 +94,12 @@ async def score_proposal_attribution(
 
     completion = await api.messages.create(
         model=MODEL_HAIKU,
-        max_tokens=80,
+        # 200 (not the obvious 80) because Haiku 4.5 frequently writes a long
+        # one-sentence reasoning that truncates mid-string at 80 — the JSON
+        # then fails to parse and the score falls back to neutral 0.5. ~10%
+        # of calls hit this in the 2026-05-02 baseline measurement; bumping
+        # to 200 cleared all of them. Cost delta is negligible (~$0.0001/call).
+        max_tokens=200,
         system=_JUDGE_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
     )

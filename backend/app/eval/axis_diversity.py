@@ -117,7 +117,12 @@ async def score_axis_diversity(
 
     completion = await api.messages.create(
         model=MODEL_HAIKU,
-        max_tokens=300,
+        # 600 (not the obvious 200) because the response is a JSON object
+        # with a 3-element list (each ~70 chars including UUID) plus a
+        # reasoning sentence; Haiku 4.5 occasionally truncates mid-UUID at
+        # lower budgets and the JSON then fails to parse (score falls back
+        # to neutral 0.5). Headroom is cheap (~$0.0003/call).
+        max_tokens=600,
         system=_JUDGE_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
     )
