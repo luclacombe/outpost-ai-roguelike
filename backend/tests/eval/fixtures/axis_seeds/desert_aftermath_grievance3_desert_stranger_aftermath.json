@@ -1,0 +1,165 @@
+{
+  "colony_state": {
+    "agents": [
+      {
+        "archetype_quadrant": "ACCOUNTANT",
+        "ethics": -0.6,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 4,
+        "health": 100,
+        "id": "f2854bc5-df03-49ae-af82-4eefbb71cedf",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
+        "morale": 60,
+        "name": "Rosa",
+        "portrait_seed": "rosa-seed",
+        "relationships": {},
+        "role": "Trader",
+        "status": "ACTIVE",
+        "temperament": -0.5,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "OPERATOR",
+        "ethics": -0.5,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 3,
+        "health": 100,
+        "id": "b804656c-dc35-4230-b54d-4290786a91b5",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
+        "morale": 60,
+        "name": "Eli",
+        "portrait_seed": "eli-seed",
+        "relationships": {},
+        "role": "Sheriff",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CONSCIENCE",
+        "ethics": 0.6,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 5,
+        "health": 100,
+        "id": "042473b1-1654-4491-8d45-129d3a11aafb",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
+        "morale": 60,
+        "name": "Mara",
+        "portrait_seed": "mara-seed",
+        "relationships": {},
+        "role": "Doctor",
+        "status": "ACTIVE",
+        "temperament": -0.4,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CRUSADER",
+        "ethics": 0.5,
+        "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+        "grievance": 3,
+        "health": 100,
+        "id": "c153907e-7042-4dff-a0a3-92e704632eb9",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted take-him-in (Mara's MORAL). +shelter strain. He hasn't given his name."
+        ],
+        "morale": 60,
+        "name": "Wade",
+        "portrait_seed": "wade-seed",
+        "relationships": {},
+        "role": "Mechanic",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      }
+    ],
+    "consequence_seeds": [],
+    "current_event": null,
+    "end_state": null,
+    "event_log": [],
+    "game_id": "f79f8bde-5205-ac1a-494d-a87b1ce72921",
+    "legitimacy": 60,
+    "max_turns": 10,
+    "player_health": 100,
+    "resources": {
+      "ammunition": {
+        "critical_threshold": 20,
+        "icon": "ammo",
+        "id": "ammunition",
+        "max": 100,
+        "name": "Ammunition",
+        "value": 60
+      },
+      "food": {
+        "critical_threshold": 20,
+        "icon": "food",
+        "id": "food",
+        "max": 100,
+        "name": "Food",
+        "value": 60
+      },
+      "morale": {
+        "critical_threshold": 20,
+        "icon": "morale",
+        "id": "morale",
+        "max": 100,
+        "name": "Morale",
+        "value": 60
+      },
+      "shelter": {
+        "critical_threshold": 20,
+        "icon": "shelter",
+        "id": "shelter",
+        "max": 100,
+        "name": "Shelter",
+        "value": 60
+      },
+      "water": {
+        "critical_threshold": 20,
+        "icon": "water",
+        "id": "water",
+        "max": 100,
+        "name": "Water",
+        "value": 60
+      }
+    },
+    "seed": 484911393,
+    "setting_id": "desert_outpost_v1",
+    "turn_cost_cents": 0,
+    "turn_number": 6,
+    "turn_proposals": [],
+    "turn_tool_calls": [],
+    "user_id": "f518672e-42c7-77a6-45fb-37c5362c8152"
+  },
+  "event": {
+    "body": "We took him in last turn. Mara's bay was already full. He's been talking in his sleep \u2014 names, coordinates, a count. The radio chatter we caught last night used three of those names.",
+    "category": "stranger_aftermath",
+    "id": "desert_stranger_aftermath",
+    "origin": "SEED_FIRED",
+    "origin_seed_id": null,
+    "severity": 4,
+    "title": "The stranger's wound has set in"
+  },
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance3",
+  "seed_id": "desert_aftermath_grievance3_desert_stranger_aftermath",
+  "setting_id": "desert_outpost_v1"
+}

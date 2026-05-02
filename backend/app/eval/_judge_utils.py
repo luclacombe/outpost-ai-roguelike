@@ -1,8 +1,9 @@
 """Internal helpers shared by Haiku-as-judge metrics.
 
-Private — names start with underscore. Only `personality.py` and `coherence.py`
-should import from here. If a third judge module ever needs the same helpers,
-fold the duplication out then; don't promote prematurely.
+Private — names start with underscore. Imported by Haiku-judge metric modules
+under `app/eval/` (currently `personality.py`, `coherence.py`,
+`axis_attribution.py`; `axis_diversity.py` reuses `_strip_code_fence` only and
+re-implements parsing for its structured-JSON output shape).
 """
 
 from __future__ import annotations

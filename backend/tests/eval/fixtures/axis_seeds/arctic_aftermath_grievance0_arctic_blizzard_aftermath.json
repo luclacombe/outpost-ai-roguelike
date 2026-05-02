@@ -1,0 +1,165 @@
+{
+  "colony_state": {
+    "agents": [
+      {
+        "archetype_quadrant": "ACCOUNTANT",
+        "ethics": -0.6,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 1,
+        "health": 100,
+        "id": "8a19c970-4b65-4dcb-b0c7-e993eae0d047",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
+        "morale": 60,
+        "name": "Vera",
+        "portrait_seed": "vera-seed",
+        "relationships": {},
+        "role": "Quartermaster",
+        "status": "ACTIVE",
+        "temperament": -0.5,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "OPERATOR",
+        "ethics": -0.5,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 0,
+        "health": 100,
+        "id": "705f4263-bec8-4dd6-9d6f-9dd61b9c6820",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
+        "morale": 60,
+        "name": "Marko",
+        "portrait_seed": "marko-seed",
+        "relationships": {},
+        "role": "Commissar",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CONSCIENCE",
+        "ethics": 0.6,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 1,
+        "health": 100,
+        "id": "0b0472be-ae48-4138-aaff-c4c1fa1545ef",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
+        "morale": 60,
+        "name": "Sigrid",
+        "portrait_seed": "sigrid-seed",
+        "relationships": {},
+        "role": "Medic",
+        "status": "ACTIVE",
+        "temperament": -0.4,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CRUSADER",
+        "ethics": 0.5,
+        "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+        "grievance": 2,
+        "health": 100,
+        "id": "e7e4ce0a-55a6-40e8-94f5-2cdd46cbb00b",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted seal-the-ring (Vera's DOMINANT). Fuel dropped, warmth still falling. The walls aren't holding."
+        ],
+        "morale": 60,
+        "name": "Torsten",
+        "portrait_seed": "torsten-seed",
+        "relationships": {},
+        "role": "Radio Operator",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      }
+    ],
+    "consequence_seeds": [],
+    "current_event": null,
+    "end_state": null,
+    "event_log": [],
+    "game_id": "aef159a5-c894-58ae-4ef4-cb2cce0867f1",
+    "legitimacy": 60,
+    "max_turns": 10,
+    "player_health": 100,
+    "resources": {
+      "food": {
+        "critical_threshold": 20,
+        "icon": "food",
+        "id": "food",
+        "max": 100,
+        "name": "Food",
+        "value": 60
+      },
+      "fuel": {
+        "critical_threshold": 20,
+        "icon": "fuel",
+        "id": "fuel",
+        "max": 100,
+        "name": "Fuel",
+        "value": 60
+      },
+      "medicine": {
+        "critical_threshold": 20,
+        "icon": "medicine",
+        "id": "medicine",
+        "max": 100,
+        "name": "Medicine",
+        "value": 60
+      },
+      "morale": {
+        "critical_threshold": 20,
+        "icon": "morale",
+        "id": "morale",
+        "max": 100,
+        "name": "Morale",
+        "value": 60
+      },
+      "warmth": {
+        "critical_threshold": 20,
+        "icon": "warmth",
+        "id": "warmth",
+        "max": 100,
+        "name": "Warmth",
+        "value": 60
+      }
+    },
+    "seed": 3456657393,
+    "setting_id": "arctic_station_v1",
+    "turn_cost_cents": 0,
+    "turn_number": 6,
+    "turn_proposals": [],
+    "turn_tool_calls": [],
+    "user_id": "dab00ecc-ea98-4cb7-a78b-af618695ec13"
+  },
+  "event": {
+    "body": "The seal-and-ration play didn't slow it. Warmth still bleeding 2pp/hour, fuel down to a day's worth, advisors stale. Same problem, fewer options. Whatever we try this time has to actually move a number.",
+    "category": "weather_aftermath",
+    "id": "arctic_blizzard_aftermath",
+    "origin": "SEED_FIRED",
+    "origin_seed_id": null,
+    "severity": 4,
+    "title": "Day 4 of the storm"
+  },
+  "iterating": true,
+  "mode": "aftermath",
+  "profile_label": "grievance0",
+  "seed_id": "arctic_aftermath_grievance0_arctic_blizzard_aftermath",
+  "setting_id": "arctic_station_v1"
+}

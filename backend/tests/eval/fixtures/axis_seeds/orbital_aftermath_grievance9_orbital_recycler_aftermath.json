@@ -1,0 +1,165 @@
+{
+  "colony_state": {
+    "agents": [
+      {
+        "archetype_quadrant": "ACCOUNTANT",
+        "ethics": -0.6,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 9,
+        "health": 100,
+        "id": "bc3b8fcd-4e49-4933-8034-75e81a113bb4",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
+        "morale": 60,
+        "name": "Ezra",
+        "portrait_seed": "ezra-seed",
+        "relationships": {},
+        "role": "Flight Engineer",
+        "status": "ACTIVE",
+        "temperament": -0.5,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "OPERATOR",
+        "ethics": -0.5,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 9,
+        "health": 100,
+        "id": "28c52639-e34b-402a-822f-46528f03e298",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
+        "morale": 60,
+        "name": "Linh",
+        "portrait_seed": "linh-seed",
+        "relationships": {},
+        "role": "Commander",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CONSCIENCE",
+        "ethics": 0.6,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 7,
+        "health": 100,
+        "id": "3b0f9a61-3f57-4561-80c9-25ca3ea4ce6e",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
+        "morale": 60,
+        "name": "Fumiko",
+        "portrait_seed": "fumiko-seed",
+        "relationships": {},
+        "role": "Botanist",
+        "status": "ACTIVE",
+        "temperament": -0.4,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CRUSADER",
+        "ethics": 0.5,
+        "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+        "grievance": 8,
+        "health": 100,
+        "id": "556846e7-04f4-45f7-92b5-08993fe2c084",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted full-repair (Ezra's DOMINANT). -5 power. Oxygen still dropping. Repair didn't hold."
+        ],
+        "morale": 60,
+        "name": "Aditi",
+        "portrait_seed": "aditi-seed",
+        "relationships": {},
+        "role": "AI Specialist",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      }
+    ],
+    "consequence_seeds": [],
+    "current_event": null,
+    "end_state": null,
+    "event_log": [],
+    "game_id": "97f02dc2-8853-c168-0817-76d8828373ff",
+    "legitimacy": 60,
+    "max_turns": 10,
+    "player_health": 100,
+    "resources": {
+      "food": {
+        "critical_threshold": 20,
+        "icon": "food",
+        "id": "food",
+        "max": 100,
+        "name": "Food",
+        "value": 60
+      },
+      "morale": {
+        "critical_threshold": 20,
+        "icon": "morale",
+        "id": "morale",
+        "max": 100,
+        "name": "Morale",
+        "value": 60
+      },
+      "oxygen": {
+        "critical_threshold": 20,
+        "icon": "oxygen",
+        "id": "oxygen",
+        "max": 100,
+        "name": "Oxygen",
+        "value": 60
+      },
+      "power": {
+        "critical_threshold": 20,
+        "icon": "power",
+        "id": "power",
+        "max": 100,
+        "name": "Power",
+        "value": 60
+      },
+      "water": {
+        "critical_threshold": 20,
+        "icon": "water",
+        "id": "water",
+        "max": 100,
+        "name": "Water",
+        "value": 60
+      }
+    },
+    "seed": 2189652991,
+    "setting_id": "orbital_colony_v1",
+    "turn_cost_cents": 0,
+    "turn_number": 6,
+    "turn_proposals": [],
+    "turn_tool_calls": [],
+    "user_id": "d67825a6-9ad1-5e1d-6f27-1fe5c7843137"
+  },
+  "event": {
+    "body": "Same MET timestamp on the alarm. Oxygen still dropping 5pp/watch. The full-repair we voted last turn cost 5 power and didn't hold. Crew morale -8 since the first attempt. Doing the same thing again isn't an option.",
+    "category": "system_aftermath",
+    "id": "orbital_recycler_aftermath",
+    "origin": "SEED_FIRED",
+    "origin_seed_id": null,
+    "severity": 4,
+    "title": "Recycler unit 3 anomaly persists"
+  },
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "grievance9",
+  "seed_id": "orbital_aftermath_grievance9_orbital_recycler_aftermath",
+  "setting_id": "orbital_colony_v1"
+}

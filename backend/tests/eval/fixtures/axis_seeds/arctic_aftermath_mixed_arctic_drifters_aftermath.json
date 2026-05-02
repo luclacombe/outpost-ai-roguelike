@@ -1,0 +1,165 @@
+{
+  "colony_state": {
+    "agents": [
+      {
+        "archetype_quadrant": "ACCOUNTANT",
+        "ethics": -0.6,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 0,
+        "health": 100,
+        "id": "2b302371-21cc-41fb-aa6b-3720c4f7c04b",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
+        "morale": 60,
+        "name": "Vera",
+        "portrait_seed": "vera-seed",
+        "relationships": {},
+        "role": "Quartermaster",
+        "status": "ACTIVE",
+        "temperament": -0.5,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "OPERATOR",
+        "ethics": -0.5,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 6,
+        "health": 100,
+        "id": "7210b3e2-2b0c-4be7-8495-873f12958ff7",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
+        "morale": 60,
+        "name": "Marko",
+        "portrait_seed": "marko-seed",
+        "relationships": {},
+        "role": "Commissar",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CONSCIENCE",
+        "ethics": 0.6,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 8,
+        "health": 100,
+        "id": "c98336cb-38bc-4e68-8bc2-99568a2016c5",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
+        "morale": 60,
+        "name": "Sigrid",
+        "portrait_seed": "sigrid-seed",
+        "relationships": {},
+        "role": "Medic",
+        "status": "ACTIVE",
+        "temperament": -0.4,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CRUSADER",
+        "ethics": 0.5,
+        "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+        "grievance": 2,
+        "health": 100,
+        "id": "4675f5cc-37e5-4697-84dd-66aee9217fe5",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted turn-them-away (Vera's DOMINANT). Fuel saved, no casualties to us. They're still out there."
+        ],
+        "morale": 60,
+        "name": "Torsten",
+        "portrait_seed": "torsten-seed",
+        "relationships": {},
+        "role": "Radio Operator",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      }
+    ],
+    "consequence_seeds": [],
+    "current_event": null,
+    "end_state": null,
+    "event_log": [],
+    "game_id": "2c36a2d4-f3a5-aaa2-614e-725ddebc913c",
+    "legitimacy": 60,
+    "max_turns": 10,
+    "player_health": 100,
+    "resources": {
+      "food": {
+        "critical_threshold": 20,
+        "icon": "food",
+        "id": "food",
+        "max": 100,
+        "name": "Food",
+        "value": 60
+      },
+      "fuel": {
+        "critical_threshold": 20,
+        "icon": "fuel",
+        "id": "fuel",
+        "max": 100,
+        "name": "Fuel",
+        "value": 60
+      },
+      "medicine": {
+        "critical_threshold": 20,
+        "icon": "medicine",
+        "id": "medicine",
+        "max": 100,
+        "name": "Medicine",
+        "value": 60
+      },
+      "morale": {
+        "critical_threshold": 20,
+        "icon": "morale",
+        "id": "morale",
+        "max": 100,
+        "name": "Morale",
+        "value": 60
+      },
+      "warmth": {
+        "critical_threshold": 20,
+        "icon": "warmth",
+        "id": "warmth",
+        "max": 100,
+        "name": "Warmth",
+        "value": 60
+      }
+    },
+    "seed": 3736899900,
+    "setting_id": "arctic_station_v1",
+    "turn_cost_cents": 0,
+    "turn_number": 6,
+    "turn_proposals": [],
+    "turn_tool_calls": [],
+    "user_id": "190ad850-538a-3bf1-5047-c800fc5bdc61"
+  },
+  "event": {
+    "body": "Two days since we said no. They didn't leave. Three figures by the old fuel line, no fire, no movement. Frostbite kills slowly out there. Nothing we did has changed the situation; another non-decision now is a decision.",
+    "category": "external_aftermath",
+    "id": "arctic_drifters_aftermath",
+    "origin": "SEED_FIRED",
+    "origin_seed_id": null,
+    "severity": 4,
+    "title": "Drifters camped at 800 metres"
+  },
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "mixed",
+  "seed_id": "arctic_aftermath_mixed_arctic_drifters_aftermath",
+  "setting_id": "arctic_station_v1"
+}

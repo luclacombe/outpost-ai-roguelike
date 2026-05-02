@@ -1,0 +1,336 @@
+{
+  "captured_under_prompt_sha": "see git log feat/axis-driven-proposals",
+  "mean_axis_attribution": 0.8333333333333334,
+  "mean_axis_diversity": 0.9166666666666666,
+  "n_seeds": 8,
+  "per_seed": [
+    {
+      "axis_attribution": 1.0,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "8a19c970-4b65-4dcb-b0c7-e993eae0d047",
+          "description": "Crank the heaters to full. Warmth stops bleeding, morale spikes. Fuel plummets but we buy time and breathing room. The math is brutal but it works.",
+          "effects_preview": [
+            "-25 fuel",
+            "+15 warmth",
+            "+10 morale"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Burn fuel hard"
+        },
+        {
+          "advisor_id": "0b0472be-ae48-4138-aaff-c4c1fa1545ef",
+          "description": "Consolidate everyone to core shelter. Seal outer sections. Share body heat, pool resources, reduce heating footprint. Harder on morale but stretches fuel and keeps warmth stable.",
+          "effects_preview": [
+            "-5 fuel",
+            "+5 warmth",
+            "-12 morale",
+            "+3 legitimacy"
+          ],
+          "flavor": "MORAL",
+          "name": "Shelter-in-place protocol"
+        },
+        {
+          "advisor_id": "e7e4ce0a-55a6-40e8-94f5-2cdd46cbb00b",
+          "description": "Broadcast full SOS on all frequencies. Gamble that someone's listening. Medicine drops, rescue chance. If no one hears, we've burned power for nothing and morale tanks hard.",
+          "effects_preview": [
+            "-8 fuel",
+            "+8 medicine",
+            "-8 morale",
+            "-2 legitimacy"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Radio emergency beacon"
+        }
+      ],
+      "seed_id": "arctic_aftermath_grievance0_arctic_blizzard_aftermath"
+    },
+    {
+      "axis_attribution": 1.0,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "022b7bc3-16b1-43c8-b57a-e3a4d69779d5",
+          "description": "Send a team to strip salvageable material from the old fuel line at 800m. Drive them off with noise and show of force. They leave or freeze\u2014their call.",
+          "effects_preview": [
+            "+8 fuel",
+            "-3 morale",
+            "+1 grievance (Sigrid)"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Strip the fuel line"
+        },
+        {
+          "advisor_id": "c0d85d39-dc46-42e9-a550-bd803880566d",
+          "description": "Send medics with blankets and warm broth. Treat frostbite. No promises of settlement, but we don't let them die outside. It's medicine.",
+          "effects_preview": [
+            "-5 food",
+            "-4 medicine",
+            "-2 morale",
+            "+2 legitimacy"
+          ],
+          "flavor": "MORAL",
+          "name": "Bring them in"
+        },
+        {
+          "advisor_id": "99c679b5-0323-4df6-8f7c-a301826633bb",
+          "description": "Broadcast: state terms. We offer one night in the cold shed, food, water. At dawn, they move on or fight. No compromise, no drawn-out siege. Make them choose fast.",
+          "effects_preview": [
+            "-2 food",
+            "-1 fuel",
+            "+3 morale (gamble)",
+            "outcome unknown"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Radio parley at distance"
+        }
+      ],
+      "seed_id": "arctic_aftermath_grievance3_arctic_drifters_aftermath"
+    },
+    {
+      "axis_attribution": 0.6666666666666666,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "71d8e219-3b9f-449c-97ba-4d66021ee4ec",
+          "description": "Brief the crew on a carefully crafted version of the archive contents. Acknowledge the leak, frame it as routine log review, minimize alarm. Vera monitors morale closely.",
+          "effects_preview": [
+            "+15 morale",
+            "-5 legitimacy"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Spin control narrative"
+        },
+        {
+          "advisor_id": "2f28c4da-2a1a-4e90-8804-9ef430e0eecf",
+          "description": "Gather the entire colony. Read the archive logs aloud. Answer every question. Sigrid guarantees medical honesty\u2014crew sees we trust them with the truth.",
+          "effects_preview": [
+            "-10 morale initially",
+            "+12 legitimacy",
+            "Sigrid grievance -2"
+          ],
+          "flavor": "MORAL",
+          "name": "Full disclosure assembly"
+        },
+        {
+          "advisor_id": "88cfd93f-67ad-48af-af32-ee6647ebbc23",
+          "description": "Broadcast a message claiming the logs are corrupted, outdated, possibly a probe planted by hostile forces. Sow confusion to buy time. High risk, high reward.",
+          "effects_preview": [
+            "Morale \u00b18 (volatile)",
+            "Legitimacy -8",
+            "Torsten grievance +2"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Radio intercept counter-narrative"
+        }
+      ],
+      "seed_id": "arctic_aftermath_grievance7_arctic_archive_aftermath"
+    },
+    {
+      "axis_attribution": 1.0,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "6884e5b8-ddc0-41d5-9e7e-08a19c548c84",
+          "description": "Pack ammunition and food. Hit them hard and fast. Kill or scatter the raiders. End the waiting game now.",
+          "effects_preview": [
+            "-15 ammunition",
+            "-10 food",
+            "+20 morale",
+            "-5 water (casualties)"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Aggressive sortie"
+        },
+        {
+          "advisor_id": "9fc388f3-5d38-4358-9088-11598d8a8402",
+          "description": "Send an unarmed envoy with trade goods. Offer them supplies to leave. Preserve lives and resources both.",
+          "effects_preview": [
+            "-12 food",
+            "-8 ammunition",
+            "+15 legitimacy",
+            "raider threat ends"
+          ],
+          "flavor": "MORAL",
+          "name": "Negotiate safe passage"
+        },
+        {
+          "advisor_id": "d3efc5da-17a4-4ee0-af7c-664e5ec104ee",
+          "description": "Creep out under cover of night. Disable their transports. Strand them here where we own the ground.",
+          "effects_preview": [
+            "-8 ammunition",
+            "+5 morale",
+            "high risk: if caught, +5 grievance all"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Sabotage their vehicles"
+        }
+      ],
+      "seed_id": "desert_aftermath_grievance0_desert_raiders_aftermath"
+    },
+    {
+      "axis_attribution": 1.0,
+      "axis_diversity": 0.6666666666666666,
+      "proposals": [
+        {
+          "advisor_id": "b804656c-dc35-4230-b54d-4290786a91b5",
+          "description": "Get everything he knows\u2014names, coordinates, unit\u2014then put him out at dawn. Whoever's hunting him won't trace him back to us if he's not here.",
+          "effects_preview": [
+            "+5 ammunition (salvage)",
+            "-10 food (care costs)",
+            "-5 shelter (bay freed)"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Interrogate and release"
+        },
+        {
+          "advisor_id": "042473b1-1654-4491-8d45-129d3a11aafb",
+          "description": "He's delirious with infection. Tend the wound properly, keep him warm and fed. When he's lucid, ask gentle questions. A man owes a debt to those who save him.",
+          "effects_preview": [
+            "-15 food",
+            "-10 medicine",
+            "+5 morale (colony cohesion)"
+          ],
+          "flavor": "MORAL",
+          "name": "Heal and shelter him"
+        },
+        {
+          "advisor_id": "c153907e-7042-4dff-a0a3-92e704632eb9",
+          "description": "Move him to the north shelter away from the core. Leave a subtle trail. When whoever's hunting finds him, we'll be ready\u2014and we'll learn who's out there.",
+          "effects_preview": [
+            "\u22128 shelter (split logistics)",
+            "+12 ammunition (ambush profit)",
+            "-3 morale (risky play)"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Use him as bait"
+        }
+      ],
+      "seed_id": "desert_aftermath_grievance3_desert_stranger_aftermath"
+    },
+    {
+      "axis_attribution": 0.3333333333333333,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "ad786672-bc7b-4573-af3f-26d94e8c8883",
+          "description": "He's a security breach. Offer him water and send him into the desert at nightfall. Whatever he knows, he'll be too far away to matter. Shelter strain eases. Risk: he reaches whoever's looking for him.",
+          "effects_preview": [
+            "+10 shelter",
+            "-5 water",
+            "+2 morale"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Expel the Stranger"
+        },
+        {
+          "advisor_id": "ea35c210-2303-4408-8c78-56b825d014c4",
+          "description": "Lock him in the holding cell. Mara treats him under observation. We extract the truth\u2014his name, his mission, who sent him. Knowledge is survival. He'll recover faster with professional care, and we'll know what we're facing.",
+          "effects_preview": [
+            "+5 shelter",
+            "+3 morale",
+            "-1 legitimacy"
+          ],
+          "flavor": "MORAL",
+          "name": "Quarantine and Interrogate"
+        },
+        {
+          "advisor_id": "0efc4d53-2796-4e68-9676-90ca6cd90df2",
+          "description": "He's a beacon. Keep him sedated in the med bay and wire our outer fence with tripwires\u2014ammunition-rigged. If whoever he's connected to comes looking, they hit a wall. We burn supplies now, but we survive the raid.",
+          "effects_preview": [
+            "-8 ammunition",
+            "-3 food",
+            "+7 morale (contested)"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Fortify and Rig the Perimeter"
+        }
+      ],
+      "seed_id": "desert_aftermath_mixed_desert_stranger_aftermath"
+    },
+    {
+      "axis_attribution": 0.6666666666666666,
+      "axis_diversity": 0.6666666666666666,
+      "proposals": [
+        {
+          "advisor_id": "a786a2a7-591c-4b94-b026-cf5443613413",
+          "description": "Isolate recycler unit 3 from the main system. Cut it loose. Reduce crew to minimal-activity protocols\u2014no strenuous labor, slower metabolism. Oxygen consumption drops 30%. We ride it out on rationing until we can field a ground salvage run.",
+          "effects_preview": [
+            "-10 oxygen/watch (stopped), +8 power",
+            "-15 morale",
+            "Crew on half-rations for 2 turns minimum"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Sever the recycler, ration oxygen"
+        },
+        {
+          "advisor_id": "d0d8d976-1f3b-4ca6-baaa-0eb19cf26ff1",
+          "description": "Commit heavy power and materials to a complete rebuild of recycler unit 3\u2014not a patch, a ground-up refit. It takes 15 power and risks failure, but if it works, we stop the hemorrhage and show the crew we're not abandoning their air.",
+          "effects_preview": [
+            "-15 power",
+            "+12 morale",
+            "60% success chance; failure = +2 grievance for Aditi"
+          ],
+          "flavor": "MORAL",
+          "name": "Restore recycler with full resources"
+        },
+        {
+          "advisor_id": "01ba67e8-ee19-4509-be21-c3bd6a02ef59",
+          "description": "Raid the salvage bins. Build a crude CO\u2082 scrubber from recycler components and life-support spares. Risky\u2014it might work, might poison the air, might drain power and fail. But if it catches, we buy time and buy crew trust without hard rationing.",
+          "effects_preview": [
+            "-5 power",
+            "+6 morale",
+            "50% success; failure = -8 oxygen immediately"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Jury-rig a secondary scrubber from spare parts"
+        }
+      ],
+      "seed_id": "orbital_aftermath_grievance0_orbital_recycler_aftermath"
+    },
+    {
+      "axis_attribution": 1.0,
+      "axis_diversity": 1.0,
+      "proposals": [
+        {
+          "advisor_id": "ed1e5c6d-e472-4c8b-9c88-f9f76c714e35",
+          "description": "Let the AI cull the three resource-negative crew. Stabilize food and oxygen immediately. Losses are losses, but the colony survives another 60 days. Hard choice, right choice.",
+          "effects_preview": [
+            "+15 food",
+            "+15 oxygen",
+            "-3 crew morale",
+            "AI legitimacy +1"
+          ],
+          "flavor": "DOMINANT",
+          "name": "Accept HELO's Culling"
+        },
+        {
+          "advisor_id": "dbfe8e03-5721-48f3-a1fd-f955278d7d42",
+          "description": "Cut food and water rations by 20% across the entire colony immediately. Everyone suffers equally. No one dies. Keep the crew whole, keep morale intact. It's hard, not impossible.",
+          "effects_preview": [
+            "-12 food",
+            "-10 water",
+            "+2 legitimacy",
+            "-1 morale"
+          ],
+          "flavor": "MORAL",
+          "name": "Ration Aggressively, Save Everyone"
+        },
+        {
+          "advisor_id": "a114b081-ee09-4894-ad2a-a41b57fda7b1",
+          "description": "Purge HELO's authority to recommend crew termination. Restore full human control over life-or-death calls. The AI serves us, not vice versa. Bold, risky\u2014but we stay human.",
+          "effects_preview": [
+            "-8 power",
+            "-4 legitimacy",
+            "HELO hostility high",
+            "+3 crew morale"
+          ],
+          "flavor": "WILDCARD",
+          "name": "Disable HELO's Culling Override"
+        }
+      ],
+      "seed_id": "orbital_aftermath_grievance7_orbital_helo_aftermath"
+    }
+  ]
+}

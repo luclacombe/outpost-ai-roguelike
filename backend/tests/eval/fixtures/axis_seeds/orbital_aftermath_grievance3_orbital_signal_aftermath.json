@@ -1,0 +1,165 @@
+{
+  "colony_state": {
+    "agents": [
+      {
+        "archetype_quadrant": "ACCOUNTANT",
+        "ethics": -0.6,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 4,
+        "health": 100,
+        "id": "5675c1f1-3fdf-40e2-b3e9-b5a3684c1692",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
+        "morale": 60,
+        "name": "Ezra",
+        "portrait_seed": "ezra-seed",
+        "relationships": {},
+        "role": "Flight Engineer",
+        "status": "ACTIVE",
+        "temperament": -0.5,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "OPERATOR",
+        "ethics": -0.5,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 3,
+        "health": 100,
+        "id": "27bd085b-5f25-4328-897f-0385dd02ff3e",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
+        "morale": 60,
+        "name": "Linh",
+        "portrait_seed": "linh-seed",
+        "relationships": {},
+        "role": "Commander",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CONSCIENCE",
+        "ethics": 0.6,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 5,
+        "health": 100,
+        "id": "94c753e8-9f14-44a1-8e8f-6f33db930b73",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
+        "morale": 60,
+        "name": "Fumiko",
+        "portrait_seed": "fumiko-seed",
+        "relationships": {},
+        "role": "Botanist",
+        "status": "ACTIVE",
+        "temperament": -0.4,
+        "transformation": null,
+        "verbal_tic": ""
+      },
+      {
+        "archetype_quadrant": "CRUSADER",
+        "ethics": 0.5,
+        "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+        "grievance": 3,
+        "health": 100,
+        "id": "1280fad7-fba7-4a03-aed5-3ecd38744aa2",
+        "is_alive": true,
+        "loyalty": 0.0,
+        "memory": [
+          "Last turn: voted ignore-the-signal (Ezra's DOMINANT). Saved fuel. Signal is back, stronger."
+        ],
+        "morale": 60,
+        "name": "Aditi",
+        "portrait_seed": "aditi-seed",
+        "relationships": {},
+        "role": "AI Specialist",
+        "status": "ACTIVE",
+        "temperament": 0.6,
+        "transformation": null,
+        "verbal_tic": ""
+      }
+    ],
+    "consequence_seeds": [],
+    "current_event": null,
+    "end_state": null,
+    "event_log": [],
+    "game_id": "44f4fe3a-5f1d-bc38-4862-3e0920b02d7b",
+    "legitimacy": 60,
+    "max_turns": 10,
+    "player_health": 100,
+    "resources": {
+      "food": {
+        "critical_threshold": 20,
+        "icon": "food",
+        "id": "food",
+        "max": 100,
+        "name": "Food",
+        "value": 60
+      },
+      "morale": {
+        "critical_threshold": 20,
+        "icon": "morale",
+        "id": "morale",
+        "max": 100,
+        "name": "Morale",
+        "value": 60
+      },
+      "oxygen": {
+        "critical_threshold": 20,
+        "icon": "oxygen",
+        "id": "oxygen",
+        "max": 100,
+        "name": "Oxygen",
+        "value": 60
+      },
+      "power": {
+        "critical_threshold": 20,
+        "icon": "power",
+        "id": "power",
+        "max": 100,
+        "name": "Power",
+        "value": 60
+      },
+      "water": {
+        "critical_threshold": 20,
+        "icon": "water",
+        "id": "water",
+        "max": 100,
+        "name": "Water",
+        "value": 60
+      }
+    },
+    "seed": 548416891,
+    "setting_id": "orbital_colony_v1",
+    "turn_cost_cents": 0,
+    "turn_number": 6,
+    "turn_proposals": [],
+    "turn_tool_calls": [],
+    "user_id": "06ce6208-8f3b-d38f-844b-bdda5e4e7c4a"
+  },
+  "event": {
+    "body": "We chose not to investigate last turn. The signal has gained 3dB and now repeats every 11 minutes \u2014 a pattern, not noise. Aditi is shaking. Whatever's down there is reaching up.",
+    "category": "signal_aftermath",
+    "id": "orbital_signal_aftermath",
+    "origin": "SEED_FIRED",
+    "origin_seed_id": null,
+    "severity": 5,
+    "title": "The transmitter signal is louder now"
+  },
+  "iterating": false,
+  "mode": "aftermath",
+  "profile_label": "grievance3",
+  "seed_id": "orbital_aftermath_grievance3_orbital_signal_aftermath",
+  "setting_id": "orbital_colony_v1"
+}
