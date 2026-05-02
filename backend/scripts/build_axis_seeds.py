@@ -1,12 +1,15 @@
 """One-shot generator for axis-eval debate-phase seeds.
 
 Run from the repo root with `cd backend && uv run python -m scripts.build_axis_seeds`.
-Re-runs overwrite the fixtures deterministically. The script does NOT touch
-the database — `ColonyState` and `Event` instances are constructed directly.
+Re-runs overwrite the fixtures deterministically — UUIDs and integer seeds
+derive from `hashlib.blake2b` of the seed_id, not Python's process-randomised
+`hash()`. The script does NOT touch the database; `ColonyState` and `Event`
+instances are constructed directly.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -23,6 +26,16 @@ from app.game.schemas import (
 )
 
 _FIXTURES_DIR = Path(__file__).parent.parent / "tests" / "eval" / "fixtures" / "axis_seeds"
+
+
+def _stable_digest(s: str) -> int:
+    """Process-stable 128-bit digest of `s` for derived UUIDs / seeds.
+
+    Python's built-in `hash()` is randomised per process (PYTHONHASHSEED), so
+    a re-run produces different IDs and the committed fixtures churn. blake2b
+    gives the same number every run.
+    """
+    return int.from_bytes(hashlib.blake2b(s.encode(), digest_size=16).digest(), "big")
 
 
 # ---------------------------------------------------------------------------
@@ -155,8 +168,10 @@ _EVENT_TEMPLATES: dict[str, list[dict[str, Any]]] = {
             "severity": 2,
             "title": "A sealed Soviet archive",
             "body": (
-                "A heavy crate behind the storeroom unsealed. Logs hint at older crew data "
-                "the commissar may have hidden."
+                "A heavy crate behind the storeroom is open. Inside: personnel logs "
+                "the commissar removed from the public roster years ago. Burn them "
+                "and call it housekeeping, post them to the radio thread for the "
+                "crew, or sit on them quietly until you know more."
             ),
         },
     ],
@@ -265,15 +280,17 @@ def _build_seed(
     iterating: bool,
     profile_label: str,
 ) -> dict[str, Any]:
-    game_id = UUID(int=hash(seed_id) & ((1 << 128) - 1))
-    user_id = UUID(int=(hash(seed_id) ^ 0x9E3779B97F4A7C15) & ((1 << 128) - 1))
+    digest = _stable_digest(seed_id)
+    digest_user = _stable_digest(seed_id + ":user")
+    game_id = UUID(int=digest & ((1 << 128) - 1))
+    user_id = UUID(int=digest_user & ((1 << 128) - 1))
     agents = _build_agents(game_id, setting_pack, grievances)
     resources = _build_resources(setting_id)
     state = ColonyState(
         game_id=game_id,
         user_id=user_id,
         setting_id=setting_id,
-        seed=hash(seed_id) & 0xFFFFFFFF,
+        seed=digest & 0xFFFFFFFF,
         turn_number=4,
         max_turns=10,
         resources=resources,
@@ -307,6 +324,18 @@ def _build_seed(
 
 def main() -> None:
     _FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+    # Wipe stale fixtures before writing — protects against orphaned files
+    # if a profile rename leaves an old seed_id on disk.
+    for stale in _FIXTURES_DIR.glob("*.json"):
+        stale.unlink()
+
+    # Index-arithmetic guards: `events[i % len(events)]` cycles cleanly only
+    # while these counts stay paired. Adding an 11th profile or a 4th event
+    # template silently breaks the rotation.
+    assert len(_GRIEVANCE_PROFILES) == 10, "profile count must stay 10"
+    for setting_id in ("arctic_station_v1", "orbital_colony_v1", "desert_outpost_v1"):
+        assert len(_EVENT_TEMPLATES[setting_id]) == 3, f"{setting_id} must have 3 event templates"
+
     written = 0
     iterating_count = 0
     for setting_id, pack in (
@@ -328,9 +357,11 @@ def main() -> None:
             written += 1
             if iterating:
                 iterating_count += 1
+    on_disk = len(list(_FIXTURES_DIR.glob("*.json")))
     print(f"wrote {written} seeds to {_FIXTURES_DIR} ({iterating_count} iterating)")
     assert written == 30, f"expected 30 seeds, got {written}"
     assert iterating_count == 8, f"expected 8 iterating seeds, got {iterating_count}"
+    assert on_disk == 30, f"on-disk count {on_disk} != 30"
 
 
 if __name__ == "__main__":

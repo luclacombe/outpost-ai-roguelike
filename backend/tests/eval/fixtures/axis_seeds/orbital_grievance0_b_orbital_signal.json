@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "00000000-0000-0000-7caf-596ee6db8390",
+        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
         "grievance": 0,
         "health": 100,
-        "id": "f1da21c7-81f5-4b38-931d-6c88eea3e4ab",
+        "id": "e1e9ce5a-6e5f-4a25-be90-78f066394f48",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "00000000-0000-0000-7caf-596ee6db8390",
+        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
         "grievance": 2,
         "health": 100,
-        "id": "f49ed305-71c2-4db6-acfc-d82719f5c34d",
+        "id": "80027faf-16b1-46a9-a92c-2452441148d9",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "00000000-0000-0000-7caf-596ee6db8390",
+        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
         "grievance": 0,
         "health": 100,
-        "id": "1bc2d78d-5536-4bca-8529-85b1c0cb7094",
+        "id": "251b4111-b348-4764-950e-18e146ca7c59",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "00000000-0000-0000-7caf-596ee6db8390",
+        "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
         "grievance": 1,
         "health": 100,
-        "id": "3e53cb1a-41a9-499c-91a9-da04b5384b5d",
+        "id": "c6d6de19-b0f8-4d24-a690-f3e028b1b41a",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "00000000-0000-0000-7caf-596ee6db8390",
+    "game_id": "1eefe1ae-ebf2-8ba7-76b3-0a1617d86f99",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 3873145744,
+    "seed": 400060313,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "00000000-0000-0000-e298-20d79991ff85"
+    "user_id": "e92bf677-10e6-2531-25a5-29cd3d0e760d"
   },
   "event": {
     "body": "An EM lock shows a transmitter coming online 40 km below the colony's footprint. Burning fuel to investigate is a one-way commitment.",

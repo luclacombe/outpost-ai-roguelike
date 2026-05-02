@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ffffffff-ffff-ffff-e9b4-46463c389aae",
+        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
         "grievance": 4,
         "health": 100,
-        "id": "39d72113-e0ee-4fff-a507-e04c97b9074d",
+        "id": "48643cdd-8ccc-449c-942d-3155d20f56ff",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ffffffff-ffff-ffff-e9b4-46463c389aae",
+        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
         "grievance": 3,
         "health": 100,
-        "id": "7bf8bc99-e76b-4465-a7e1-12dc3f0b059d",
+        "id": "c38a4637-9427-4326-a428-cc5ef06ee535",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ffffffff-ffff-ffff-e9b4-46463c389aae",
+        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
         "grievance": 5,
         "health": 100,
-        "id": "82091441-1bf3-4af4-bd64-480a37d6c8e3",
+        "id": "187dad70-bb6b-45cc-8027-5f77d92fcc0e",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ffffffff-ffff-ffff-e9b4-46463c389aae",
+        "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
         "grievance": 3,
         "health": 100,
-        "id": "e3f36d39-18b4-40e6-bd2b-4a225aaafefc",
+        "id": "9c4c485a-8a46-4221-8926-073b0b99775f",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ffffffff-ffff-ffff-e9b4-46463c389aae",
+    "game_id": "85842d1a-e1c9-17b6-35f7-cc8f21185eb5",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 1010342574,
+    "seed": 555245237,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ffffffff-ffff-ffff-7783-3fff4372e6bb"
+    "user_id": "999d035a-990c-d7ff-e226-0aff7e0a3b88"
   },
   "event": {
     "body": "Wade reports a hairline crack widening. Three days to fix; meanwhile water rationing tightens.",

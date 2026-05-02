@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "00000000-0000-0000-721e-2f93d94ff8e7",
+        "game_id": "28bf9a98-1bea-adca-9bdd-afdec51a2587",
         "grievance": 7,
         "health": 100,
-        "id": "cd3ef73f-d367-46f2-9be1-3cb0501f82ba",
+        "id": "331ec259-1ffa-4baa-8067-4eacea4b6123",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "00000000-0000-0000-721e-2f93d94ff8e7",
+        "game_id": "28bf9a98-1bea-adca-9bdd-afdec51a2587",
         "grievance": 9,
         "health": 100,
-        "id": "45d8008b-c9fa-473f-8c60-a785712f384a",
+        "id": "43ab25bc-3dc3-4b08-b412-38c270276267",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "00000000-0000-0000-721e-2f93d94ff8e7",
+        "game_id": "28bf9a98-1bea-adca-9bdd-afdec51a2587",
         "grievance": 9,
         "health": 100,
-        "id": "c31a1c9e-d461-42c5-8fce-624f114f7c08",
+        "id": "ca95c1a7-cf7b-46ab-9792-854369e7eab2",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "00000000-0000-0000-721e-2f93d94ff8e7",
+        "game_id": "28bf9a98-1bea-adca-9bdd-afdec51a2587",
         "grievance": 8,
         "health": 100,
-        "id": "17a41141-3181-4dc9-af51-4a51e71dc8b5",
+        "id": "c908768f-2cd3-4c31-8585-cd05aa44e201",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "00000000-0000-0000-721e-2f93d94ff8e7",
+    "game_id": "28bf9a98-1bea-adca-9bdd-afdec51a2587",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 3645896935,
+    "seed": 3306825095,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "00000000-0000-0000-ec29-562aa60584f2"
+    "user_id": "78deb33c-1e45-e75e-3554-e8af05565594"
   },
   "event": {
     "body": "Three civilians reach the gate, frostbitten. Letting them in costs fuel; turning them away costs the moral standing the colony was founded on.",

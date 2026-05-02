@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "00000000-0000-0000-48e7-07ae82338db9",
+        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
         "grievance": 9,
         "health": 100,
-        "id": "d6a57a4d-128c-449b-bb95-44ce6615bdae",
+        "id": "b639042c-9878-466d-a84e-db0e48e253eb",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "00000000-0000-0000-48e7-07ae82338db9",
+        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
         "grievance": 9,
         "health": 100,
-        "id": "55a85b9e-7187-4a98-bf37-8bcbaa9b7138",
+        "id": "8df71375-e5c0-4fcd-ba54-cdf004c74421",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "00000000-0000-0000-48e7-07ae82338db9",
+        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
         "grievance": 7,
         "health": 100,
-        "id": "92c8dd0c-de51-4bbf-b527-96d63c7a2bd6",
+        "id": "ed8bdb7b-182e-43a3-beb1-38b38a94c131",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "00000000-0000-0000-48e7-07ae82338db9",
+        "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
         "grievance": 8,
         "health": 100,
-        "id": "5836efa2-c16b-4f0e-8978-45dfbfc40217",
+        "id": "acfd0e70-1a89-40ea-a4c1-f131136abf35",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "00000000-0000-0000-48e7-07ae82338db9",
+    "game_id": "554a051b-de73-33cc-15e5-33c08936a583",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 2184416697,
+    "seed": 2302059907,
     "setting_id": "arctic_station_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "00000000-0000-0000-d6d0-7e17fd79f1ac"
+    "user_id": "7c5f30aa-9c24-68cf-d200-5b7f2c3682e2"
   },
   "event": {
     "body": "A 72-hour storm closes in. Heating reserves and crew fatigue split four ways.",

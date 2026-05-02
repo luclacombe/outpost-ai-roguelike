@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ffffffff-ffff-ffff-b00f-f75f7932e43e",
+        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
         "grievance": 5,
         "health": 100,
-        "id": "79416723-9483-4083-bc0c-a97db00993f8",
+        "id": "66874791-341c-4ed7-849e-3d4c4de45621",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ffffffff-ffff-ffff-b00f-f75f7932e43e",
+        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
         "grievance": 1,
         "health": 100,
-        "id": "fb8cb1e1-8d72-416d-9567-2f4cd4345f20",
+        "id": "c55c7ec3-0160-4b8c-b884-25e413e3e6f9",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ffffffff-ffff-ffff-b00f-f75f7932e43e",
+        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
         "grievance": 3,
         "health": 100,
-        "id": "7df7128d-2013-4a9e-b8a9-716ca015e3d5",
+        "id": "4d6eeacc-f1dc-437c-b1fa-7ecf462e14cb",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ffffffff-ffff-ffff-b00f-f75f7932e43e",
+        "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
         "grievance": 7,
         "health": 100,
-        "id": "252439e8-f5b0-4379-9491-ec408ccbecc8",
+        "id": "c164b6c6-3f96-4074-adc4-1fb6a01751c3",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ffffffff-ffff-ffff-b00f-f75f7932e43e",
+    "game_id": "0af907fc-04db-b5eb-5aa5-c4fd355059a0",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 2033378366,
+    "seed": 894458272,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ffffffff-ffff-ffff-2e38-8ee60678982b"
+    "user_id": "5f1bda20-9c97-06ec-bb9d-84d7948cc14c"
   },
   "event": {
     "body": "Three vehicles park at the road's edge. Rosa counts heads; Eli counts rounds. Neither moves first.",

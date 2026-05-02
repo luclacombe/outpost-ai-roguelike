@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ffffffff-ffff-ffff-f361-73970c54f1ce",
+        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
         "grievance": 7,
         "health": 100,
-        "id": "b6700fb0-5293-4947-897e-8400bdb69bee",
+        "id": "3fa2d30f-16de-42df-8739-65128a25d649",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ffffffff-ffff-ffff-f361-73970c54f1ce",
+        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
         "grievance": 9,
         "health": 100,
-        "id": "e1737648-4583-4a56-a53a-843ac1bbb318",
+        "id": "f3b18828-aa3c-4de5-87eb-33ac0284a9f4",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ffffffff-ffff-ffff-f361-73970c54f1ce",
+        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
         "grievance": 9,
         "health": 100,
-        "id": "c00e30fa-303c-4171-b21b-2552a6ea1167",
+        "id": "10d877df-d88c-4c6d-acfc-1c68aa4abfe9",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ffffffff-ffff-ffff-f361-73970c54f1ce",
+        "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
         "grievance": 8,
         "health": 100,
-        "id": "6f2be7ea-67ca-46b1-a848-2cd8f123a1c8",
+        "id": "14bdb2ec-27ec-46a8-ab47-99e5d5a3b8a6",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ffffffff-ffff-ffff-f361-73970c54f1ce",
+    "game_id": "ff187ec2-f694-ef7d-f6f8-22773b99ab42",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 206893518,
+    "seed": 999926594,
     "setting_id": "desert_outpost_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ffffffff-ffff-ffff-6d56-0a2e731e8ddb"
+    "user_id": "12991ac2-3428-4be4-7f39-c08878184c92"
   },
   "event": {
     "body": "A man arrives bleeding from a road wound. He won't say what he was running from. Mara's bay is full.",

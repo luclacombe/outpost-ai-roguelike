@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ffffffff-ffff-ffff-b163-3ee7e0908d09",
+        "game_id": "7f890a15-25cc-9c22-c830-987bd709b762",
         "grievance": 4,
         "health": 100,
-        "id": "2623d74d-2d89-4fad-9a9a-af2ad0211e53",
+        "id": "826bad24-c04b-4b9a-9057-ee052a11f404",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ffffffff-ffff-ffff-b163-3ee7e0908d09",
+        "game_id": "7f890a15-25cc-9c22-c830-987bd709b762",
         "grievance": 3,
         "health": 100,
-        "id": "c9f19c6f-9177-4336-b5db-101944793f4a",
+        "id": "21ccc208-3f6f-4247-9938-8e5e24614aa4",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ffffffff-ffff-ffff-b163-3ee7e0908d09",
+        "game_id": "7f890a15-25cc-9c22-c830-987bd709b762",
         "grievance": 5,
         "health": 100,
-        "id": "4adae01d-9f68-42f5-9e9e-435fe685c3b5",
+        "id": "17a8f545-c537-4fcf-94f6-a35e7dac1eac",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ffffffff-ffff-ffff-b163-3ee7e0908d09",
+        "game_id": "7f890a15-25cc-9c22-c830-987bd709b762",
         "grievance": 3,
         "health": 100,
-        "id": "9a03640b-5f00-4d4f-8c00-b3d72c0e1b27",
+        "id": "c371c2a7-b26b-46e4-b9fe-a510917c48e7",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ffffffff-ffff-ffff-b163-3ee7e0908d09",
+    "game_id": "7f890a15-25cc-9c22-c830-987bd709b762",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 3767569673,
+    "seed": 3607738210,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ffffffff-ffff-ffff-2f54-475e9fdaf11c"
+    "user_id": "fdec37ea-c470-1519-0787-f0d0c14de081"
   },
   "event": {
     "body": "The station's AI flags two crew members as resource-negative under a 90-day projection. It asks for authorisation to enforce.",

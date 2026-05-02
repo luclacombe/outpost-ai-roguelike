@@ -4,10 +4,10 @@
       {
         "archetype_quadrant": "ACCOUNTANT",
         "ethics": -0.6,
-        "game_id": "ffffffff-ffff-ffff-97db-4828e4a3b832",
+        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
         "grievance": 5,
         "health": 100,
-        "id": "885efcac-48e1-407a-87c0-5c7e6c071197",
+        "id": "632e0f86-a2f0-455b-8db1-2b151a8161d2",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -24,10 +24,10 @@
       {
         "archetype_quadrant": "OPERATOR",
         "ethics": -0.5,
-        "game_id": "ffffffff-ffff-ffff-97db-4828e4a3b832",
+        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
         "grievance": 1,
         "health": 100,
-        "id": "b1e9c9b8-f426-4a03-bd14-39bfab0a887a",
+        "id": "30327f55-f9c9-4133-a4c3-2a0ed3a1dd9e",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -44,10 +44,10 @@
       {
         "archetype_quadrant": "CONSCIENCE",
         "ethics": 0.6,
-        "game_id": "ffffffff-ffff-ffff-97db-4828e4a3b832",
+        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
         "grievance": 3,
         "health": 100,
-        "id": "1a955fde-da3e-44c0-8c1b-a1b8bab047bf",
+        "id": "f178177c-ffef-4bb7-8423-b389b2798008",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -64,10 +64,10 @@
       {
         "archetype_quadrant": "CRUSADER",
         "ethics": 0.5,
-        "game_id": "ffffffff-ffff-ffff-97db-4828e4a3b832",
+        "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
         "grievance": 7,
         "health": 100,
-        "id": "04b4907a-dad8-441b-b15f-9c1254e06e13",
+        "id": "c8830761-5c43-44f3-880c-23a72059aba8",
         "is_alive": true,
         "loyalty": 0.0,
         "memory": [],
@@ -86,7 +86,7 @@
     "current_event": null,
     "end_state": null,
     "event_log": [],
-    "game_id": "ffffffff-ffff-ffff-97db-4828e4a3b832",
+    "game_id": "99178328-8db3-28ee-c83b-2bb28ce158a9",
     "legitimacy": 70,
     "max_turns": 10,
     "player_health": 100,
@@ -132,13 +132,13 @@
         "value": 60
       }
     },
-    "seed": 3835934770,
+    "seed": 2363578537,
     "setting_id": "orbital_colony_v1",
     "turn_cost_cents": 0,
     "turn_number": 4,
     "turn_proposals": [],
     "turn_tool_calls": [],
-    "user_id": "ffffffff-ffff-ffff-09ec-31919be9c427"
+    "user_id": "9565c4c6-59ed-9dfb-63da-8789dc7241ca"
   },
   "event": {
     "body": "Oxygen drops 5pp in a watch. Patch, redirect, or strip a redundant unit for parts.",
