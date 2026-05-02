@@ -100,3 +100,24 @@ async def test_wrong_proposal_count_raises():
             proposals=[_proposal(), _proposal()],
             anthropic_client=_fake_client(""),
         )
+
+
+async def test_out_of_range_score_clamps():
+    """A judge that emits score outside [0, 1] is clamped before snapping.
+
+    Without clamp, score=2.5 would silently snap to 1.0 (truthy >= 0.5)
+    and score=-0.3 would silently snap to 0.0 — same surface, no warning.
+    """
+    obs = await score_proposal_attribution(
+        event_text="x",
+        proposal=_proposal(),
+        anthropic_client=_fake_client('{"score": 2.5, "reasoning": "weird"}'),
+    )
+    assert obs.score == 1.0  # clamped, not silently inflated past 1
+
+    obs = await score_proposal_attribution(
+        event_text="x",
+        proposal=_proposal(),
+        anthropic_client=_fake_client('{"score": -0.3, "reasoning": "weird"}'),
+    )
+    assert obs.score == 0.0

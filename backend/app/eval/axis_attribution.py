@@ -108,7 +108,8 @@ async def score_proposal_attribution(
             rationale=err,
         )
     assert score is not None
-    snapped = 1.0 if score >= 0.5 else 0.0
+    clamped = max(0.0, min(1.0, score))
+    snapped = 1.0 if clamped >= 0.5 else 0.0
     return ProposalAttributionObservation(
         advisor_id=proposal.advisor_id,
         score=snapped,
