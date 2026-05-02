@@ -1,9 +1,82 @@
 # Axis-driven proposal generation — design
 
 **Date:** 2026-05-02
-**Status:** Approved (Phase 1 brainstorming closed; ready for writing-plans)
-**Touches:** `backend/app/agent/prompts.py`, `backend/app/eval/` (new judges), `backend/tests/eval/`
-**PR target:** `feat(agent): axis-driven proposal generation`
+**Status:** **Closed — premise not supported by measurement.** What shipped:
+the eval infrastructure as regression armor (two Haiku judges + 30 seeds +
+pipeline test). Prompt unchanged.
+**Touches (final):** `backend/app/eval/` (new judges), `backend/tests/eval/`
+**PR target (final):** `feat(eval): axis-diversity regression armor`
+
+---
+
+## 0. Outcome (added 2026-05-02 after measurement)
+
+The original premise — that the proposal-construction prompt produces flat
+decisions because flavor (DOMINANT/MORAL/WILDCARD) is the construction
+seed instead of axes — turned out **not to be supported by measurement**.
+
+Real-LLM baselines under the *current* (un-edited) prompt:
+
+| Sample | n | mean axis_diversity | mean axis_attribution |
+|---|---:|---:|---:|
+| Iterating (all aftermath) | 8 | **0.917** | **0.833** |
+| Gating (mixed fresh+aftermath) | 30 | **0.933** | **0.922** |
+
+The threshold floor in both judges is **0.70**. The current prompt clears
+it by **~0.20+** even on conditions designed to mirror the corpus's
+flat-decision turns (turn 6, decayed legitimacy, advisors carrying
+prior-attempt memory, repeat events with `EventOrigin.SEED_FIRED`).
+
+**Why the corpus showed flat decisions then:** the failure mode lives at
+the *engine* layer, not the prompt — the event scheduler kept cycling
+the same template (e.g. "Recycler unit 3 anomaly" four turns running)
+and the advisors had no fresh problem to read differently. A prompt
+rewrite cannot fix orchestration.
+
+**What shipped instead:**
+
+1. `app/eval/axis_diversity.py` — Haiku judge classifying three proposals
+   into §6.2 axis-quadrants; score = distinct_quadrants / 3.
+2. `app/eval/axis_attribution.py` — Haiku judge scoring whether each
+   proposal embodies its authoring advisor's axes; binary 1/0, turn-
+   level mean.
+3. `scripts/build_axis_seeds.py` — deterministic generator for 30 fixture
+   seeds (15 fresh dilemmas + 15 aftermath/repeat conditions, 8 marked
+   iterating-subset).
+4. `tests/eval/test_axis_proposals.py` — pipeline-level eval (debate-only,
+   real-LLM, gated by `OUTPOST_EVAL_REAL_LLM=1`) with iterating /
+   gating / baseline-capture modes.
+5. `tests/eval/fixtures/axis_baseline.json` — committed baseline so
+   future-Claude can see what "good" looks like.
+
+These artifacts are useful as **regression armor**: any future prompt
+edit that drops axis_diversity or axis_attribution below 0.70 mean over
+the 30-seed gating set will fail the eval. The thresholds intentionally
+sit ~0.20 below today's measured baseline so they catch a real
+regression (a 0.20-point drop on either judge), not noise.
+
+**What did NOT ship:**
+
+- The prompt rewrite. The original §3 design (PROPOSAL CONSTRUCTION,
+  AXIS VALUE-RULES, AXIS + GRIEVANCE → POSTURE blocks) is preserved
+  below for reference but was not applied — the data did not support it.
+
+**Follow-ups (separate PRs):**
+
+- **Engine event-pool rotation.** The corpus's "Four turns on the same
+  recycler" pattern is engine behavior. Add: avoid back-to-back
+  templates from the same category when ≥3 unfired alternatives
+  exist; rotate aftermath events too. This is the actual fix for the
+  flat-decision symptom the original spec was trying to address.
+- **Self-preference bias check.** The judges and the debate prompt are
+  both Haiku 4.5. Re-run a sub-sample with Sonnet judging Haiku to see
+  if the absolute scores hold (spec §4 risks already noted this).
+
+The original problem analysis below remains correct as a record of what
+we *thought* was going on; the §3 design is preserved as a record of
+what we *would have built* if the eval had backed the premise. Treat
+sections 1–9 below as the historical brainstorming output, not the
+shipped contract.
 
 ---
 
