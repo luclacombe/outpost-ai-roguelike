@@ -9,6 +9,7 @@ means the metrics never have to touch the DB or YAML loader.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -50,6 +51,16 @@ class RunRecord(BaseModel):
 
     narration_per_turn: list[str] = Field(default_factory=list)
     """Narration string per turn — used by inter-run similarity in 5.3c."""
+
+    game_id: UUID | None = None
+    """game_sessions.id of the driven game (None for hand-built records)."""
+
+    final_legitimacy: int | None = None
+    """Legitimacy at the end of the run; paired comparisons diff it."""
+
+    choice_spread: list[dict[str, Any]] = Field(default_factory=list)
+    """Per paused turn: `app.eval.choice_spread.compute_choice_spread` output
+    plus `turn` and `picked_proposal_id`. Empty for hand-built records."""
 
 
 class TurnJudgeInput(BaseModel):

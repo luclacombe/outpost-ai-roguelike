@@ -114,10 +114,13 @@ def summarize_choice_spread(turns: list[dict[str, Any]]) -> dict[str, Any]:
 
     `picked_*` fields use `picked_proposal_id`, which the harness stamps on
     each turn record after the player chooses. They capture resolve-time
-    rejections that `turn_logs` never persists.
+    rejections that `turn_logs` never persists. Records carrying `error`
+    (the harness hook failed for that turn) are counted, not summarized.
     """
+    errors = sum(1 for t in turns if "error" in t)
+    turns = [t for t in turns if "error" not in t]
     if not turns:
-        return {"n_turns": 0}
+        return {"n_turns": 0, "oracle_errors": errors}
     spreads = [t["spread_l1_max"] for t in turns]
     picked_calls = 0
     picked_rejected = 0
@@ -136,4 +139,5 @@ def summarize_choice_spread(turns: list[dict[str, Any]]) -> dict[str, Any]:
         "turns_with_run_ending_option": sum(1 for t in turns if t["any_option_ends_run"]),
         "picked_calls": picked_calls,
         "picked_rejected_calls": picked_rejected,
+        "oracle_errors": errors,
     }

@@ -168,3 +168,12 @@ def test_summary_aggregates_turns(colony: ColonyState) -> None:
 
 def test_summary_of_nothing() -> None:
     assert summarize_choice_spread([])["n_turns"] == 0
+
+
+def test_summary_skips_oracle_errors(colony: ColonyState) -> None:
+    ok = compute_choice_spread(colony, _triple(colony))
+    summary = summarize_choice_spread([{"turn": 1, "error": "boom"}, ok])
+    assert summary["n_turns"] == 1
+    assert summary["oracle_errors"] == 1
+    only_errors = summarize_choice_spread([{"turn": 1, "error": "boom"}])
+    assert only_errors == {"n_turns": 0, "oracle_errors": 1}

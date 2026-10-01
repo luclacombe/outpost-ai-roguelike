@@ -29,6 +29,7 @@ only way to reconstruct the full picture for the validity-rate metric.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any, Literal
@@ -37,17 +38,21 @@ from uuid import UUID
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.agent.graph import thread_config
 from app.database import async_session_factory
 from app.dependencies import get_current_user, get_run_seed_override
+from app.eval.choice_spread import compute_choice_spread
 from app.eval.playtest.turn_view import TurnViewTracker
 from app.eval.types import RunRecord
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import ColonyState, ToolCall
+from app.game.schemas import ColonyState, Proposal, ToolCall
 from app.main import app
 from tests.fixtures.simulated_player import SimulatedPlayer
 from tests.test_agent_router import _collect_stream
 
 Policy = Literal["moral", "pragmatic", "random"]
+
+logger = logging.getLogger(__name__)
 
 
 async def _load_final_state(game_id: UUID) -> ColonyState:
@@ -135,6 +140,31 @@ def _install_overrides(user_id: UUID, seed: int) -> tuple[Any, Any]:
 def _reset_overrides(tokens: tuple[Any, Any]) -> None:
     _eval_user_id_ctx.reset(tokens[0])
     _eval_seed_ctx.reset(tokens[1])
+
+
+async def _choice_spread_at_pause(graph: Any, game_id: UUID) -> dict[str, Any]:
+    """Run the choice-spread oracle on the paused checkpoint. Read-only.
+
+    `aget_state` reads the snapshot `resolve` will see (colony after the
+    debate's tool calls + the three proposals). Nothing is written back and
+    no checkpoint is forked: `advance_turn` is the sole DB-write node, so
+    forking would clobber the real game row. Never raises; a failure is
+    recorded as `{"error": ...}` so the game keeps going.
+    """
+    try:
+        snap = await graph.aget_state(thread_config(str(game_id)))
+        values = snap.values
+        colony = values["colony_state"]
+        if not isinstance(colony, ColonyState):
+            colony = ColonyState.model_validate(colony)
+        proposals = [
+            p if isinstance(p, Proposal) else Proposal.model_validate(p)
+            for p in values["proposals"]
+        ]
+        return compute_choice_spread(colony, proposals)
+    except Exception as exc:  # noqa: BLE001 — oracle must never abort a game
+        logger.warning("choice-spread oracle failed for game %s: %s", game_id, exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
 
 
 class _RunAggregator:
@@ -309,6 +339,7 @@ async def _drive_game(
     """Shared /session → (/turn → pick → /decide)* loop."""
     aggregator = _RunAggregator()
     view = TurnViewTracker()
+    choice_spread: list[dict[str, Any]] = []
 
     tokens = _install_overrides(user_id, seed)
     try:
@@ -347,11 +378,16 @@ async def _drive_game(
                         )
                     )
 
+                spread = await _choice_spread_at_pause(app.state.graph, game_id)
+
                 # `player.pick` may be sync and slow (LLMPlayer subprocess-blocks
                 # on `claude --print`); calling it inline would block the event
                 # loop and serialize concurrent games. Hand it to a thread.
                 chosen_id = await asyncio.to_thread(player.pick, proposals)
                 view.record_choice(next(p for p in proposals if p["id"] == chosen_id))
+                choice_spread.append(
+                    {"turn": turn_idx + 1, "picked_proposal_id": chosen_id, **spread}
+                )
 
                 # ---- /decide ----
                 async with client.stream(
@@ -369,7 +405,8 @@ async def _drive_game(
     finally:
         _reset_overrides(tokens)
 
-    return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
+    record = await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
+    return record.model_copy(update={"choice_spread": choice_spread})
 
 
 async def _build_run_record(
@@ -414,6 +451,8 @@ async def _build_run_record(
         resource_history=resource_history,
         forced_choice_turns=forced_choice_turns,
         narration_per_turn=aggregator.narration_per_turn,
+        game_id=game_id,
+        final_legitimacy=final_state.legitimacy,
     )
 
 
