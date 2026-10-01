@@ -119,6 +119,9 @@ No LLM calls. All branches tested in `test_engine.py`.
 
 ## Gotchas
 
+- `generate_run`: content (max_turns, advisor names/axes, portrait seeds) is a function of `(setting_id, seed)` only, via sha256 — never `hash(str)` (salted per process). Identity is separate: `game_id` folds in `user_id` + `run_key`, agent ids fold in `game_id`. `create_game_session` passes a fresh `run_key` because `game_id` is also the LangGraph thread_id; a reused one resumes a stale checkpoint. Paired playtests depend on this split.
+- `derive_resolution_consequences` reads `tool_calls_on_pick` args before validation, so a heavy drain the validator then rejects (e.g. `delta_out_of_range`) still costs legitimacy. Known; surfaced by the choice-spread oracle.
+
 - `MissingGreenlet` after `await db.rollback()`: snapshot `profile.last_run_started_at` *before* rolling back — the async-loaded relationship detaches post-rollback.
 - Between `db.add(game_session)` and `db.add_all(agents)` you need `await db.flush()` so the FK resolves; psycopg3 `executemany` batching otherwise blows up.
 - Pydantic v2 `@field_validator` only sees fields declared **before** the validated field in `info.data`. If you need later siblings, use `@model_validator(mode="after")`.

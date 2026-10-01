@@ -22,6 +22,9 @@ hot path.
 - `balance.py` — aggregated survival/resource/forced-choice metrics across runs.
 - `end_state.py` — observed end-state distribution vs SPEC target bands.
 - `inter_run_similarity.py` — mean pairwise cosine on per-run narration; reuses `personality._get_model` and `_cosine`. Verdict band `[0.55, 0.80]`.
+- `choice_spread.py` — pure oracle: applies each offered proposal to a copy of the paused colony via the resolve path; per-option deltas + max pairwise L1 spread. The simulator calls it at every pause (`RunRecord.choice_spread`).
+- `paired.py` — per (setting, seed) cell comparison across players (persona harness + sweep): do end states / final numbers differ?
+- `sweep_summary.py` — `scripts/sweep.py` summary.json + summary.md.
 - `types.py` — `RunRecord`, the canonical Pydantic snapshot of one simulated run. Single source of truth — do not shadow with per-module variants.
 
 ## Naming convention
@@ -59,7 +62,7 @@ call downloads ~80MB, subsequent calls are free.
   `messages.create` call args.
 - Using prompt caching for per-call judges. The prompt is small and varies
   per response — cache-write overhead would dominate.
-- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Metrics consume `RunRecord.tool_calls` (built from the live SSE / in-memory stream). Until that gap closes, `tool_validity_rate` measures applied calls only — rejected-at-resolve calls do not survive into stored runs.
+- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Metrics consume `RunRecord.tool_calls` (built from the live SSE / in-memory stream). Until that gap closes, `tool_validity_rate` measures applied calls only — rejected-at-resolve calls do not survive into stored runs. For the picked option, `summarize_choice_spread(...)["picked_rejected_calls"]` (choice-spread oracle) does count them.
 
 ## Test layout
 
