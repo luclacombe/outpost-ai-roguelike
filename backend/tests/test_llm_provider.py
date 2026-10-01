@@ -121,6 +121,41 @@ def test_blank_keys_count_as_missing(monkeypatch):
         _settings(monkeypatch, ANTHROPIC_API_KEY="", LLM_API_KEY="")
 
 
+def test_blank_optional_llm_values_mean_unset(monkeypatch):
+    """A copied .env.example with blank `FOO=` lines falls back to defaults."""
+    s = _settings(
+        monkeypatch,
+        ANTHROPIC_API_KEY="k",
+        LLM_API_KEY="",
+        LLM_BASE_URL="",
+        LLM_PRICING_OVERRIDES="",
+        LLM_MODEL_FAST="",
+    )
+    assert s.LLM_API_KEY is None
+    assert s.LLM_BASE_URL is None
+    assert s.LLM_PRICING_OVERRIDES == {}
+    assert s.LLM_MODEL_FAST == MODEL_HAIKU
+
+
+def test_blank_values_in_dotenv_file_mean_unset(monkeypatch, tmp_path):
+    for key in (*_LLM_ENV_KEYS, *_BASE_ENV):
+        monkeypatch.delenv(key, raising=False)
+    env_file = tmp_path / ".env"
+    lines = [f"{k}={v}" for k, v in _BASE_ENV.items()]
+    lines += [
+        "LLM_API_KEY=sk-or-x",
+        "ANTHROPIC_API_KEY=",
+        "LLM_BASE_URL=",
+        "LLM_PRICING_OVERRIDES=",
+    ]
+    env_file.write_text("\n".join(lines) + "\n")
+    s = Settings(_env_file=env_file)
+    assert s.ANTHROPIC_API_KEY is None
+    assert s.LLM_BASE_URL is None
+    assert s.LLM_PRICING_OVERRIDES == {}
+    assert s.llm_api_key == "sk-or-x"
+
+
 def test_auth_scheme_rejects_unknown_value(monkeypatch):
     with pytest.raises(ValidationError):
         _settings(monkeypatch, ANTHROPIC_API_KEY="k", LLM_AUTH_SCHEME="basic")

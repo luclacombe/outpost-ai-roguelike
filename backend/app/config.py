@@ -12,7 +12,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # env_ignore_empty: a blank `FOO=` line means "unset" (use the default),
+    # so a half-filled copy of .env.example doesn't hand "" to the SDK as a
+    # base URL or fail JSON-parsing LLM_PRICING_OVERRIDES.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     DATABASE_URL: str
     SUPABASE_URL: str
