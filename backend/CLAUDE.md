@@ -58,7 +58,8 @@ Use `settings.FOO` directly; do not re-read `os.environ` in feature code.
 - DB-touching tests should skip (not fail) when Postgres is unreachable so a `uv run pytest tests/` without Docker still runs clean.
 - Mock Anthropic with `respx`. Real-LLM integration tests live under the `integration` marker, real-LLM eval games under `eval`. `pyproject.toml` addopts deselect both; run them with explicit `-m integration` / `-m eval`.
 - Assert specific exception types (`pytest.raises(ValidationError)`, not `Exception`) — ruff B017 is on.
-- **Unit runs ignore `.env` LLM/gate/tracing values.** `tests/conftest.py` first imports `tests/_settings_isolation.py`, which swaps `app.config.settings` for a copy with `LLM_*`, budget, `DEV_BYPASS_DAILY_GATE` and `LANGFUSE_*` pinned to test defaults (secrets and DB URLs still come from `.env`). Skipped when `-m` selects `integration`/`eval`, so those hit the real provider. New env-sensitive settings that tests assume a value for go in its `_PINNED`.
+- **Unit runs ignore `.env` LLM/gate/tracing values.** `tests/conftest.py` first imports `tests/_settings_isolation.py`, which swaps `app.config.settings` for a copy with `LLM_*`, budget, `DEV_BYPASS_DAILY_GATE` and `LANGFUSE_*` pinned to test defaults (secrets still come from `.env`). Skipped when `-m` selects `integration`/`eval`, so those hit the real provider. New env-sensitive settings that tests assume a value for go in its `_PINNED`.
+- **Tests never touch a remote DB by default.** The same module redirects a non-local `DATABASE_URL` (e.g. the prod pooler in `.env`) to local Supabase `localhost:54322`, for every run including `integration`/`eval`. Opt out only with `OUTPOST_ALLOW_REMOTE_DB_TESTS=1`. Before this guard, DB tests wrote fixture users/games (`…0000aa/ab/ad@outpost.local`) into production.
 
 ## Dev daily-gate bypass
 

@@ -12,8 +12,12 @@ It must run before any other `app.*` import, since modules bind `settings`
 with `from app.config import settings`. Init kwargs outrank both the shell
 and `.env`, so `None` really means unset (a blank env var would not).
 
-Secrets and DB/Supabase URLs still come from env/`.env`, so DB tests keep
-hitting local Postgres.
+Secrets and Supabase URLs still come from env/`.env`. `DATABASE_URL` does
+too, but only if it points at a local host: a remote URL (e.g. the prod
+pooler in a dev `.env`) is redirected to local Supabase unless
+`OUTPOST_ALLOW_REMOTE_DB_TESTS=1`. This guard applies to every run,
+including `integration`/`eval`. Without it, DB tests silently wrote fixture
+games into the production project.
 
 Skipped when the `-m` expression selects `integration` or `eval`: those
 runs exist to exercise the real provider from `.env`.
@@ -24,6 +28,7 @@ import re
 import shlex
 import sys
 from typing import Any
+from urllib.parse import urlsplit
 
 import app.config
 
@@ -46,6 +51,17 @@ _PINNED: dict[str, Any] = {
     "LANGFUSE_SECRET_KEY": None,
     "LANGFUSE_BASE_URL": None,
 }
+
+
+LOCAL_TEST_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:54322/postgres"
+_LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
+
+
+def guard_database_url(url: str, *, allow_remote: bool) -> str:
+    """Return `url` if its host is local (or remote is allowed), else local Supabase."""
+    if allow_remote or urlsplit(url).hostname in _LOCAL_DB_HOSTS:
+        return url
+    return LOCAL_TEST_DATABASE_URL
 
 
 def _markexpr(argv: list[str]) -> str:
@@ -73,3 +89,15 @@ def selects_real_llm(markexpr: str) -> bool:
 
 if not selects_real_llm(_markexpr(sys.argv[1:])):
     app.config.settings = app.config.Settings(**_PINNED)
+
+_db_url = app.config.settings.DATABASE_URL
+_guarded_db_url = guard_database_url(
+    _db_url, allow_remote=os.environ.get("OUTPOST_ALLOW_REMOTE_DB_TESTS") == "1"
+)
+if _guarded_db_url != _db_url:
+    sys.stderr.write(
+        f"[tests] DATABASE_URL host {urlsplit(_db_url).hostname!r} is not local; "
+        "DB tests use local Supabase (localhost:54322) instead. "
+        "Set OUTPOST_ALLOW_REMOTE_DB_TESTS=1 to override.\n"
+    )
+    app.config.settings = app.config.settings.model_copy(update={"DATABASE_URL": _guarded_db_url})
