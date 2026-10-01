@@ -3,6 +3,13 @@
 Deterministic given `(user_id, setting_id, seed)`:
   - Same inputs → identical agents (names, UUIDs, axes, portrait seeds).
   - Different seeds → different agents (names may rarely collide; axes almost surely differ).
+  - Rolled content (max_turns, advisor names/axes, portrait seeds) depends on
+    `(setting_id, seed)` only, so two users given the same seed play the same
+    colony. Identity (game_id, agent ids) folds in user_id / game_id so rows
+    never collide. The playtest harness and balance sweep rely on this for
+    paired comparisons.
+  - Stable across processes: the RNG seed uses sha256, never `hash(str)`
+    (salted per process by PYTHONHASHSEED).
 
 No I/O beyond the setting YAML load, no LLM calls, no mutation of global state.
 All randomness routes through a single `random.Random` seeded from the inputs.
@@ -12,6 +19,7 @@ See SPEC §6.1 (axes), §6.2 (archetype grid), §6.3 (agent state), §7.1 (pacin
 
 from __future__ import annotations
 
+import hashlib
 import random
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -48,15 +56,16 @@ _AGENT_UUID_NAMESPACE = NAMESPACE_URL
 # ---------------------------------------------------------------------------
 
 
-def _seed_rng(user_id: UUID, setting_id: str, seed: int) -> random.Random:
-    """Build a deterministic RNG from the three public inputs.
+def _seed_rng(setting_id: str, seed: int) -> random.Random:
+    """Build a deterministic content RNG from `(setting_id, seed)`.
 
-    XOR-combined so that changing any one input changes the stream. `hash` on a
-    str is stable within a single Python process run (good enough for within-
-    run determinism); for cross-process stability we also fold the setting_id
-    into the agent portrait_seed so UUIDs stay pinned even if hash() drifts.
+    sha256 instead of `hash(setting_id)`: str hashing is salted per process,
+    which made the same seed roll different colonies in different runs.
+    user_id is deliberately left out so a seed means the same colony for
+    every player (see module docstring).
     """
-    return random.Random(user_id.int ^ hash(setting_id) ^ seed)
+    digest = hashlib.sha256(f"{setting_id}:{seed}".encode()).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
 
 
 def _biased_roll(rng: random.Random, direction: int) -> float:
@@ -87,7 +96,10 @@ def _build_agent(
 
     # Deterministic portrait seed: encodes every input a future restore needs.
     portrait_seed = f"{setting_id}:{archetype.role_name}:{name}:{rng.getrandbits(16):04x}"
-    agent_id = uuid5(_AGENT_UUID_NAMESPACE, portrait_seed)
+    # game_id in the id input: content is user-independent, so two games on
+    # the same seed roll the same portrait_seed and would otherwise collide
+    # on agents.id.
+    agent_id = uuid5(_AGENT_UUID_NAMESPACE, f"{game_id}:{portrait_seed}")
 
     return Agent(
         id=agent_id,
@@ -140,7 +152,7 @@ def generate_run(
 
     Steps:
       1. Load the setting YAML (load_setting).
-      2. Seed a random.Random with the three inputs.
+      2. Seed a random.Random from (setting_id, seed).
       3. Pick max_turns uniformly from [MIN_TURNS, MAX_TURNS].
       4. Build one agent per archetype (setting YAML is pre-validated to cover
          all four quadrants, see Setting._archetypes_cover_all_quadrants).
@@ -148,7 +160,7 @@ def generate_run(
       6. Assemble a fresh ColonyState at turn 0 with no seeds/events/proposals.
     """
     setting = load_setting(setting_id)
-    rng = _seed_rng(user_id, setting_id, seed)
+    rng = _seed_rng(setting_id, seed)
 
     max_turns = rng.randint(MIN_TURNS, MAX_TURNS)
     # Derive game_id deterministically from inputs so three calls with the same

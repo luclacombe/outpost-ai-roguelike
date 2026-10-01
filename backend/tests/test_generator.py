@@ -67,6 +67,48 @@ def test_generate_run_different_users_differ() -> None:
     assert s1.game_id != s2.game_id
 
 
+def test_generate_run_content_depends_on_setting_and_seed_only() -> None:
+    """Same (setting, seed), different users → same advisor rolls + turn count.
+
+    Paired playtests and the balance sweep give every policy/persona its own
+    synthetic user but the same seed; the comparison is only paired if the
+    rolled content matches. Identity (game_id, agent ids) stays per-user so
+    concurrent games never collide on primary keys.
+    """
+    s1 = generate_run(user_id=USER_ID, setting_id="arctic_station_v1", seed=SEED)
+    s2 = generate_run(user_id=USER_ID_ALT, setting_id="arctic_station_v1", seed=SEED)
+
+    assert s1.max_turns == s2.max_turns
+    rolls1 = [(a.name, a.ethics, a.temperament, a.loyalty, a.portrait_seed) for a in s1.agents]
+    rolls2 = [(a.name, a.ethics, a.temperament, a.loyalty, a.portrait_seed) for a in s2.agents]
+    assert rolls1 == rolls2
+    assert {a.id for a in s1.agents}.isdisjoint({a.id for a in s2.agents})
+
+
+def test_generate_run_is_stable_across_processes() -> None:
+    """Rolls must not depend on PYTHONHASHSEED (str hash() is salted per process)."""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "import json; from uuid import UUID; from app.game.generator import generate_run; "
+        "s = generate_run(user_id=UUID('bbbbbbbb-0000-0000-0000-000000000002'), "
+        "setting_id='arctic_station_v1', seed=42); "
+        "print(json.dumps([s.max_turns, [[a.name, a.ethics] for a in s.agents]]))"
+    )
+    outputs = set()
+    for hash_seed in ("1", "2"):
+        env = {**os.environ, "PYTHONHASHSEED": hash_seed}
+        proc = subprocess.run(
+            [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
+        )
+        outputs.add(proc.stdout.strip())
+    assert len(outputs) == 1, outputs
+    assert json.loads(outputs.pop())[0] in range(MIN_TURNS, MAX_TURNS + 1)
+
+
 # ---------------------------------------------------------------------------
 # Coverage
 # ---------------------------------------------------------------------------
