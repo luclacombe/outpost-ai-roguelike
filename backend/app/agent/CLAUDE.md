@@ -66,12 +66,18 @@ writes a fresh cache entry and nothing ever reads. Keeping the cache_control
 on personas (run-stable) and pushing volatile content into the user message
 is what unlocks cross-turn cache hits.
 
-**Minimum cacheable prefix (Haiku 4.5): 4096 tokens cumulative through the
-last cache_control.** The preamble + personas + tool schemas clear this with
-headroom (~4600 tokens). If you trim the preamble, re-measure via
-`client.messages.count_tokens(...)` and confirm cumulative tokens through
-the last cc are still >4096. Dropping below silently skips caching and
-returns 0 in both `cache_creation_input_tokens` and `cache_read_input_tokens`.
+**Minimum cacheable prefix (Haiku 4.5, Anthropic-specific): 4096 tokens
+cumulative through the last cache_control.** The preamble + personas + tool
+schemas clear this with headroom (~4600 tokens). If you trim the preamble,
+re-measure via `client.messages.count_tokens(...)` and confirm cumulative
+tokens through the last cc are still >4096. Dropping below silently skips
+caching and returns 0 in both `cache_creation_input_tokens` and
+`cache_read_input_tokens`. Caching differs per provider/model: OpenRouter's
+prompt-caching guide says DeepSeek caching is automatic (no `cache_control`
+needed; writes bill at the input rate) and documents no 4096 minimum. Keep
+the stable-prefix-first layout and the `cache_control` markers anyway
+(invariant #5; they are what Anthropic needs). Measure hit rate on the
+provider you actually run.
 
 **Memories live in the rendered colony-state text (user message), not the
 personas block.** Putting per-turn memories inside personas would mutate the
@@ -90,12 +96,42 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 `tests/integration/test_full_run.py`'s wrapped `cost_cents_of` that records
 `cache_read_input_tokens` per call.
 
+## Provider config
+
+- All calls go through `anthropic_client.call_fast` (debate, autonomous;
+  model `settings.LLM_MODEL_FAST`) or `call_narration`
+  (`settings.LLM_MODEL_NARRATION`). Eval judges call `client.messages.create`
+  with `settings.LLM_MODEL_FAST` and `**request_extras()`. Never hardcode a
+  model id at a call site; `constants.MODEL_HAIKU`/`MODEL_SONNET` are just
+  the defaults and pricing keys.
+- `build_client(settings)`: `LLM_AUTH_SCHEME=x-api-key` (Anthropic) sends
+  `X-Api-Key`; `bearer` (OpenRouter) sends `Authorization: Bearer`. The other
+  header is set to `Omit()` on purpose: the SDK otherwise reads
+  `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the OS env and sends both.
+- OpenRouter: `LLM_BASE_URL=https://openrouter.ai/api` (SDK appends
+  `/v1/messages`). Auth is Bearer per the OpenAPI spec at
+  openrouter.ai/docs/api/api-reference/anthropic-messages/create-a-message.
+- `request_extras()` is the only place provider-specific body fields are
+  added. Empty under defaults so Anthropic requests are unchanged.
+  `LLM_DISABLE_THINKING=true` adds `thinking: {"type": "disabled"}`, which
+  OpenRouter maps to `reasoning.enabled=false`
+  (openrouter.ai/docs/guides/best-practices/reasoning-tokens, "Reasoning with
+  the Anthropic Messages API"). DeepSeek V4.1 Flash reasons by default.
+- Narration/thinking blocks: parsers only read `text` and `tool_use` blocks,
+  so any `thinking` block a provider returns is skipped harmlessly.
+
 ## Cost accounting
 
 - Only `anthropic_client.cost_cents_of(response, model)` computes cost. It
   splits `usage.input_tokens` across fresh / cache_read / cache_creation
   buckets at their respective rates. `getattr(u, "cache_*_input_tokens", 0) or 0`
   — those fields are optional on the SDK's `usage` object.
+- Rates: `pricing_for(model)` reads `settings.LLM_PRICING_OVERRIDES` first,
+  then `constants.MODEL_PRICING`. Unknown model → ValueError, and the
+  configured fast/narration models are checked at import so a typo fails
+  startup instead of zeroing the budget rails. Pass the configured model id
+  (`settings.LLM_MODEL_*`), not `response.model`: OpenRouter echoes a dated
+  canonical slug (e.g. `deepseek/deepseek-v4.1-flash-20260910`).
 - Three accumulation layers:
   - `GameTurnState.cost_cents_this_turn` — float, reset at `generate_event`,
     added to by debate + autonomous + narrate.
@@ -103,11 +139,11 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
     the float at `advance_turn`.
   - `GameSession.cost_cents` (DB) — mirror of `ColonyState.turn_cost_cents`.
   - `TurnLog.turn_cost_cents` (DB) — per-turn integer cents.
-- Budget gate: `narrate_turn` skips the Sonnet call when
+- Budget gate: `narrate_turn` skips the narration call when
   `cost_cents_this_turn >= MAX_COST_CENTS_PER_TURN` and falls back to a
   templated single-line narration.
 
-## Anthropic SDK quirks
+## Anthropic SDK quirks (apply to every provider via the SDK)
 
 - **Patch target for tests:** `cost_cents_of` is imported by name into
   `nodes.py` at module load. Monkeypatching
@@ -124,7 +160,7 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
   (`claude-haiku-4-5-20251001`). If Anthropic publishes a dated Sonnet 4.6
   later, swap it in `constants.py`. Until then, the alias is all we have.
 - **Exception catch scope:** in `narrate_turn`, catch `anthropic.APIError` only,
-  not bare `Exception`. Bare catches mask programming bugs in `call_sonnet` that
+  not bare `Exception`. Bare catches mask programming bugs in `call_narration` that
   should fail fast in development.
 - **Tool whitelist assertion:** `AUTONOMOUS_TOOL_NAMES` is guarded at import by
   a subset check against `AGENT_TOOL_SCHEMAS`. If a tool is renamed or removed

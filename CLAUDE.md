@@ -12,13 +12,13 @@ Daily browser-based narrative roguelike. Four AI advisors run a fragile colony u
 
 ## Stack (locked)
 
-- Backend: FastAPI (Python 3.12) + LangGraph (orchestration) + raw Anthropic SDK (LLM calls) + Docker
+- Backend: FastAPI (Python 3.12) + LangGraph (orchestration) + raw Anthropic SDK (LLM calls, any Anthropic-compatible Messages endpoint) + Docker
 - DB: Supabase Postgres via SQLAlchemy async + psycopg3, direct connection port 5432
 - Auth: Supabase Auth (Google OAuth), JWT validated locally in FastAPI via PyJWT (HS256)
 - Frontend: Next.js 16 App Router + TypeScript strict + Tailwind v4 + shadcn/ui (pixel-art re-themed) + DiceBear
 - Deploy: Railway (backend), Vercel (frontend)
 - Observability: Langfuse (cloud Hobby, 50K obs/mo), LangSmith agentevals for CI
-- LLM: Claude Haiku (dominant), Sonnet (optional narration), prompt caching mandatory
+- LLM: provider set by `LLM_*` settings (`backend/app/config.py`). Running on OpenRouter `deepseek/deepseek-v4.1-flash` with thinking off since 2026-10-01 (Anthropic org disabled). Defaults remain Claude Haiku (fast) + Sonnet (narration). Prompt caching mandatory either way
 
 ---
 
@@ -137,7 +137,7 @@ Use the right skill for the task:
 - Skipping prompt caching "for simplicity" — cache_control is mandatory
 - One LLM call per agent in debate — use one batched XML call (see ARCHITECTURE §3.6)
 - Writing AI-tell prose: "unfortunately", "delve into", em-dash overuse, rule-of-three lists, "a tapestry of" (run `/humanizer` on user-facing prose)
-- Running CI without inlined `Settings()` env placeholders. `app.config.settings = Settings()` runs at module import; CI runners have no `.env`, so importing `app.*` for `pytest` or `ruff` without setting `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `FRONTEND_URL` at the job level fails before any test runs. Pattern is in `.github/workflows/test.yml` and `deploy.yml` — copy if you add a new workflow that imports the app.
+- Running CI without inlined `Settings()` env placeholders. `app.config.settings = Settings()` runs at module import; CI runners have no `.env`, so importing `app.*` for `pytest` or `ruff` without setting `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_URL`, and one of `ANTHROPIC_API_KEY` / `LLM_API_KEY` at the job level fails before any test runs. Pattern is in `.github/workflows/test.yml` and `deploy.yml` — copy if you add a new workflow that imports the app.
 - Adding a transitive dep that pulls `python-jose` back in. We removed it in Phase 9 because its `ecdsa` transitive (Minerva timing attack on P-256) tripped Dependabot HIGH. JWT signing/verification goes through `pyjwt[crypto]`; the auth tests that forge ES256 keypairs use `cryptography.hazmat` directly.
 
 ## Production / deploy gotchas
@@ -148,7 +148,7 @@ Use the right skill for the task:
 - **Railway free tier idle-sleeps.** First request after inactivity adds 1–3s. For a daily-run game this is fine. Upgrade to Pro with `min_machines_running=1` only if it bites real users.
 - **Env-var precedence is OS env > `.env` file** (pydantic-settings default). Inside Docker compose this is exploited: `docker-compose.yml` sets `DATABASE_URL=...host.docker.internal:54322...` so the container always hits local Postgres regardless of what `.env` says. Same trick for tests via `DATABASE_URL=... uv run pytest`.
 - **`pnpm-workspace.yaml` without a `packages` field crashes pnpm 9** (CI default), works on pnpm 10. Pin the version via `packageManager` in `frontend/package.json` and point `pnpm/action-setup` at it via `package_json_file`.
-- **`.github/workflows/eval.yml` requires GH secrets** (`ANTHROPIC_API_KEY`, `LANGFUSE_*`, `LANGSMITH_API_KEY`) to actually run real-LLM eval. Without secrets the job runs but the eval test SKIPs the real-LLM path; `OUTPOST_EVAL_REAL_LLM=1` is set unconditionally in the workflow, so the gate becomes silently weaker. Audit secret presence after each token rotation.
+- **`.github/workflows/eval.yml` requires GH secrets** (`ANTHROPIC_API_KEY`, `LANGFUSE_*`, `LANGSMITH_API_KEY`) to actually run real-LLM eval. Without secrets the job runs but the eval test SKIPs the real-LLM path; `OUTPOST_EVAL_REAL_LLM=1` is set unconditionally in the workflow, so the gate becomes silently weaker. Audit secret presence after each token rotation. The workflow still gates on the `ANTHROPIC_API_KEY` secret only; running CI eval on OpenRouter needs `LLM_*` env + an `LLM_API_KEY` secret wired into `eval.yml` first.
 
 ---
 
