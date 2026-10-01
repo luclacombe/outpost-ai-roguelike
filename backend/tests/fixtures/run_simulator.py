@@ -11,7 +11,7 @@ Two modes:
     block and configures Anthropic routes. `simulate_game` itself is
     transport-agnostic.
   * Real-LLM: pass `real_llm=True` (or just don't intercept the network).
-    Used by the nightly job; requires `ANTHROPIC_API_KEY`.
+    Used by the nightly job; needs an engine key (`settings.llm_api_key`).
 
 The driver requires Postgres because:
   * `POST /game/session` writes `game_sessions` + `agents` rows.

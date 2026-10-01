@@ -235,3 +235,21 @@ def test_resolve_unfinished_end_state_handles_all_max_turns(tn: int, mt: int) ->
         resource_crit=20,
     )
     assert resolve_unfinished_end_state(state) is EndState.ENDURED
+
+
+def test_playtest_defaults_pin_persona_model_and_disable_tracing() -> None:
+    from scripts.play_test import PlaytestConfig, build_parser
+
+    config = PlaytestConfig()
+    assert config.persona_model == "sonnet"
+    assert config.trace is False
+    args = build_parser().parse_args([])
+    assert args.persona_model == "sonnet"
+    assert args.trace is False
+    assert args.allow_remote_db is False
+    args = build_parser().parse_args(
+        ["--personas", "optimizer,pessimist", "--max-turns", "3", "--trace"]
+    )
+    assert args.personas == "optimizer,pessimist"
+    assert args.max_turns == 3
+    assert args.trace is True

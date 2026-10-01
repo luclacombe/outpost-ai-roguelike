@@ -4,9 +4,12 @@ Entry points:
   - `run_harness(config)` — async, programmatic API used by tests
   - `main()` — CLI wrapper (uv run python -m scripts.play_test)
 
-The CLI defaults to: 7 personas × 6 runs × 3 settings (round-robin) = 42 games.
-Real-LLM mode requires `ANTHROPIC_API_KEY`. The persona side runs through
-`claude` CLI and bills against the user's Claude Code Max subscription.
+The CLI defaults to 7 personas × 6 paired cells (3 settings × 2 seeds) = 42
+games. The engine LLM uses whatever `LLM_*` settings point at
+(`settings.llm_api_key`: LLM_API_KEY, else ANTHROPIC_API_KEY). The persona
+side runs through the `claude` CLI (model pinned by `persona_model`, default
+`sonnet`) and bills against the user's Claude Code subscription. Langfuse
+tracing is off unless `--trace`. The CLI refuses a non-local DATABASE_URL.
 
 The meta-aggregator runs SEPARATELY via the /playtest-aggregate slash command
 in the user's Claude Code session — see .claude/commands/playtest-aggregate.md.
@@ -14,18 +17,19 @@ in the user's Claude Code session — see .claude/commands/playtest-aggregate.md
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
+import shutil
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
+import app.config
 from app.database import async_session_factory
 from app.eval.choice_spread import summarize_choice_spread
 from app.eval.paired import resource_fraction
@@ -42,14 +46,21 @@ from app.eval.playtest.schemas import PersonaId
 from app.eval.playtest.seeds import paired_cells
 from app.eval.playtest.subprocess_pool import SubprocessPool
 from app.eval.playtest.summaries import build_turn_context
+from app.eval.playtest.tracing import tracing_disabled
 from app.eval.types import RunRecord
-from app.game.engine import compute_end_state
 from app.game.exceptions import GameNotEnded
 from app.game.models import GameSession
 from app.game.post_mortem import build_post_mortem
-from app.game.schemas import ColonyState, EndState
-from app.game.service import _pick_setting_id
-from app.game.setting_loader import list_available_settings
+from app.game.schemas import ColonyState
+from scripts._harness import (
+    _cleanup_synthetic_user,
+    _provision_synthetic_user,
+    _uuid_for_setting,
+    git_sha,
+    next_free_dir,
+    require_local_database,
+    resolve_unfinished_end_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,97 +87,11 @@ class PlaytestConfig:
     # run completes. Default False: synthetic users persist for forensic
     # re-analysis. Smoke tests set this True to keep the test DB clean.
     cleanup_after_run: bool = False
-
-
-def resolve_unfinished_end_state(state: ColonyState) -> EndState:
-    """Derive a terminal `EndState` for a run the harness left ambiguous.
-
-    Sub-bug (ii) fix: if the harness loop exits with `state.end_state is
-    None` (e.g. the iteration counter exhausted before `/decide` ran for
-    the terminal turn, or a defensive `pr is None` break fired), the run
-    is recorded as `UNKNOWN` and the verdict step never runs. This
-    function fills in the gap per SPEC §10 — every run resolves to one
-    of {ENDURED, COLLAPSED, OUSTED, KILLED}.
-
-    Strategy:
-      1. If `end_state` is already set, return it (idempotent).
-      2. Reuse `engine.compute_end_state` priority order via a synthetic
-         state with `turn_number == max_turns`. This forces the
-         turn-limit branch to fire when the early branches (player dead,
-         all agents dead, resource at 0) don't apply, so we get the same
-         ENDURED-vs-COLLAPSED arbitration the engine would have used at
-         a clean max-turn boundary.
-      3. If `compute_end_state` still returns None (defensive — should
-         not happen with the synthetic state), default to COLLAPSED so
-         the run is at least labelled and verdict-eligible.
-
-    The function does NOT mutate the engine's persisted state — the
-    orchestrator is responsible for writing the resolved `end_state`
-    back to `game_sessions.end_state` if it wants to enable the
-    post-mortem path.
-    """
-    if state.end_state is not None:
-        return state.end_state
-
-    # Force the turn-limit branch by setting turn_number = max_turns. If
-    # the colony is otherwise viable, compute_end_state returns ENDURED;
-    # if any rail is broken (resources, legitimacy, agent count) it
-    # returns COLLAPSED.
-    synthetic = state.model_copy(update={"turn_number": state.max_turns})
-    derived = compute_end_state(synthetic)
-    if derived is not None:
-        return derived
-    # compute_end_state returned None despite turn_number >= max_turns —
-    # only possible if every gate passed somehow. Default to COLLAPSED
-    # rather than silently leaving end_state unset.
-    return EndState.COLLAPSED
-
-
-async def _provision_synthetic_user(user_id: UUID, email: str) -> None:
-    """Insert auth.users + profiles row for a per-game synthetic user.
-
-    Mirrors tests/eval/conftest.py::_ensure_auth_user. Each game in the
-    harness gets its own user_id so the daily-run gate
-    (one-run-per-account-per-day) doesn't reject games 2..N.
-    """
-    async with async_session_factory() as s:
-        await s.execute(
-            text(
-                """
-                INSERT INTO auth.users (
-                    id, instance_id, aud, role, email, encrypted_password,
-                    email_confirmed_at, created_at, updated_at
-                )
-                VALUES (
-                    :id,
-                    '00000000-0000-0000-0000-000000000000'::uuid,
-                    'authenticated', 'authenticated', :email,
-                    '', now(), now(), now()
-                )
-                ON CONFLICT (id) DO NOTHING
-                """
-            ),
-            {"id": user_id, "email": email},
-        )
-        await s.execute(
-            text(
-                """
-                INSERT INTO profiles (id, display_name, total_runs, created_at)
-                VALUES (:id, :name, 0, now())
-                ON CONFLICT (id) DO NOTHING
-                """
-            ),
-            {"id": user_id, "name": "Playtest Synthetic User"},
-        )
-        await s.commit()
-
-
-async def _cleanup_synthetic_user(user_id: UUID) -> None:
-    """Delete a per-game synthetic auth.users row (cascade removes the
-    profiles row + game_sessions + agents + turn_logs via FK)."""
-    async with async_session_factory() as s:
-        await s.execute(text("DELETE FROM auth.users WHERE id = :id"), {"id": user_id})
-        await s.commit()
+    # `claude --model` alias for every persona invocation.
+    persona_model: str = "sonnet"
+    # Langfuse tracing for engine calls. Off by default: a 42-game run would
+    # burn a large share of the free 50K obs/month.
+    trace: bool = False
 
 
 def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
@@ -179,31 +104,6 @@ def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
     """
     cells = paired_cells(config.settings, config.runs_per_persona)
     return [(p, setting, seed) for p in config.personas for setting, seed in cells]
-
-
-def _uuid_for_setting(setting_id: str, now_utc: datetime, max_attempts: int = 1000) -> UUID:
-    """Generate a `uuid4` whose `_pick_setting_id(uid, now_utc)` returns the
-    requested setting.
-
-    `app.game.service.create_game_session` runs `_pick_setting_id` on the
-    incoming `user_id` and serves whatever setting that picker returns —
-    ignoring any setting the harness wanted. Brute-forcing uuids is the
-    cheapest way to drive a specific setting per game without growing the
-    engine API: with ~3 valid settings, expected attempts is ~3.
-
-    Raises `ValueError` if `setting_id` isn't in the engine's available pool
-    (otherwise the loop spins until `max_attempts`).
-    """
-    available = set(list_available_settings())
-    if setting_id not in available:
-        raise ValueError(f"setting {setting_id!r} not in available settings {sorted(available)!r}")
-    for _ in range(max_attempts):
-        candidate = uuid.uuid4()
-        if _pick_setting_id(candidate, now_utc) == setting_id:
-            return candidate
-    raise RuntimeError(
-        f"could not find a uuid mapping to setting {setting_id!r} after {max_attempts} attempts"
-    )
 
 
 async def _drive_one_game(
@@ -252,6 +152,7 @@ async def _drive_one_game(
             shell_dir=config.shell_dir,
             seed=seed,
             turn_input_provider=turn_input_provider,
+            model=config.persona_model,
         )
 
         run_record = await simulate_game_with_player(
@@ -421,8 +322,9 @@ async def run_harness(*, config: PlaytestConfig) -> None:
                     }
                 )
 
-    async with harness_app_state():
-        await asyncio.gather(*(go(p, s, sd) for (p, s, sd) in allocations))
+    with tracing_disabled(enabled=not config.trace):
+        async with harness_app_state():
+            await asyncio.gather(*(go(p, s, sd) for (p, s, sd) in allocations))
 
     # Reconstruct RunRecords for corpus oracles from per-archive summary fields.
     for a in archives:
@@ -472,37 +374,56 @@ async def run_harness(*, config: PlaytestConfig) -> None:
     )
 
 
-def main() -> None:  # pragma: no cover — CLI entry
-    """CLI: defaults to 7 × 6 = 42 runs across 3 settings."""
-    import argparse
-    import os
-
-    p = argparse.ArgumentParser(description="Run the LLM play-test harness.")
-    p.add_argument("--out", default=None, help="Output dir; default docs/playtest/<date>")
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Run the LLM persona play-test harness.")
+    p.add_argument("--out", default=None, help="Output dir; default docs/playtest/<date>[-N]")
     p.add_argument("--max-concurrency", type=int, default=5)
-    p.add_argument("--runs-per-persona", type=int, default=6)
-    args = p.parse_args()
+    p.add_argument(
+        "--runs-per-persona",
+        type=int,
+        default=6,
+        help="Paired cells each persona plays (interleaved over settings); default 6",
+    )
+    p.add_argument("--personas", default=None, help="Comma list; default all 7")
+    p.add_argument("--max-turns", type=int, default=12)
+    p.add_argument("--persona-model", default="sonnet", help="claude --model alias")
+    p.add_argument("--trace", action="store_true", help="Enable Langfuse tracing (default off)")
+    p.add_argument(
+        "--allow-remote-db",
+        action="store_true",
+        help="Skip the local-DATABASE_URL guard (synthetic users get inserted!)",
+    )
+    return p
 
-    from datetime import UTC, datetime
+
+def main() -> None:  # pragma: no cover — CLI entry
+    """CLI: defaults to 7 personas × 6 paired cells = 42 games."""
+    args = build_parser().parse_args()
+    require_local_database(app.config.settings.DATABASE_URL, allow_remote=args.allow_remote_db)
+    if shutil.which("claude") is None:
+        raise SystemExit("`claude` CLI not on PATH; the persona side needs it.")
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    if args.out:
-        out_dir = Path(args.out)
-    else:
-        # Anchor to repo root so artifacts land in <repo>/docs/playtest/<date>/
-        # regardless of cwd. Script lives at <repo>/backend/scripts/play_test.py.
-        repo_root = Path(__file__).resolve().parent.parent.parent
-        out_dir = repo_root / "docs" / "playtest" / today
-
-    git_sha = os.environ.get("OUTPOST_GIT_SHA", "unknown")
+    # Anchor to repo root so artifacts land in <repo>/docs/playtest/ regardless
+    # of cwd. Script lives at <repo>/backend/scripts/play_test.py.
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    out_dir = Path(args.out) if args.out else next_free_dir(repo_root / "docs" / "playtest", today)
 
     config = PlaytestConfig(
         out_dir=out_dir,
         max_concurrency=args.max_concurrency,
         runs_per_persona=args.runs_per_persona,
-        git_sha=git_sha,
+        max_turns=args.max_turns,
+        persona_model=args.persona_model,
+        trace=args.trace,
+        git_sha=git_sha(),
     )
+    if args.personas:
+        config.personas = [p.strip() for p in args.personas.split(",") if p.strip()]  # type: ignore[misc]
+        for pid in config.personas:
+            get_persona(pid)  # fail fast on a typo
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     asyncio.run(run_harness(config=config))
 
 

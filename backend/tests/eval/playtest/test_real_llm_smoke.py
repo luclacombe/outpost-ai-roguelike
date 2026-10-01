@@ -1,6 +1,7 @@
-"""Real-LLM smoke. Skipped unless OUTPOST_PLAYTEST_REAL_LLM=1 AND
-ANTHROPIC_API_KEY is set. Runs one persona for one short game with the
-actual claude CLI subprocess + actual Anthropic API."""
+"""Real-LLM smoke. Skipped unless OUTPOST_PLAYTEST_REAL_LLM=1 AND an engine
+LLM key is configured (`settings.llm_api_key`: LLM_API_KEY, else
+ANTHROPIC_API_KEY, from env or `.env`). Runs one persona for one short game
+with the actual claude CLI subprocess + the configured engine provider."""
 
 from __future__ import annotations
 
@@ -20,8 +21,10 @@ pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
     reason="OUTPOST_PLAYTEST_REAL_LLM not set; skipping real-LLM playtest",
 )
 async def test_real_llm_one_persona_one_game(graph_postgres, tmp_path: Path) -> None:
-    if not (os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
-        pytest.skip("LLM_API_KEY / ANTHROPIC_API_KEY not set")
+    from app.config import settings
+
+    if not (settings.LLM_API_KEY or settings.ANTHROPIC_API_KEY):
+        pytest.skip("no engine LLM key configured (LLM_API_KEY / ANTHROPIC_API_KEY)")
     if shutil.which("claude") is None:
         pytest.skip("claude CLI not on PATH")
 
