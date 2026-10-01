@@ -37,6 +37,7 @@ from app.eval.playtest.output import (
 )
 from app.eval.playtest.personas import PERSONAS, get_persona
 from app.eval.playtest.schemas import PersonaId
+from app.eval.playtest.seeds import paired_cells
 from app.eval.playtest.subprocess_pool import SubprocessPool
 from app.eval.types import RunRecord
 from app.game.engine import compute_end_state
@@ -166,21 +167,15 @@ async def _cleanup_synthetic_user(user_id: UUID) -> None:
 
 
 def _allocate_runs(config: PlaytestConfig) -> list[tuple[PersonaId, str, int]]:
-    """Round-robin (persona, setting, seed) tuples.
+    """Paired (persona, setting, seed) allocation.
 
-    Setting index is `(persona_idx * runs_per_persona + run_idx) % len(settings)`,
-    which matches the prior persona-local rotation when
-    `runs_per_persona % len(settings) == 0` (the production 7×6×3 = 42 case)
-    but stays balanced for small smoke runs where `runs_per_persona < len(settings)`.
+    Every persona plays the same `runs_per_persona` cells from
+    `seeds.paired_cells`; seeds depend on (setting, run_idx) only. At the
+    production size (6 runs, 3 settings) that is 2 seeds per setting and
+    42 games across 7 personas.
     """
-    out: list[tuple[PersonaId, str, int]] = []
-    for persona_idx, persona_id in enumerate(config.personas):
-        for run_idx in range(config.runs_per_persona):
-            setting_idx = (persona_idx * config.runs_per_persona + run_idx) % len(config.settings)
-            setting = config.settings[setting_idx]
-            seed = hash((persona_id, setting, run_idx)) & 0x7FFFFFFF
-            out.append((persona_id, setting, seed))
-    return out
+    cells = paired_cells(config.settings, config.runs_per_persona)
+    return [(p, setting, seed) for p in config.personas for setting, seed in cells]
 
 
 def _uuid_for_setting(setting_id: str, now_utc: datetime, max_attempts: int = 1000) -> UUID:
@@ -222,8 +217,10 @@ async def _drive_one_game(
     the daily-run gate doesn't reject games 2..N. The user_id is brute-forced
     via `_uuid_for_setting` so the engine's deterministic per-user setting
     picker returns the *requested* setting (not whatever a fresh uuid4 would
-    happen to hash to). Game seeds remain reproducible per
-    `(persona_id, setting, run_idx)`; user_ids do not.
+    happen to hash to). `seed` reaches the engine through
+    `simulate_game_with_player` (seed-override dependency), so every
+    persona on the same cell starts from the same colony; user_ids are
+    still random.
     """
     from tests.fixtures.run_simulator import simulate_game_with_player  # noqa: PLC0415
 

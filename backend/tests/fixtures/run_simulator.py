@@ -38,7 +38,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.database import async_session_factory
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_run_seed_override
 from app.eval.types import RunRecord
 from app.game.models import GameSession, TurnLog
 from app.game.schemas import ColonyState, ToolCall
@@ -112,6 +112,29 @@ def _auth_override_from_ctx() -> dict[str, str]:
             "use simulate_game / simulate_game_with_player as the entrypoint"
         )
     return _auth_override(uid)
+
+
+# Per-task run seed, read by the `get_run_seed_override` dependency override.
+# Same pattern as `_eval_user_id_ctx`: one shared override callable, one
+# contextvar token per game task. This is how the harness `seed` reaches
+# the engine, which makes (setting, seed) cells paired across players.
+_eval_seed_ctx: ContextVar[int | None] = ContextVar("eval_seed", default=None)
+
+
+def _seed_override_from_ctx() -> int | None:
+    return _eval_seed_ctx.get()
+
+
+def _install_overrides(user_id: UUID, seed: int) -> tuple[Any, Any]:
+    """Register the shared ctx-reading overrides and set this task's values."""
+    app.dependency_overrides.setdefault(get_current_user, _auth_override_from_ctx)
+    app.dependency_overrides.setdefault(get_run_seed_override, _seed_override_from_ctx)
+    return _eval_user_id_ctx.set(user_id), _eval_seed_ctx.set(seed)
+
+
+def _reset_overrides(tokens: tuple[Any, Any]) -> None:
+    _eval_user_id_ctx.reset(tokens[0])
+    _eval_seed_ctx.reset(tokens[1])
 
 
 class _RunAggregator:
@@ -206,6 +229,10 @@ async def simulate_game(
     `real_llm` is a no-op flag here; the network is either intercepted by a
     `respx.mock` block in the caller (mocked mode) or not (real mode).
 
+    `seed` seeds both the policy RNG and the engine run (via the
+    `get_run_seed_override` dependency override), so the same seed gives
+    the same starting colony and event RNG for every policy.
+
     After the SSE loop terminates, the driver reads `turn_logs` for the
     game and walks every row to populate:
 
@@ -225,8 +252,7 @@ async def simulate_game(
     player = SimulatedPlayer(policy, seed=seed)
     aggregator = _RunAggregator()
 
-    app.dependency_overrides.setdefault(get_current_user, _auth_override_from_ctx)
-    token = _eval_user_id_ctx.set(user_id)
+    tokens = _install_overrides(user_id, seed)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             create_resp = await client.post("/game/session")
@@ -270,7 +296,7 @@ async def simulate_game(
                     ended = True
                     break
     finally:
-        _eval_user_id_ctx.reset(token)
+        _reset_overrides(tokens)
 
     # `ended` is informational — `final_state.end_state` is authoritative.
     _ = ended
@@ -300,12 +326,13 @@ async def simulate_game_with_player(
     from (user_id, UTC day)); the returned RunRecord reflects what the
     server actually used.
 
+    `seed` becomes the engine run seed (see `simulate_game`).
+
     `real_llm` is a no-op flag here; intercept network externally via respx.
     """
     aggregator = _RunAggregator()
 
-    app.dependency_overrides.setdefault(get_current_user, _auth_override_from_ctx)
-    token = _eval_user_id_ctx.set(user_id)
+    tokens = _install_overrides(user_id, seed)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             create_resp = await client.post("/game/session")
@@ -357,7 +384,7 @@ async def simulate_game_with_player(
                 if any(f["event"] == "run_over" for f in decide_frames):
                     break
     finally:
-        _eval_user_id_ctx.reset(token)
+        _reset_overrides(tokens)
 
     policy = str(getattr(player, "persona", None) and player.persona.id or "llm")
     return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
