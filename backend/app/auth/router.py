@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.gate import can_start_run, next_run_at
 from app.auth.schemas import UserInfo
+from app.config import settings
 from app.dependencies import get_current_user, get_db
 from app.models import Profile
 
@@ -28,7 +29,7 @@ async def me(
     user_id = UUID(user["sub"])
     profile = await db.get(Profile, user_id)
     last = profile.last_run_started_at if profile else None
-    eligible = can_start_run(last)
+    eligible = can_start_run(last, bypass=settings.DEV_BYPASS_DAILY_GATE)
     return UserInfo(
         id=user["sub"],
         email=user.get("email"),

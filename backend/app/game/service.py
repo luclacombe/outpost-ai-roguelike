@@ -23,6 +23,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.gate import next_run_at
+from app.config import settings
 from app.game import models as game_models
 from app.game.exceptions import DailyGateExceeded, GameNotFound, NoSettingsAvailable
 from app.game.generator import generate_run
@@ -103,13 +104,13 @@ async def create_game_session(
 
     # Atomic gate + claim. `total_runs` is bumped as part of the same row
     # touch so no separate UPDATE is needed.
-    result = await db.execute(
-        update(Profile)
-        .where(Profile.id == user_id)
-        .where(
+    claim = update(Profile).where(Profile.id == user_id)
+    if not settings.DEV_BYPASS_DAILY_GATE:
+        claim = claim.where(
             (Profile.last_run_started_at.is_(None)) | (Profile.last_run_started_at < today_midnight)
         )
-        .values(
+    result = await db.execute(
+        claim.values(
             last_run_started_at=now_utc,
             total_runs=Profile.total_runs + 1,
         )

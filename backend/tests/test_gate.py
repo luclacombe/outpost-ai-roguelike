@@ -41,3 +41,11 @@ def test_next_run_at_normalizes_non_utc_input():
     # 21:30 UTC on 04-23 → next midnight UTC is 04-24 00:00
     expected = datetime(2026, 4, 24, 0, 0, tzinfo=UTC)
     assert next_run_at(last) == expected
+
+
+def test_bypass_allows_same_day_run():
+    assert can_start_run(datetime.now(UTC), bypass=True) is True
+
+
+def test_bypass_off_by_default_keeps_gate():
+    assert can_start_run(datetime.now(UTC), bypass=False) is False

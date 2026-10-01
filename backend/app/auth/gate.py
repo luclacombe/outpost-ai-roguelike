@@ -22,7 +22,8 @@ def next_run_at(last_started: datetime) -> datetime:
     return midnight + timedelta(days=1)
 
 
-def can_start_run(last_started: datetime | None) -> bool:
-    if last_started is None:
+def can_start_run(last_started: datetime | None, *, bypass: bool = False) -> bool:
+    """`bypass` is `settings.DEV_BYPASS_DAILY_GATE` (dev-only, see config)."""
+    if bypass or last_started is None:
         return True
     return datetime.now(UTC) >= next_run_at(last_started)

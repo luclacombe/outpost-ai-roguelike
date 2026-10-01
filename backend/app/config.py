@@ -10,6 +10,8 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_DEV_ENVIRONMENTS = frozenset({"dev", "development", "local", "test"})
+
 
 class Settings(BaseSettings):
     # env_ignore_empty: a blank `FOO=` line means "unset" (use the default),
@@ -54,10 +56,23 @@ class Settings(BaseSettings):
     MAX_COST_CENTS_PER_RUN: int = 40
     SONNET_NARRATION_ENABLED: bool = True
 
+    # Dev only: skip the one-run-per-day gate so local testing doesn't need
+    # DB edits. Rejected at startup unless ENVIRONMENT is a dev environment.
+    DEV_BYPASS_DAILY_GATE: bool = False
+
     @model_validator(mode="after")
     def _require_llm_key(self) -> Self:
         if not (self.LLM_API_KEY or self.ANTHROPIC_API_KEY):
             raise ValueError("Set LLM_API_KEY or ANTHROPIC_API_KEY (blank does not count).")
+        return self
+
+    @model_validator(mode="after")
+    def _bypass_only_in_dev(self) -> Self:
+        if self.DEV_BYPASS_DAILY_GATE and self.ENVIRONMENT.lower() not in _DEV_ENVIRONMENTS:
+            raise ValueError(
+                f"DEV_BYPASS_DAILY_GATE=true is only allowed when ENVIRONMENT is one of "
+                f"{sorted(_DEV_ENVIRONMENTS)}; got {self.ENVIRONMENT!r}."
+            )
         return self
 
     @property
