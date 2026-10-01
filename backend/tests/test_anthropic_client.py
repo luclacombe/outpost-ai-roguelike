@@ -1,6 +1,6 @@
 """Unit tests for `cost_cents_of`.
 
-We do not exercise `call_haiku` / `call_sonnet` here — those are trivial
+We do not exercise `call_fast` / `call_narration` here — those are trivial
 pass-throughs to `client.messages.create`, and respx-mocking is deferred
 to the agent-debate node tests which exercise them end-to-end.
 
@@ -22,8 +22,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.agent.anthropic_client import cost_cents_of
-from app.agent.constants import MODEL_HAIKU, MODEL_SONNET
+from app.agent import anthropic_client
+from app.agent.anthropic_client import cost_cents_of, pricing_for
+from app.agent.constants import (
+    MODEL_DEEPSEEK_V4_1_FLASH,
+    MODEL_HAIKU,
+    MODEL_PRICING,
+    MODEL_SONNET,
+    ModelPricing,
+)
 
 
 def _usage(
@@ -251,3 +258,63 @@ def test_missing_cache_attributes_treated_as_zero():
     r = _response(u)
     # Same as fresh-only: 10k * 100 / 1e6 = 1.0 cent.
     assert cost_cents_of(r, MODEL_HAIKU) == pytest.approx(1.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Pricing table (model id -> rates) + env overrides.
+# ---------------------------------------------------------------------------
+
+
+def test_pricing_table_covers_default_and_openrouter_models():
+    for model in (MODEL_HAIKU, MODEL_SONNET, MODEL_DEEPSEEK_V4_1_FLASH):
+        assert model in MODEL_PRICING
+
+
+def test_deepseek_v4_1_flash_four_bucket_math():
+    """OpenRouter list price 2026-10-01: $0.027/MTok prompt, $0.60/MTok
+    completion, $0.027/MTok cache read; no cache-write price published, so
+    cache writes bill at the prompt rate."""
+    r = _response(
+        _usage(
+            input_tokens=200,
+            output_tokens=1_000,
+            cache_read=4_650,
+            cache_creation=100,
+        )
+    )
+    expected = (200 * 2.7 + 4_650 * 2.7 + 100 * 2.7 + 1_000 * 60) / 1_000_000
+    assert cost_cents_of(r, MODEL_DEEPSEEK_V4_1_FLASH) == pytest.approx(expected)
+
+
+def test_pricing_override_from_settings(monkeypatch):
+    monkeypatch.setattr(
+        anthropic_client.settings,
+        "LLM_PRICING_OVERRIDES",
+        {"vendor/new-model": {"input": 10, "cache_write": 20, "cache_read": 1, "output": 50}},
+    )
+    assert pricing_for("vendor/new-model") == ModelPricing(
+        input=10, cache_write=20, cache_read=1, output=50
+    )
+    r = _response(_usage(input_tokens=100_000, output_tokens=10_000))
+    # 100k * 10 + 10k * 50 = 1.5M cent-tokens / 1e6 = 1.5 cents.
+    assert cost_cents_of(r, "vendor/new-model") == pytest.approx(1.5)
+
+
+def test_pricing_override_replaces_builtin(monkeypatch):
+    monkeypatch.setattr(
+        anthropic_client.settings,
+        "LLM_PRICING_OVERRIDES",
+        {MODEL_HAIKU: {"input": 0, "cache_write": 0, "cache_read": 0, "output": 1000}},
+    )
+    r = _response(_usage(input_tokens=10_000, output_tokens=1_000))
+    assert cost_cents_of(r, MODEL_HAIKU) == pytest.approx(1.0)
+
+
+def test_malformed_pricing_override_raises_value_error(monkeypatch):
+    monkeypatch.setattr(
+        anthropic_client.settings,
+        "LLM_PRICING_OVERRIDES",
+        {"vendor/bad": {"input": 1}},
+    )
+    with pytest.raises(ValueError, match="vendor/bad"):
+        pricing_for("vendor/bad")

@@ -26,7 +26,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.agent.anthropic_client import client as _client
-from app.agent.constants import MODEL_HAIKU
+from app.agent.anthropic_client import request_extras
+from app.config import settings
 from app.eval._judge_utils import _extract_text, _parse_judge_json
 from app.eval.personality import build_profile_text
 from app.eval.types import RunCoherenceInput
@@ -140,7 +141,8 @@ async def score_turn_coherence(
     user_message = _build_user_message(agent, reasoning, action, turn_number)
 
     completion = await api.messages.create(
-        model=MODEL_HAIKU,
+        model=settings.LLM_MODEL_FAST,
+        **request_extras(),
         max_tokens=80,
         system=_JUDGE_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],

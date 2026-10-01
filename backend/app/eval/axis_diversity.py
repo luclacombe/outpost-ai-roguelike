@@ -21,7 +21,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.agent.anthropic_client import client as _client
-from app.agent.constants import MODEL_HAIKU
+from app.agent.anthropic_client import request_extras
+from app.config import settings
 from app.eval._judge_utils import _extract_text, _strip_code_fence
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,8 @@ async def score_axis_diversity(
     user_message = _build_user_message(event_text, proposals)
 
     completion = await api.messages.create(
-        model=MODEL_HAIKU,
+        model=settings.LLM_MODEL_FAST,
+        **request_extras(),
         # 600 (not the obvious 200) because the response is a JSON object
         # with a 3-element list (each ~70 chars including UUID) plus a
         # reasoning sentence; Haiku 4.5 occasionally truncates mid-UUID at

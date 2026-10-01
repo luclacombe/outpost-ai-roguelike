@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.anthropic_client import call_haiku
+from app.agent.anthropic_client import call_fast
 from app.agent.prompts import (
     build_colony_state_block,
     build_debate_user_message,
@@ -85,7 +85,7 @@ async def _run_one_seed(seed: dict) -> _SeedRunResult:
     colony_text = build_colony_state_block(state)["text"]
     user_message = f"{colony_text}\n\n{build_debate_user_message(event)}"
 
-    response = await call_haiku(
+    response = await call_fast(
         system_blocks=system_blocks,
         user_message=user_message,
         tools=AGENT_TOOL_SCHEMAS,

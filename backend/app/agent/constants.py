@@ -2,7 +2,13 @@
 
 Model IDs, pricing (cents per million tokens), and budget rails. No imports
 from app internals — this module is the root of the agent dependency graph.
+
+The models actually called are chosen by `settings.LLM_MODEL_FAST` /
+`settings.LLM_MODEL_NARRATION`; the IDs below are the defaults plus every
+model we have a price for.
 """
+
+from dataclasses import dataclass
 
 # Model IDs. Haiku 4.5 publishes a dated snapshot; Sonnet 4.6 and Opus 4.7
 # do not — per Anthropic's models overview (platform.claude.com/docs/en/about-
@@ -11,18 +17,33 @@ from app internals — this module is the root of the agent dependency graph.
 # If Anthropic publishes a dated Sonnet 4.6 later, swap it in here.
 MODEL_HAIKU = "claude-haiku-4-5-20251001"
 MODEL_SONNET = "claude-sonnet-4-6"
+# OpenRouter model slug (Anthropic-compatible Messages endpoint).
+MODEL_DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
 
-# Pricing in cents per million tokens. Verify against Anthropic pricing
-# page periodically; these are the Haiku 4.5 numbers as of Apr 2026.
-CENTS_PER_MTOK_HAIKU_INPUT = 100  # $1.00 / MTok
-CENTS_PER_MTOK_HAIKU_CACHE_WRITE = 125  # $1.25 / MTok (ephemeral write)
-CENTS_PER_MTOK_HAIKU_CACHE_READ = 10  # $0.10 / MTok (cache hit)
-CENTS_PER_MTOK_HAIKU_OUTPUT = 500  # $5.00 / MTok
 
-CENTS_PER_MTOK_SONNET_INPUT = 300  # $3.00 / MTok
-CENTS_PER_MTOK_SONNET_CACHE_WRITE = 375  # $3.75 / MTok (input × 1.25, ephemeral 5m)
-CENTS_PER_MTOK_SONNET_CACHE_READ = 30  # $0.30 / MTok (input × 0.10)
-CENTS_PER_MTOK_SONNET_OUTPUT = 1500  # $15.00 / MTok
+@dataclass(frozen=True)
+class ModelPricing:
+    """Cents per million tokens for each of the four `usage` buckets."""
+
+    input: float  # fresh (non-cached) input
+    cache_write: float  # cache_creation_input_tokens
+    cache_read: float  # cache_read_input_tokens
+    output: float
+
+
+# Verify against provider pricing pages periodically. Unknown models raise in
+# `cost_cents_of`; add an entry here or via settings.LLM_PRICING_OVERRIDES.
+MODEL_PRICING: dict[str, ModelPricing] = {
+    # Anthropic, as of Apr 2026. Cache write = input x 1.25 (5-min ephemeral),
+    # cache read = input x 0.10.
+    MODEL_HAIKU: ModelPricing(input=100, cache_write=125, cache_read=10, output=500),
+    MODEL_SONNET: ModelPricing(input=300, cache_write=375, cache_read=30, output=1500),
+    # OpenRouter /api/v1/models, fetched 2026-10-01: prompt $0.027/MTok,
+    # completion $0.60/MTok, input_cache_read $0.027/MTok. No
+    # input_cache_write price is published, so cache writes bill at the
+    # prompt rate.
+    MODEL_DEEPSEEK_V4_1_FLASH: ModelPricing(input=2.7, cache_write=2.7, cache_read=2.7, output=60),
+}
 
 # Budget rails per ARCHITECTURE §5.2.
 MAX_COST_CENTS_PER_TURN = 15  # ~$0.15; if exceeded, skip Sonnet narration.

@@ -29,7 +29,8 @@ from typing import Any
 import numpy as np
 
 from app.agent.anthropic_client import client as _client
-from app.agent.constants import MODEL_HAIKU
+from app.agent.anthropic_client import request_extras
+from app.config import settings
 from app.game.schemas import Agent
 
 logger = logging.getLogger(__name__)
@@ -201,7 +202,8 @@ async def score_personality_consistency_judge(
     api = anthropic_client if anthropic_client is not None else _client
     user_message = _build_judge_user_message(agent, response, turn_number)
     completion = await api.messages.create(
-        model=MODEL_HAIKU,
+        model=settings.LLM_MODEL_FAST,
+        **request_extras(),
         max_tokens=80,
         system=JUDGE_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],

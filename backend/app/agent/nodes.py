@@ -9,7 +9,7 @@ Invariants enforced here:
   * #5 — prompt caching is mandatory: system blocks come from `prompts`
     builders which stamp `cache_control: ephemeral` on each block.
   * #6 — one batched LLM call per debate. `agent_debate` makes exactly
-    one `call_haiku` regardless of how many advisors are alive.
+    one `call_fast` regardless of how many advisors are alive.
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
     `resolve` derives consequence tool calls (modify_legitimacy,
@@ -28,8 +28,8 @@ from uuid import UUID
 import anthropic
 from sqlalchemy import select
 
-from app.agent.anthropic_client import call_haiku, call_sonnet, cost_cents_of
-from app.agent.constants import MAX_COST_CENTS_PER_TURN, MODEL_HAIKU, MODEL_SONNET
+from app.agent.anthropic_client import call_fast, call_narration, cost_cents_of
+from app.agent.constants import MAX_COST_CENTS_PER_TURN
 from app.agent.prompts import (
     build_autonomous_user_message,
     build_colony_state_block,
@@ -39,6 +39,7 @@ from app.agent.prompts import (
     parse_debate_response,
 )
 from app.agent.state import GameTurnState
+from app.config import settings
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
@@ -171,13 +172,13 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     colony_state_text = build_colony_state_block(colony_state)["text"]
     user_message = f"{colony_state_text}\n\n{build_debate_user_message(event)}"
 
-    response = await call_haiku(
+    response = await call_fast(
         system_blocks,
         user_message,
         tools=AGENT_TOOL_SCHEMAS,
         max_tokens=2000,
     )
-    cost = cost_cents_of(response, MODEL_HAIKU)
+    cost = cost_cents_of(response, settings.LLM_MODEL_FAST)
     parsed = parse_debate_response(response, alive_agents)
 
     return {
@@ -342,13 +343,13 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     # to restrict itself to introspective tools; the filter on parsed
     # tool calls below is the runtime safety net that drops anything
     # off-list before the engine sees it.
-    response = await call_haiku(
+    response = await call_fast(
         system_blocks,
         user_message,
         tools=AGENT_TOOL_SCHEMAS,
         max_tokens=1500,
     )
-    cost = cost_cents_of(response, MODEL_HAIKU)
+    cost = cost_cents_of(response, settings.LLM_MODEL_FAST)
     parsed = parse_debate_response(response, alive_agents)
 
     # Drop any tool call the model emitted that isn't on the autonomous
@@ -420,12 +421,12 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
     )
 
     try:
-        response = await call_sonnet(system_blocks, user_message, max_tokens=500)
+        response = await call_narration(system_blocks, user_message, max_tokens=500)
     except anthropic.APIError as exc:
-        logger.warning("narrate_turn: Sonnet call failed (%s); using fallback", exc)
+        logger.warning("narrate_turn: narration call failed (%s); using fallback", exc)
         return {"narration": fallback}
 
-    cost = cost_cents_of(response, MODEL_SONNET)
+    cost = cost_cents_of(response, settings.LLM_MODEL_NARRATION)
 
     # Sonnet returns a single text block for prose-only requests. Defensive
     # extraction — if something unexpected comes back, fall back gracefully.

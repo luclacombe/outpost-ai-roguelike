@@ -1,8 +1,12 @@
 """Anthropic SDK wrapper + typed cost accounting.
 
-Phase 4 foundation — every LLM call in the agent graph goes through
-`call_haiku` or `call_sonnet`. Cost math is centralised in `cost_cents_of`
+Every LLM call in the agent graph goes through `call_fast` (debate +
+autonomous) or `call_narration`. Cost math is centralised in `cost_cents_of`
 so budget rails (MAX_COST_CENTS_PER_TURN / _RUN) can be enforced uniformly.
+
+Provider is configurable (see `Settings.LLM_*`): Anthropic direct by default,
+or any Anthropic-compatible Messages endpoint such as OpenRouter's. The
+`anthropic` SDK is used either way.
 
 Direct `AsyncAnthropic` only. Do NOT wrap via LangChain's `ChatAnthropic` —
 we need raw control over `cache_control`, tool schemas, and `usage` fields.
@@ -10,61 +14,117 @@ we need raw control over `cache_control`, tool schemas, and `usage` fields.
 
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, Omit
 
-from app.config import settings
+from app.config import Settings, settings
 
-from .constants import (
-    CENTS_PER_MTOK_HAIKU_CACHE_READ,
-    CENTS_PER_MTOK_HAIKU_CACHE_WRITE,
-    CENTS_PER_MTOK_HAIKU_INPUT,
-    CENTS_PER_MTOK_HAIKU_OUTPUT,
-    CENTS_PER_MTOK_SONNET_CACHE_READ,
-    CENTS_PER_MTOK_SONNET_CACHE_WRITE,
-    CENTS_PER_MTOK_SONNET_INPUT,
-    CENTS_PER_MTOK_SONNET_OUTPUT,
-    MODEL_HAIKU,
-    MODEL_SONNET,
-)
+from .constants import MODEL_PRICING, ModelPricing
+
+
+def build_client(s: Settings) -> AsyncAnthropic:
+    """Construct the shared async client for the configured provider.
+
+    `x-api-key` mode (Anthropic) sends `X-Api-Key`; `bearer` mode (OpenRouter)
+    sends `Authorization: Bearer`. The other header is explicitly omitted:
+    the SDK otherwise falls back to `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`
+    from the OS env and would send both, leaking an Anthropic key to a
+    third-party endpoint.
+    """
+    key = s.llm_api_key
+    if s.LLM_AUTH_SCHEME == "bearer":
+        return AsyncAnthropic(
+            api_key=None,
+            auth_token=key,
+            base_url=s.LLM_BASE_URL,
+            default_headers={"X-Api-Key": Omit()},
+        )
+    return AsyncAnthropic(
+        api_key=key,
+        base_url=s.LLM_BASE_URL,
+        default_headers={"Authorization": Omit()},
+    )
+
+
+def request_extras() -> dict[str, Any]:
+    """Provider-specific kwargs merged into every `messages.create` call.
+
+    Empty under defaults, so Anthropic requests are byte-identical to the
+    pre-provider-config shape. `thinking: {"type": "disabled"}` is the native
+    Messages API field; OpenRouter maps it to `reasoning: {enabled: false}`.
+    """
+    if settings.LLM_DISABLE_THINKING:
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
+
+def pricing_for(model: str) -> ModelPricing:
+    """Rates for `model`: settings override first, then the built-in table.
+
+    Raises ValueError for unknown models so the budget rails never silently
+    compute 0.
+    """
+    override = settings.LLM_PRICING_OVERRIDES.get(model)
+    if override is not None:
+        try:
+            return ModelPricing(**override)
+        except TypeError as exc:
+            raise ValueError(
+                f"LLM_PRICING_OVERRIDES[{model!r}] needs exactly input, cache_write, "
+                f"cache_read, output: {exc}"
+            ) from exc
+    pricing = MODEL_PRICING.get(model)
+    if pricing is None:
+        raise ValueError(
+            f"Unknown model for cost accounting: {model!r}. Add it to "
+            "app.agent.constants.MODEL_PRICING or settings.LLM_PRICING_OVERRIDES."
+        )
+    return pricing
+
+
+# Fail loud at startup if a configured model has no price.
+pricing_for(settings.LLM_MODEL_FAST)
+pricing_for(settings.LLM_MODEL_NARRATION)
 
 # One shared async client for the whole process — the SDK handles pooling.
-client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+client = build_client(settings)
 
 
-async def call_haiku(
+async def call_fast(
     system_blocks: list,
     user_message: str,
     tools: list | None = None,
     max_tokens: int = 2000,
 ) -> Any:
-    """Invoke Haiku with the provided system blocks and user message.
+    """Invoke the fast model (`settings.LLM_MODEL_FAST`).
 
     `system_blocks` is a list of content blocks (not a plain string) so the
     caller can attach `cache_control: {"type": "ephemeral"}` to personality
     and colony-state blocks. See ARCHITECTURE §3.5 for the cache layout.
     """
     kwargs: dict[str, Any] = {
-        "model": MODEL_HAIKU,
+        "model": settings.LLM_MODEL_FAST,
         "max_tokens": max_tokens,
         "system": system_blocks,
         "messages": [{"role": "user", "content": user_message}],
+        **request_extras(),
     }
     if tools is not None:
         kwargs["tools"] = tools
     return await client.messages.create(**kwargs)
 
 
-async def call_sonnet(
+async def call_narration(
     system_blocks: list,
     user_message: str,
     max_tokens: int = 1000,
 ) -> Any:
-    """Invoke Sonnet for narration. No tools — narration is freeform prose."""
+    """Invoke the narration model. No tools — narration is freeform prose."""
     return await client.messages.create(
-        model=MODEL_SONNET,
+        model=settings.LLM_MODEL_NARRATION,
         max_tokens=max_tokens,
         system=system_blocks,
         messages=[{"role": "user", "content": user_message}],
+        **request_extras(),
     )
 
 
@@ -83,6 +143,8 @@ def cost_cents_of(response: Any, model: str) -> float:
                                          of standard input (5-min ephemeral).
       * `output_tokens`                — completion tokens.
 
+    OpenRouter's Anthropic-compatible endpoint reports the same four fields.
+
     Calibrated against an Anthropic dashboard delta on 2026-04-24: this
     formula matched billed Haiku spend within 5% and Sonnet spend within
     rounding on a 31-call run. See PLAN.md "Errors & Learnings" Phase 4
@@ -92,29 +154,20 @@ def cost_cents_of(response: Any, model: str) -> float:
     `cache_*` fields are optional on `usage` — absent entirely (not `None`)
     when caching was not used. `getattr(..., 0) or 0` handles both
     "attribute missing" and "attribute present but zero" uniformly.
+
+    Rates come from `pricing_for(model)`; unknown models raise ValueError.
     """
+    p = pricing_for(model)
     u = response.usage
     input_tokens: int = u.input_tokens
     output_tokens: int = u.output_tokens
     cache_read: int = getattr(u, "cache_read_input_tokens", 0) or 0
     cache_creation: int = getattr(u, "cache_creation_input_tokens", 0) or 0
 
-    if model == MODEL_HAIKU:
-        cents = (
-            input_tokens * CENTS_PER_MTOK_HAIKU_INPUT
-            + cache_read * CENTS_PER_MTOK_HAIKU_CACHE_READ
-            + cache_creation * CENTS_PER_MTOK_HAIKU_CACHE_WRITE
-            + output_tokens * CENTS_PER_MTOK_HAIKU_OUTPUT
-        )
-        return cents / 1_000_000
-
-    if model == MODEL_SONNET:
-        cents = (
-            input_tokens * CENTS_PER_MTOK_SONNET_INPUT
-            + cache_read * CENTS_PER_MTOK_SONNET_CACHE_READ
-            + cache_creation * CENTS_PER_MTOK_SONNET_CACHE_WRITE
-            + output_tokens * CENTS_PER_MTOK_SONNET_OUTPUT
-        )
-        return cents / 1_000_000
-
-    raise ValueError(f"Unknown model for cost accounting: {model!r}")
+    cents = (
+        input_tokens * p.input
+        + cache_read * p.cache_read
+        + cache_creation * p.cache_write
+        + output_tokens * p.output
+    )
+    return cents / 1_000_000

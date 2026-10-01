@@ -19,7 +19,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.agent.anthropic_client import client as _client
-from app.agent.constants import MODEL_HAIKU
+from app.agent.anthropic_client import request_extras
+from app.config import settings
 from app.eval._judge_utils import _extract_text, _parse_judge_json
 from app.eval.axis_diversity import ProposalForJudge
 
@@ -93,7 +94,8 @@ async def score_proposal_attribution(
     user_message = _build_user_message(event_text, proposal)
 
     completion = await api.messages.create(
-        model=MODEL_HAIKU,
+        model=settings.LLM_MODEL_FAST,
+        **request_extras(),
         # 200 (not the obvious 80) because Haiku 4.5 frequently writes a long
         # one-sentence reasoning that truncates mid-string at 80 — the JSON
         # then fails to parse and the score falls back to neutral 0.5. ~10%
