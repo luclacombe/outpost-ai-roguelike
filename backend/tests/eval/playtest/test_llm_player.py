@@ -77,3 +77,15 @@ def test_player_seed_makes_shuffle_deterministic(
     o1 = p1._displayed_order_for(proposals)
     o2 = p2._displayed_order_for(proposals)
     assert o1 == o2  # same seed → same shuffle
+
+
+def test_player_forwards_persona_model(tmp_shell_dir) -> None:
+    player = LLMPlayer(
+        persona=OPTIMIZER,
+        pool=SubprocessPool(max_concurrency=1),
+        shell_dir=tmp_shell_dir,
+        seed=1,
+        turn_input_provider=dict,
+        model="haiku",
+    )
+    assert player._session.model == "haiku"  # noqa: SLF001

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.eval.playtest.persona_session import PersonaSession
+from app.eval.playtest.persona_session import DEFAULT_PERSONA_MODEL, PersonaSession
 from app.eval.playtest.schemas import Persona, PersonaTurnOutput
 from app.eval.playtest.subprocess_pool import PoolPickResult, SubprocessPool
 
@@ -35,6 +35,7 @@ class LLMPlayer:
         turn_input_provider: Callable[[], dict[str, Any]],
         effort: str = "high",
         per_turn_timeout_seconds: int = 300,
+        model: str = DEFAULT_PERSONA_MODEL,
     ) -> None:
         self.persona = persona
         self.pool = pool
@@ -47,6 +48,7 @@ class LLMPlayer:
             shell_dir=shell_dir,
             effort=effort,  # type: ignore[arg-type]
             per_turn_timeout_seconds=per_turn_timeout_seconds,
+            model=model,
         )
         self._first_turn_done = False
         self.per_turn_outputs: list[PersonaTurnOutput] = []

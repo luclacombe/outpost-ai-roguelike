@@ -6,9 +6,12 @@ in the JSON envelope and reuses it across the run's turns.
 
 Per spec §11: cwd is a clean shell directory (no project CLAUDE.md autoload),
 output format is JSON envelope, persona instructions injected via
---append-system-prompt, model is sonnet-4-6, effort is `high` for personas
-and `max` for the meta-aggregator (the aggregator does NOT use this class —
-it runs as an Agent subagent inside the user's Claude Code session).
+--append-system-prompt, effort is `high` for personas and `max` for the
+meta-aggregator (the aggregator does NOT use this class; it runs as an Agent
+subagent inside the user's Claude Code session). The model is pinned with
+`--model` on EVERY invocation (`claude --help`: the flag sets the model "for
+the current session", so a bare `--resume` could fall back to the CLI
+default). Default alias `sonnet`; `PlaytestConfig.persona_model` overrides.
 
 Failure handling (spec §10) lives in subprocess_pool.py — this class returns
 parsed output on success and raises on hard failure (subprocess exit non-zero,
@@ -59,7 +62,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 EffortLevel = Literal["low", "medium", "high", "xhigh", "max"]
-SONNET_MODEL_ID = "claude-sonnet-4-6"
+DEFAULT_PERSONA_MODEL = "sonnet"
 
 
 class PersonaSessionError(RuntimeError):
@@ -156,7 +159,7 @@ class PersonaSession:
         shell_dir: Path,
         effort: EffortLevel = "high",
         per_turn_timeout_seconds: int = 300,
-        model: str = SONNET_MODEL_ID,
+        model: str = DEFAULT_PERSONA_MODEL,
     ) -> None:
         self.persona = persona
         self.shell_dir = shell_dir
@@ -198,6 +201,8 @@ class PersonaSession:
             "--print",
             "--output-format",
             "json",
+            "--model",
+            self.model,
             "--effort",
             self.effort,
             user_message,

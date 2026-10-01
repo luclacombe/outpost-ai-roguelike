@@ -69,7 +69,7 @@ def test_first_turn_invokes_claude_print_with_correct_flags(
     assert "--print" in cmd
     assert "--output-format" in cmd and "json" in cmd
     assert "--effort" in cmd and "high" in cmd
-    assert "--model" in cmd and "claude-sonnet-4-6" in cmd
+    assert cmd[cmd.index("--model") + 1] == "sonnet"  # pinned alias, config default
     assert "--append-system-prompt" in cmd
 
     # System prompt content includes persona block
@@ -122,6 +122,32 @@ def test_subsequent_turn_uses_resume(
     # No --append-system-prompt on resume — system prompt is preserved across
     # the session by the server. Confirm this is the case:
     assert "--append-system-prompt" not in cmd
+    # --model applies to "the current session" only, so resume re-pins it.
+    assert cmd[cmd.index("--model") + 1] == "sonnet"
+    assert cmd[cmd.index("--effort") + 1] == "high"
+
+
+def test_persona_model_is_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_turn_input: dict[str, Any],
+    canned_persona_response_factory,
+    tmp_shell_dir,
+) -> None:
+    cmds: list[list[str]] = []
+    canned = canned_persona_response_factory(
+        chosen_proposal_id="p_mor", displayed_order=["p_dom", "p_mor", "p_wld"]
+    )
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        cmds.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=canned, stderr="")
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir, model="opus")
+    order = ["p_dom", "p_mor", "p_wld"]
+    session.first_turn(turn_input=fixture_turn_input, displayed_order=order)
+    session.subsequent_turn(turn_input={**fixture_turn_input, "turn": 2}, displayed_order=order)
+    assert [c[c.index("--model") + 1] for c in cmds] == ["opus", "opus"]
 
 
 def test_subsequent_turn_without_session_id_raises(
