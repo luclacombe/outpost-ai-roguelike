@@ -147,6 +147,7 @@ def generate_run(
     user_id: UUID,
     setting_id: str,
     seed: int,
+    run_key: str | None = None,
 ) -> ColonyState:
     """Build a fresh ColonyState for a new run. Deterministic given inputs.
 
@@ -165,10 +166,12 @@ def generate_run(
     max_turns = rng.randint(MIN_TURNS, MAX_TURNS)
     # Derive game_id deterministically from inputs so three calls with the same
     # (user_id, setting_id, seed) produce byte-identical state dumps.
-    game_id = uuid5(
-        _AGENT_UUID_NAMESPACE,
-        f"game:{user_id}:{setting_id}:{seed}",
-    )
+    # `run_key` (the service passes a fresh one per created run) keeps
+    # game_id unique when the same user replays a seed; game_id doubles as
+    # the LangGraph thread_id, so a reused id would resume a stale
+    # checkpoint. Content does not depend on it.
+    identity = f"game:{user_id}:{setting_id}:{seed}" + (f":{run_key}" if run_key else "")
+    game_id = uuid5(_AGENT_UUID_NAMESPACE, identity)
 
     agents = [
         _build_agent(

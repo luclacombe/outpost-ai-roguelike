@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,7 +146,9 @@ async def create_game_session(
         else int(now_utc.timestamp() * 1000) & 0x7FFFFFFF
     )
 
-    state = generate_run(user_id=user_id, setting_id=setting_id, seed=seed)
+    # Fresh run_key per created run: with a pinned seed (harness override) the
+    # same user would otherwise get the same game_id / LangGraph thread_id.
+    state = generate_run(user_id=user_id, setting_id=setting_id, seed=seed, run_key=uuid4().hex)
 
     # Persist the run + its four agents in the same transaction as the
     # conditional UPDATE. Any failure here rolls back the profile

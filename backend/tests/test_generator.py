@@ -85,6 +85,18 @@ def test_generate_run_content_depends_on_setting_and_seed_only() -> None:
     assert {a.id for a in s1.agents}.isdisjoint({a.id for a in s2.agents})
 
 
+def test_run_key_changes_identity_not_content() -> None:
+    """The service passes a fresh run_key per created run, so replaying a seed
+    for the same user never reuses a game_id (game_id is the LangGraph
+    thread_id; a reused one resumes a stale checkpoint)."""
+    s1 = generate_run(user_id=USER_ID, setting_id="arctic_station_v1", seed=SEED, run_key="a")
+    s2 = generate_run(user_id=USER_ID, setting_id="arctic_station_v1", seed=SEED, run_key="b")
+    assert s1.game_id != s2.game_id
+    assert {a.id for a in s1.agents}.isdisjoint({a.id for a in s2.agents})
+    assert [(a.name, a.ethics) for a in s1.agents] == [(a.name, a.ethics) for a in s2.agents]
+    assert s1.max_turns == s2.max_turns
+
+
 def test_generate_run_is_stable_across_processes() -> None:
     """Rolls must not depend on PYTHONHASHSEED (str hash() is salted per process)."""
     import json
