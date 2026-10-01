@@ -19,6 +19,7 @@ from app.eval.playtest.persona_session import (
 )
 from app.eval.playtest.personas import OPTIMIZER
 from app.eval.playtest.schemas import PersonaTurnFlags, PersonaTurnOutput
+from tests.eval.playtest._verdicts import verdict_dict
 
 
 def test_first_turn_invokes_claude_print_with_correct_flags(
@@ -134,16 +135,7 @@ def test_subsequent_turn_without_session_id_raises(
 
 def test_final_verdict_parses_run_verdict(monkeypatch: pytest.MonkeyPatch, tmp_shell_dir) -> None:
     """End-of-run verdict — persona reads post-mortem and emits 5-axis verdict."""
-    verdict_inner = {
-        "axes": {
-            "stakes_felt_real": {"score": 4, "rationale": "...", "turn_citations": [4, 7]},
-            "tonal_coherence": {"score": 5, "rationale": "...", "turn_citations": []},
-            "advisor_distinctness": {"score": 4, "rationale": "...", "turn_citations": [3]},
-            "dramatic_arc": {"score": 4, "rationale": "...", "turn_citations": [11]},
-        },
-        "continue_tomorrow": {"decision": True, "reason": "dissident path landed"},
-        "closing_paragraph": "...",
-    }
+    verdict_inner = verdict_dict(score=4, difficulty=2, bugs=["Day counter starts at 00."])
     envelope_json = json.dumps(
         {
             "type": "result",
@@ -164,6 +156,9 @@ def test_final_verdict_parses_run_verdict(monkeypatch: pytest.MonkeyPatch, tmp_s
 
     verdict = session.final_verdict(post_mortem_json={"end_state": "ENDURED"})
     assert verdict.axes.stakes_felt_real.score == 4
+    assert verdict.axes.meaningful_choices.score == 4
+    assert verdict.difficulty.score == 2
+    assert verdict.bugs_noticed == ["Day counter starts at 00."]
     assert verdict.continue_tomorrow.decision is True
 
 

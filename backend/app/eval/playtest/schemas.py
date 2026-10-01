@@ -25,12 +25,21 @@ PersonaId = Literal[
 
 
 class PersonaTurnFlags(BaseModel):
-    """Boolean analytical flags emitted per turn. Quote required when True."""
+    """Boolean analytical flags emitted per turn. Quote required when True.
+
+    `confused` (the persona could not tell what to do or what happened) and
+    `suspected_bug` (something on screen looks wrong: an effect that did not
+    land, a number that contradicts the text) default to False so a terse
+    output still parses. `persona_session` drops either flag when its quote
+    is missing or not verbatim from the rendered turn.
+    """
 
     surprise: bool
     tone_break: bool
     advisor_oc: bool
     stakes_low: bool
+    confused: bool = False
+    suspected_bug: bool = False
 
 
 class PersonaTurnOutput(BaseModel):
@@ -40,6 +49,10 @@ class PersonaTurnOutput(BaseModel):
     aggregator can detect position bias (Spearman pick-vs-position
     correlation). `shown_position_of_chosen` is the 0-indexed position
     where the chosen proposal appeared in `displayed_order`.
+
+    `outcome_matched_expectation` judges the PREVIOUS pick: did the "Last
+    turn" outcome match what its effects preview and description promised?
+    None on turn 1 or whenever no "Last turn" section was shown.
     """
 
     turn: int = Field(ge=1)
@@ -47,6 +60,7 @@ class PersonaTurnOutput(BaseModel):
     chosen_proposal_id: str
     shown_position_of_chosen: int = Field(ge=0, le=2)
     reaction: str
+    outcome_matched_expectation: bool | None = None
     flags: PersonaTurnFlags
     quotes: dict[str, str] = Field(default_factory=dict)
 
@@ -95,20 +109,44 @@ class ContinueTomorrow(BaseModel):
 
 
 class VerdictAxes(BaseModel):
-    """Four scored axes — `continue_tomorrow` is separate (binary, not scored)."""
+    """Seven quality axes, higher = better. `difficulty` lives on the verdict
+    (not here) because its scale is centred, not monotonic."""
 
     stakes_felt_real: AxisScore
     tonal_coherence: AxisScore
     advisor_distinctness: AxisScore
     dramatic_arc: AxisScore
+    # Did different picks lead to visibly different results?
+    meaningful_choices: AxisScore
+    # Was there a plan worth forming beyond reacting turn by turn?
+    strategic_depth: AxisScore
+    # Was the turn loop (event → debate → pick → aftermath) legible?
+    loop_clarity: AxisScore
+
+
+MAX_BUGS_NOTICED = 5
+MAX_BUG_CHARS = 200
 
 
 class PersonaRunVerdict(BaseModel):
-    """End-of-run verdict: 4 scored axes + binary continue + closing prose."""
+    """End-of-run verdict: scored axes + difficulty + bugs + continue + prose.
+
+    `difficulty` semantics (centred, NOT higher-is-better):
+      1 = trivially easy, 2 = easy, 3 = well tuned, 4 = hard, 5 = unfairly hard.
+    `bugs_noticed` is truncated to 5 short items rather than rejected, so a
+    long list never costs a verdict retry.
+    """
 
     axes: VerdictAxes
+    difficulty: AxisScore
+    bugs_noticed: list[str] = Field(default_factory=list)
     continue_tomorrow: ContinueTomorrow
     closing_paragraph: str
+
+    @field_validator("bugs_noticed")
+    @classmethod
+    def _cap_bugs(cls, v: list[str]) -> list[str]:
+        return [b.strip()[:MAX_BUG_CHARS] for b in v if b.strip()][:MAX_BUGS_NOTICED]
 
 
 class Persona(BaseModel):

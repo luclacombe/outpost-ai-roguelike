@@ -14,6 +14,7 @@ import pytest
 import respx
 
 from scripts.play_test import PlaytestConfig, run_harness
+from tests.eval.playtest._verdicts import verdict_dict
 
 
 @pytest.mark.eval
@@ -47,16 +48,7 @@ async def test_orchestrator_writes_artifacts(
                 chosen_proposal_id=order[0], displayed_order=order
             )
         else:
-            verdict_inner = {
-                "axes": {
-                    "stakes_felt_real": {"score": 3, "rationale": "ok", "turn_citations": []},
-                    "tonal_coherence": {"score": 3, "rationale": "ok", "turn_citations": []},
-                    "advisor_distinctness": {"score": 3, "rationale": "ok", "turn_citations": []},
-                    "dramatic_arc": {"score": 3, "rationale": "ok", "turn_citations": []},
-                },
-                "continue_tomorrow": {"decision": True, "reason": "ok"},
-                "closing_paragraph": "ok",
-            }
+            verdict_inner = verdict_dict(score=3)
             envelope = {
                 "type": "result",
                 "session_id": "test-session-abc123",

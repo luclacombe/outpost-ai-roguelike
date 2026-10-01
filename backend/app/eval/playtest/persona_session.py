@@ -25,13 +25,36 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from app.eval.playtest.prompts import (
+    build_count_correction_message as _build_count_correction_message,
+)
+from app.eval.playtest.prompts import build_system_prompt as _build_system_prompt
+from app.eval.playtest.prompts import build_verdict_prompt as _build_verdict_prompt
 from app.eval.playtest.schemas import (
     Persona,
     PersonaRunVerdict,
-    PersonaTurnFlags,
     PersonaTurnOutput,
 )
+from app.eval.playtest.turn_contract import (
+    validate_quotes_against_dashboard as _validate_quotes_against_dashboard,
+)
+from app.eval.playtest.turn_contract import validate_turn_output as _validate_turn_output
 from app.eval.playtest.turn_message import format_turn_user_message as _format_turn_user_message
+
+# Re-exported for tests and callers that predate the prompts/turn_contract split.
+__all__ = [
+    "PersonaParseError",
+    "PersonaSession",
+    "PersonaSessionError",
+    "PersonaSubprocessError",
+    "PersonaTimeout",
+    "_build_count_correction_message",
+    "_build_system_prompt",
+    "_build_verdict_prompt",
+    "_format_turn_user_message",
+    "_validate_quotes_against_dashboard",
+    "_validate_turn_output",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -57,80 +80,6 @@ class PersonaSubprocessError(PersonaSessionError):
 class PersonaParseError(PersonaSessionError):
     """Output failed JSON parse OR Pydantic schema validation. Pool should
     re-prompt once with strict schema reminder, then degrade."""
-
-
-def _build_system_prompt(persona: Persona) -> str:
-    """The 3-section persona prompt. Frame + persona block + output contract.
-
-    Frame and output contract are identical across all 7 personas; only the
-    persona block varies. Uniformity is load-bearing for cross-persona
-    comparability (spec §4).
-    """
-    frame = (
-        "You are play-testing Outpost, a daily browser narrative roguelike. "
-        "Four AI advisors run a fragile colony under your command. Permadeath. "
-        "Each turn: an event, three proposals, advisor reactions, narration of "
-        "the outcome. Runs end at turn 8-12 in one of: Endured, Collapsed, "
-        "Ousted, Killed.\n\n"
-        "You are reacting fresh — you have not seen this game before. You have "
-        "no codebase context, no design documents, no prior plays. Stay in your "
-        "persona's voice for in-character text; speak analytically for flags "
-        "and scores. Reasoning before scoring (always).\n\n"
-        "Reading discipline (load-bearing): the user message includes a "
-        "`## Advisor reactions` section that lists every living advisor by "
-        "name with their actual reaction text. Read it line-by-line before "
-        "evaluating `advisor_oc` or claiming silence. An advisor counts as "
-        "silent ONLY if the dashboard literally renders `(silent)` next to "
-        "their name. Quotes you cite for any flag — especially `advisor_oc` "
-        "— MUST be verbatim excerpts from the rendered dashboard text. "
-        "Fabricating a `(silent)` claim against an advisor whose reaction is "
-        "rendered, or paraphrasing reaction text into a quote, is a contract "
-        "violation."
-    )
-
-    persona_block = (
-        f"\n\nPicking rule: {persona.picking_rule}\n"
-        f"Evaluation lens: {persona.evaluation_lens}\n"
-        f"Voice traits: {persona.voice_traits}"
-    )
-
-    output_contract = (
-        "\n\nPer turn, respond with ONLY a single JSON code-fence — no prose "
-        "before or after. The JSON must validate against this shape:\n"
-        "```json\n"
-        "{\n"
-        '  "turn": <int>,\n'
-        '  "displayed_order": [<id1>, <id2>, <id3>],   // EXACTLY THREE ids, '
-        "verbatim from the user message's `Pick one` line\n"
-        '  "chosen_proposal_id": <one of displayed_order>,\n'
-        '  "shown_position_of_chosen": <0, 1, or 2>,\n'
-        '  "reaction": "<1-2 sentences in your voice>",\n'
-        '  "flags": {\n'
-        '    "surprise": <bool>, "tone_break": <bool>,\n'
-        '    "advisor_oc": <bool>, "stakes_low": <bool>\n'
-        "  },\n"
-        '  "quotes": { "<flag_name>": "<≤30-word quote>", ... }  // only for True flags\n'
-        "}\n```\n"
-        "Worked example (illustrative — your actual ids will differ):\n"
-        "```json\n"
-        "{\n"
-        '  "turn": 1,\n'
-        '  "displayed_order": ["p_dom", "p_mor", "p_wld"],\n'
-        '  "chosen_proposal_id": "p_dom",\n'
-        '  "shown_position_of_chosen": 0,\n'
-        '  "reaction": "Picked the perimeter cut — math beats sentiment for week 1.",\n'
-        '  "flags": {"surprise": false, "tone_break": false, "advisor_oc": false, '
-        '"stakes_low": false},\n'
-        '  "quotes": {}\n'
-        "}\n```\n"
-        "`displayed_order` MUST be a JSON array of EXACTLY THREE strings, "
-        "copied verbatim from the user message — never a single id, never "
-        "fewer than three, never paraphrased. A bare True flag without a "
-        "quote is a parse error. The harness will re-prompt once if your "
-        "JSON is malformed."
-    )
-
-    return frame + persona_block + output_contract
 
 
 def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
@@ -186,67 +135,6 @@ def _displayed_order_count_mismatch(exc: ValidationError) -> bool:
         if loc and loc[0] == "displayed_order" and "exactly 3 ids" in msg:
             return True
     return False
-
-
-def _build_count_correction_message(*, displayed_order: list[str]) -> str:
-    """Re-prompt user message used when the prior turn returned a
-    `displayed_order` list of length != 3.
-
-    Echoes the actual three ids so the model has a hard target rather than
-    re-rolling against the original user message that already failed it.
-    """
-    return (
-        "Your previous response had `displayed_order` with the wrong count "
-        "of ids. The list MUST have EXACTLY THREE strings. Re-emit the "
-        f"full per-turn JSON now with `displayed_order` set to exactly: "
-        f"{displayed_order}. Pick one of those three for `chosen_proposal_id`. "
-        "Same JSON shape as before. No prose outside the code-fence."
-    )
-
-
-def _validate_quotes_against_dashboard(
-    output: PersonaTurnOutput, user_message: str
-) -> PersonaTurnOutput:
-    """Drop fabricated `(silent)` quotes and downgrade their flags.
-
-    A `(silent)` substring inside any `quotes[*]` value is legitimate ONLY
-    when the rendered user message also contains `(silent)` markers (i.e.
-    the dashboard literally rendered silence for at least one advisor).
-    When every advisor's reaction is rendered, the dashboard contains zero
-    `(silent)` markers — so a persona quote of `(silent)` is fabrication.
-
-    On detection: drop the offending quote and set the corresponding flag
-    to False. The persona's free-form `reaction` prose is left untouched
-    (we can't audit free-form text, and the validator's job is to gate
-    the binary flag, not rewrite voice).
-
-    Conservative when the dashboard DOES render silence: we can't tell
-    which advisors are legitimately silent vs fabricated, so we accept
-    every `(silent)` quote in that case. The verbatim instruction in the
-    system prompt carries the load there.
-    """
-    if "(silent)" in user_message:
-        return output
-
-    affected_flags = {k for k, v in output.quotes.items() if "(silent)" in v}
-    if not affected_flags:
-        return output
-
-    for flag_name in sorted(affected_flags):
-        logger.warning(
-            "fabricated-silence guard: dropping %s flag (no '(silent)' marker "
-            "in rendered dashboard); fabricated quote was %r",
-            flag_name,
-            output.quotes[flag_name],
-        )
-
-    new_quotes = {k: v for k, v in output.quotes.items() if k not in affected_flags}
-    flags_dict = output.flags.model_dump()
-    for k in affected_flags:
-        if k in flags_dict:
-            flags_dict[k] = False
-
-    return output.model_copy(update={"quotes": new_quotes, "flags": PersonaTurnFlags(**flags_dict)})
 
 
 class PersonaSession:
@@ -392,7 +280,7 @@ class PersonaSession:
         output = self._parse_per_turn_with_count_retry(
             stdout=stdout, displayed_order=displayed_order, kind="first-turn"
         )
-        return _validate_quotes_against_dashboard(output, user_message)
+        return _validate_turn_output(output, user_message)
 
     def subsequent_turn(
         self, *, turn_input: dict[str, Any], displayed_order: list[str]
@@ -408,35 +296,14 @@ class PersonaSession:
         output = self._parse_per_turn_with_count_retry(
             stdout=stdout, displayed_order=displayed_order, kind="subsequent-turn"
         )
-        return _validate_quotes_against_dashboard(output, user_message)
+        return _validate_turn_output(output, user_message)
 
     def final_verdict(self, *, post_mortem_json: dict[str, Any]) -> PersonaRunVerdict:
         """Send the post-mortem JSON to the persona; expect a run-level verdict."""
         if self.session_id is None:
             raise RuntimeError("no session_id — call first_turn() first")
 
-        user_message = (
-            "# End of run\n\n"
-            "Below is the full post-mortem (counterfactuals, dormant seeds, "
-            "near-miss coups, end_state). Read it carefully, then emit ONLY a "
-            "JSON code-fence with the run-level verdict.\n\n"
-            "Schema:\n"
-            "```json\n"
-            "{\n"
-            '  "axes": {\n'
-            '    "stakes_felt_real":      {"score": 1-5, "rationale": "...", "turn_citations": [int, ...]},\n'
-            '    "tonal_coherence":       {"score": 1-5, "rationale": "...", "turn_citations": []},\n'
-            '    "advisor_distinctness":  {"score": 1-5, "rationale": "...", "turn_citations": []},\n'
-            '    "dramatic_arc":          {"score": 1-5, "rationale": "...", "turn_citations": []}\n'
-            "  },\n"
-            '  "continue_tomorrow": {"decision": <bool>, "reason": "<≤20 words>"},\n'
-            '  "closing_paragraph": "<~100 words in your evaluation voice>"\n'
-            "}\n```\n"
-            "Reasoning before scoring — the rationale comes BEFORE the number "
-            "in your thinking.\n\n"
-            "## Post-mortem\n\n"
-            f"```json\n{json.dumps(post_mortem_json, indent=2, default=str)}\n```"
-        )
+        user_message = _build_verdict_prompt(post_mortem_json)
 
         stdout = self._run_subprocess(self._resume_cmd(user_message), kind="final-verdict")
         _, inner = _parse_envelope_and_inner(stdout)

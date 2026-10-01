@@ -11,13 +11,10 @@ from app.eval.playtest.output import (
     write_per_run_archives,
 )
 from app.eval.playtest.schemas import (
-    AxisScore,
-    ContinueTomorrow,
-    PersonaRunVerdict,
     PersonaTurnFlags,
     PersonaTurnOutput,
-    VerdictAxes,
 )
+from tests.eval.playtest._verdicts import make_verdict
 
 
 def _fake_archive() -> PerRunArchive:
@@ -41,16 +38,7 @@ def _fake_archive() -> PerRunArchive:
                 quotes={},
             )
         ],
-        verdict=PersonaRunVerdict(
-            axes=VerdictAxes(
-                stakes_felt_real=AxisScore(score=4, rationale="x", turn_citations=[]),
-                tonal_coherence=AxisScore(score=5, rationale="x", turn_citations=[]),
-                advisor_distinctness=AxisScore(score=4, rationale="x", turn_citations=[]),
-                dramatic_arc=AxisScore(score=4, rationale="x", turn_citations=[]),
-            ),
-            continue_tomorrow=ContinueTomorrow(decision=True, reason="liked it"),
-            closing_paragraph="...",
-        ),
+        verdict=make_verdict(bugs=["Fuel bar did not move after +12 fuel."]),
         run_record_summary={
             "tool_calls": [],
             "narration_per_turn": ["..."],

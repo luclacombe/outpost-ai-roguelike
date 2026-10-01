@@ -92,20 +92,114 @@ def test_continue_tomorrow_caps_reason_at_20_words() -> None:
         ContinueTomorrow(decision=True, reason=too_long)
 
 
-def test_persona_run_verdict_full_shape() -> None:
-    axes = VerdictAxes(
+def _axis(score: int = 4) -> AxisScore:
+    return AxisScore(score=score, rationale="...", turn_citations=[])
+
+
+def _axes() -> VerdictAxes:
+    return VerdictAxes(
         stakes_felt_real=AxisScore(score=4, rationale="...", turn_citations=[1, 7]),
-        tonal_coherence=AxisScore(score=5, rationale="...", turn_citations=[]),
+        tonal_coherence=_axis(5),
         advisor_distinctness=AxisScore(score=4, rationale="...", turn_citations=[3]),
         dramatic_arc=AxisScore(score=4, rationale="...", turn_citations=[8, 11]),
+        meaningful_choices=_axis(3),
+        strategic_depth=_axis(2),
+        loop_clarity=_axis(4),
     )
+
+
+def test_persona_run_verdict_full_shape() -> None:
     verdict = PersonaRunVerdict(
-        axes=axes,
+        axes=_axes(),
+        difficulty=_axis(3),
+        bugs_noticed=["Fuel effect said +12, bar moved +2."],
         continue_tomorrow=ContinueTomorrow(decision=True, reason="dissident path landed"),
         closing_paragraph="...",
     )
     assert verdict.axes.stakes_felt_real.score == 4
+    assert verdict.axes.strategic_depth.score == 2
+    assert verdict.difficulty.score == 3
     assert verdict.continue_tomorrow.decision is True
+
+
+def test_verdict_requires_new_axes_and_difficulty() -> None:
+    with pytest.raises(ValidationError):
+        VerdictAxes(
+            stakes_felt_real=_axis(),
+            tonal_coherence=_axis(),
+            advisor_distinctness=_axis(),
+            dramatic_arc=_axis(),
+        )
+    with pytest.raises(ValidationError, match="difficulty"):
+        PersonaRunVerdict.model_validate(
+            {
+                "axes": _axes().model_dump(),
+                "continue_tomorrow": {"decision": True, "reason": "ok"},
+                "closing_paragraph": "...",
+            }
+        )
+
+
+def test_bugs_noticed_defaults_empty_and_caps_at_five() -> None:
+    base = {
+        "axes": _axes().model_dump(),
+        "difficulty": _axis(3).model_dump(),
+        "continue_tomorrow": {"decision": True, "reason": "ok"},
+        "closing_paragraph": "...",
+    }
+    assert PersonaRunVerdict.model_validate(base).bugs_noticed == []
+    many = PersonaRunVerdict.model_validate(
+        {**base, "bugs_noticed": [f"bug {i}" for i in range(8)]}
+    )
+    assert many.bugs_noticed == [f"bug {i}" for i in range(5)]
+    long = PersonaRunVerdict.model_validate({**base, "bugs_noticed": ["x" * 500]})
+    assert len(long.bugs_noticed[0]) <= 200
+
+
+def test_turn_output_new_fields_default_safely() -> None:
+    """Older/terse outputs without the new fields still parse."""
+    out = PersonaTurnOutput.model_validate(
+        {
+            "turn": 1,
+            "displayed_order": ["a", "b", "c"],
+            "chosen_proposal_id": "a",
+            "shown_position_of_chosen": 0,
+            "reaction": "r",
+            "flags": {
+                "surprise": False,
+                "tone_break": False,
+                "advisor_oc": False,
+                "stakes_low": False,
+            },
+        }
+    )
+    assert out.outcome_matched_expectation is None
+    assert out.flags.confused is False
+    assert out.flags.suspected_bug is False
+
+
+def test_turn_output_accepts_new_fields() -> None:
+    out = PersonaTurnOutput.model_validate(
+        {
+            "turn": 2,
+            "displayed_order": ["a", "b", "c"],
+            "chosen_proposal_id": "b",
+            "shown_position_of_chosen": 1,
+            "reaction": "r",
+            "outcome_matched_expectation": False,
+            "flags": {
+                "surprise": False,
+                "tone_break": False,
+                "advisor_oc": False,
+                "stakes_low": False,
+                "confused": True,
+                "suspected_bug": True,
+            },
+            "quotes": {"confused": "Day 00 / 9", "suspected_bug": "Fuel +2"},
+        }
+    )
+    assert out.outcome_matched_expectation is False
+    assert out.flags.confused and out.flags.suspected_bug
 
 
 def test_persona_shape() -> None:

@@ -264,23 +264,9 @@ def test_run_final_verdict_success_returns_verdict_with_no_error(
 ) -> None:
     """Happy path: VerdictResult.verdict carries the parsed verdict and
     error is None. Preserves callers' "did the verdict succeed?" check."""
-    from app.eval.playtest.schemas import (
-        AxisScore,
-        ContinueTomorrow,
-        PersonaRunVerdict,
-        VerdictAxes,
-    )
+    from tests.eval.playtest._verdicts import make_verdict
 
-    fake_verdict = PersonaRunVerdict(
-        axes=VerdictAxes(
-            stakes_felt_real=AxisScore(score=4, rationale="...", turn_citations=[]),
-            tonal_coherence=AxisScore(score=5, rationale="...", turn_citations=[]),
-            advisor_distinctness=AxisScore(score=3, rationale="...", turn_citations=[]),
-            dramatic_arc=AxisScore(score=4, rationale="...", turn_citations=[]),
-        ),
-        continue_tomorrow=ContinueTomorrow(decision=True, reason="run earned its end"),
-        closing_paragraph="...",
-    )
+    fake_verdict = make_verdict()
 
     session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
     session.session_id = "preset"
