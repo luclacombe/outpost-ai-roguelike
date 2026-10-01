@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from app.eval.playtest.schemas import PersonaRunVerdict, PersonaTurnOutput
+from app.eval.playtest.summaries import corpus_aggregates, per_run_summary
 
 HONEST_LIMITS_BOILERPLATE = """\
 # Outpost play-test report
@@ -63,10 +64,66 @@ class PerRunArchive:
     # `None` means either (a) the verdict succeeded or (b) the verdict
     # was never attempted (e.g. game didn't reach a terminal state).
     verdict_error: str | None = None
+    # Engine/oracle context per turn (see summaries.build_turn_context):
+    # what was shown, what was picked, what each option does in the engine.
+    turn_context: list[dict[str, Any]] = field(default_factory=list)
+    final_legitimacy: int | None = None
+    final_resource_frac: float | None = None
 
 
 def _archive_basename(a: PerRunArchive) -> str:
     return f"{a.persona_id}-{a.setting_id}-seed{a.seed}"
+
+
+_OUTCOME_LABEL = {True: "yes", False: "NO", None: "n/a"}
+
+
+def _fmt(v: Any) -> str:
+    if v is None:
+        return "?"
+    if isinstance(v, float):
+        return f"{v:.2f}"
+    return str(v)
+
+
+def _chosen_suffix(ctx: dict[str, Any] | None) -> str:
+    if not ctx or not ctx["chosen"].get("name"):
+        return ""
+    c = ctx["chosen"]
+    effects = "; ".join(c["effects_preview"]) or "(none shown)"
+    return f" — **{c['name']}** ({c['flavor']}); effects shown: {effects}"
+
+
+def _option_line(opt: dict[str, Any], picked: str) -> str:
+    parts = [f"{k} {v:+d}" for k, v in opt["resource_deltas"].items()]
+    if opt["legitimacy_delta"]:
+        parts.append(f"legitimacy {opt['legitimacy_delta']:+d}")
+    if opt["player_health_delta"]:
+        parts.append(f"player health {opt['player_health_delta']:+d}")
+    parts += [f"{n} grievance {d:+d}" for n, d in opt["grievance_deltas"].items()]
+    parts += [f"{c['agent']} {c['from']}→{c['to']}" for c in opt["status_changes"]]
+    if opt["rejected"]:
+        parts.append("rejected " + ", ".join(opt["rejected"]))
+    if opt["ends_run"]:
+        parts.append(f"ENDS RUN ({opt['ends_run']})")
+    mark = "→" if opt["proposal_id"] == picked else " "
+    body = "; ".join(parts) or "no engine change"
+    return f"- {mark} `{opt['proposal_id']}` {opt['name']} ({opt['flavor']}): {body}"
+
+
+def _engine_lines(ctx: dict[str, Any]) -> list[str]:
+    """Choice-spread oracle ground truth (not shown to the persona)."""
+    if ctx.get("oracle_error"):
+        return [f"**Engine options (oracle):** unavailable ({ctx['oracle_error']})"]
+    if not ctx.get("options"):
+        return []
+    head = (
+        f"**Engine options (oracle, immediate resolution only):** spread "
+        f"{_fmt(ctx['spread_l1_max'])}"
+        + ("; options identical" if ctx.get("identical_options") else "")
+        + ("; an option ends the run" if ctx.get("any_option_ends_run") else "")
+    )
+    return [head, *[_option_line(o, ctx["chosen"]["id"]) for o in ctx["options"]]]
 
 
 def _render_per_run_markdown(a: PerRunArchive) -> str:
@@ -78,20 +135,28 @@ def _render_per_run_markdown(a: PerRunArchive) -> str:
         f"**Setting:** {a.setting_id}",
         f"**End state:** {a.end_state}",
         f"**Turns played:** {a.turns_played}",
+        f"**Final legitimacy:** {_fmt(a.final_legitimacy)}",
+        f"**Final mean resource fraction:** {_fmt(a.final_resource_frac)}",
         "",
         "---",
         "",
     ]
+    context_by_turn = {c["turn"]: c for c in a.turn_context}
     for t in a.per_turn_outputs:
+        ctx = context_by_turn.get(t.turn)
+        lines.extend([f"## Turn {t.turn}", ""])
+        if ctx and ctx.get("event_title"):
+            lines.append(f"**Event:** {ctx['event_title']} (day {_fmt(ctx.get('day'))})")
         lines.extend(
             [
-                f"## Turn {t.turn}",
-                "",
                 f"**Displayed order:** {t.displayed_order}",
-                f"**Chose:** `{t.chosen_proposal_id}` (position {t.shown_position_of_chosen})",
+                f"**Chose:** `{t.chosen_proposal_id}` (position {t.shown_position_of_chosen})"
+                + _chosen_suffix(ctx),
                 "",
                 f"**Reaction:** {t.reaction}",
                 "",
+                "**Previous pick matched expectation:** "
+                + _OUTCOME_LABEL[t.outcome_matched_expectation],
                 "**Flags:** "
                 + ", ".join(f"{k}={'✓' if v else '·'}" for k, v in t.flags.model_dump().items()),
             ]
@@ -101,6 +166,8 @@ def _render_per_run_markdown(a: PerRunArchive) -> str:
             lines.append("**Quotes:**")
             for k, v in t.quotes.items():
                 lines.append(f"- *{k}*: {v}")
+        if ctx:
+            lines.extend(["", *_engine_lines(ctx)])
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -116,6 +183,19 @@ def _render_per_run_markdown(a: PerRunArchive) -> str:
                 lines.append("")
                 lines.append(f"_Cited turns: {axis['turn_citations']}_")
             lines.append("")
+        d = a.verdict.difficulty
+        lines.extend(
+            [
+                f"### Difficulty — {d.score}/5 (1 trivially easy · 3 well tuned · 5 unfairly hard)",
+                "",
+                d.rationale,
+                "",
+                "### Bugs noticed",
+                "",
+                *([f"- {b}" for b in a.verdict.bugs_noticed] or ["_(none)_"]),
+                "",
+            ]
+        )
         lines.extend(
             [
                 f"### Continue tomorrow — **{'YES' if a.verdict.continue_tomorrow.decision else 'NO'}**",
@@ -169,6 +249,9 @@ def _archive_to_dict(a: PerRunArchive) -> dict[str, Any]:
         "verdict_error": a.verdict_error,
         "run_record_summary": a.run_record_summary,
         "per_run_oracles": a.per_run_oracles,
+        "turn_context": a.turn_context,
+        "final_legitimacy": a.final_legitimacy,
+        "final_resource_frac": a.final_resource_frac,
     }
 
 
@@ -212,46 +295,12 @@ def write_corpus_artifacts(
     per_persona_n = max(persona_counter.values()) if persona_counter else 0
 
     per_run_summaries: list[dict[str, Any]] = []
-    flag_aggregates: dict[str, int] = {
-        "surprise": 0,
-        "tone_break": 0,
-        "advisor_oc": 0,
-        "stakes_low": 0,
-    }
     for a in archives:
-        flag_counts = {k: 0 for k in flag_aggregates}
-        for t in a.per_turn_outputs:
-            for k, v in t.flags.model_dump().items():
-                if v:
-                    flag_counts[k] += 1
-                    flag_aggregates[k] += 1
-
-        axis_scores: dict[str, Any] = {}
-        if a.verdict is not None:
-            for k, axis in a.verdict.axes.model_dump().items():
-                axis_scores[k] = axis["score"]
-            axis_scores["continue_tomorrow"] = a.verdict.continue_tomorrow.decision
-
-        per_run_summaries.append(
-            {
-                "run_id": a.run_id,
-                "persona": a.persona_id,
-                "setting": a.setting_id,
-                "seed": a.seed,
-                "end_state": a.end_state,
-                "turns_played": a.turns_played,
-                "axis_scores": axis_scores,
-                # Sub-bug (iii): expose verdict_failed/verdict_error so the
-                # aggregator can count silent verdict failures distinctly
-                # from never-finished runs.
-                "verdict_failed": a.verdict_error is not None,
-                "verdict_error": a.verdict_error,
-                "flag_counts": flag_counts,
-                "structural_oracles": a.per_run_oracles,
-                "raw_md_path": f"raw/{_archive_basename(a)}.md",
-                "raw_json_path": f"raw/{_archive_basename(a)}.json",
-            }
-        )
+        row = per_run_summary(a)
+        row["raw_md_path"] = f"raw/{_archive_basename(a)}.md"
+        row["raw_json_path"] = f"raw/{_archive_basename(a)}.json"
+        per_run_summaries.append(row)
+    aggregates = corpus_aggregates(archives)
 
     runs_payload: dict[str, Any] = {
         "harness_version": harness_version,
@@ -260,7 +309,7 @@ def write_corpus_artifacts(
         "personas": sorted(persona_counter.keys()),
         "per_persona_n": per_persona_n,
         "per_run_summaries": per_run_summaries,
-        "flag_aggregates": flag_aggregates,
+        **aggregates,
         "corpus_oracles": corpus_oracles,
         "harness_findings": findings,
     }

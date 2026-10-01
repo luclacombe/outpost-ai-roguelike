@@ -67,6 +67,97 @@ def test_per_run_archive_writes_md_and_json(tmp_path: Path) -> None:
     assert payload["per_turn_outputs"][0]["chosen_proposal_id"] == "a"
 
 
+def test_markdown_renders_baseline_fields(tmp_path: Path) -> None:
+    archive = _fake_archive()
+    archive.final_legitimacy = 44
+    archive.final_resource_frac = 0.375
+    archive.turn_context = [
+        {
+            "turn": 1,
+            "day": 0,
+            "event_title": "Coil cracks",
+            "event_origin": "NATURAL",
+            "chosen": {
+                "id": "a",
+                "name": "Cut heat",
+                "flavor": "DOMINANT",
+                "effects_preview": ["+12 fuel"],
+            },
+            "spread_l1_max": 0.25,
+            "identical_options": False,
+            "any_option_ends_run": True,
+            "options": [
+                {
+                    "proposal_id": "a",
+                    "name": "Cut heat",
+                    "flavor": "DOMINANT",
+                    "resource_deltas": {"fuel": 2},
+                    "legitimacy_delta": 0,
+                    "player_health_delta": 0,
+                    "grievance_deltas": {},
+                    "status_changes": [],
+                    "rejected": ["modify_resource:would_overflow"],
+                    "ends_run": None,
+                },
+                {
+                    "proposal_id": "b",
+                    "name": "Walk out",
+                    "flavor": "WILDCARD",
+                    "resource_deltas": {},
+                    "legitimacy_delta": -5,
+                    "player_health_delta": -100,
+                    "grievance_deltas": {"Nadia": 1},
+                    "status_changes": [],
+                    "rejected": [],
+                    "ends_run": "KILLED",
+                },
+            ],
+            "oracle_error": None,
+        }
+    ]
+    write_per_run_archives(tmp_path, [archive])
+    md = (tmp_path / "raw" / "optimizer-arctic_station_v1-seed42.md").read_text()
+    assert "**Final legitimacy:** 44" in md
+    assert "**Event:** Coil cracks (day 0)" in md
+    assert "**Cut heat** (DOMINANT); effects shown: +12 fuel" in md
+    assert "**Previous pick matched expectation:** n/a" in md
+    assert "suspected_bug=·" in md
+    assert "spread 0.25; an option ends the run" in md
+    assert "- → `a` Cut heat (DOMINANT): fuel +2; rejected modify_resource:would_overflow" in md
+    assert "player health -100; Nadia grievance +1; ENDS RUN (KILLED)" in md
+    assert "### Difficulty — 3/5" in md
+    assert "Meaningful choices" in md
+    assert "- Fuel bar did not move after +12 fuel." in md
+
+
+def test_runs_json_carries_baseline_aggregates(tmp_path: Path) -> None:
+    write_corpus_artifacts(
+        tmp_path,
+        archives=[_fake_archive()],
+        findings={},
+        corpus_oracles={},
+        git_sha="abc",
+        wall_clock_seconds=1,
+    )
+    payload = json.loads((tmp_path / "runs.json").read_text())
+    for key in (
+        "flag_aggregates",
+        "verdict_axis_means",
+        "difficulty",
+        "outcome_expectation",
+        "flagged_quotes",
+        "bugs_noticed",
+        "end_states",
+        "choice_spread",
+        "paired",
+    ):
+        assert key in payload, key
+    row = payload["per_run_summaries"][0]
+    assert row["difficulty"] == 3
+    assert row["raw_md_path"] == "raw/optimizer-arctic_station_v1-seed42.md"
+    assert set(payload["flag_aggregates"]) >= {"confused", "suspected_bug"}
+
+
 def test_verdict_error_surfaces_in_md_and_json(tmp_path: Path) -> None:
     """Sub-bug (iii): when the per-run verdict step fails twice, the harness
     archive must record `verdict_error` (not silently emit empty axis_scores).

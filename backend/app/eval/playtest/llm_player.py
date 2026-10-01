@@ -50,6 +50,8 @@ class LLMPlayer:
         )
         self._first_turn_done = False
         self.per_turn_outputs: list[PersonaTurnOutput] = []
+        # The UI-parity view shown each turn, kept for the archive's turn context.
+        self.per_turn_inputs: list[dict[str, Any]] = []
         self.fallback_turns: list[int] = []  # turn numbers where pool fell back
 
     def pick(self, proposals: list[Any]) -> str:
@@ -57,6 +59,7 @@ class LLMPlayer:
         displayed_order = self._displayed_order_for(proposals)
 
         turn_input = self.turn_input_provider()
+        self.per_turn_inputs.append(turn_input)
         if not self._first_turn_done:
             result = self.pool.run_first_turn(
                 session=self._session,

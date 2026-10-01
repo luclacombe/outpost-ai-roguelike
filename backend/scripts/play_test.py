@@ -27,6 +27,8 @@ from uuid import UUID
 from sqlalchemy import select, text
 
 from app.database import async_session_factory
+from app.eval.choice_spread import summarize_choice_spread
+from app.eval.paired import resource_fraction
 from app.eval.playtest.app_state import harness_app_state
 from app.eval.playtest.llm_player import LLMPlayer
 from app.eval.playtest.oracles import compute_corpus_oracles, compute_per_run_oracles
@@ -39,6 +41,7 @@ from app.eval.playtest.personas import PERSONAS, get_persona
 from app.eval.playtest.schemas import PersonaId
 from app.eval.playtest.seeds import paired_cells
 from app.eval.playtest.subprocess_pool import SubprocessPool
+from app.eval.playtest.summaries import build_turn_context
 from app.eval.types import RunRecord
 from app.game.engine import compute_end_state
 from app.game.exceptions import GameNotEnded
@@ -328,6 +331,7 @@ async def _drive_one_game(
 
         # Compute per-run oracles using agents from the final ColonyState.
         per_run_oracles = compute_per_run_oracles(run_record, agents=final_state.agents)
+        per_run_oracles["choice_spread_summary"] = summarize_choice_spread(run_record.choice_spread)
 
         return PerRunArchive(
             run_id=str(session_row.id),
@@ -355,8 +359,17 @@ async def _drive_one_game(
                 "resource_history": run_record.resource_history,
                 "forced_choice_turns": run_record.forced_choice_turns,
                 "narration_per_turn": run_record.narration_per_turn,
+                "choice_spread": run_record.choice_spread,
+                "cost_cents_db": session_row.cost_cents,
             },
             per_run_oracles=per_run_oracles,
+            turn_context=build_turn_context(
+                turn_inputs=player.per_turn_inputs,
+                outputs=player.per_turn_outputs,
+                choice_spread=run_record.choice_spread,
+            ),
+            final_legitimacy=final_state.legitimacy,
+            final_resource_frac=resource_fraction(final_state),
         )
     finally:
         if config.cleanup_after_run:
