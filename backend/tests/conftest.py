@@ -20,6 +20,12 @@ envelope. Shared across the agent-node tests so both Haiku (debate /
 autonomous) and Sonnet (narration) coverage use the same scaffolding.
 """
 
+# Must precede every other `app.*` import: swaps in pinned settings so unit
+# runs ignore the developer's .env LLM / gate / tracing values.
+import tests._settings_isolation  # noqa: F401
+
+# isort: split
+
 from typing import Any
 from uuid import uuid4
 

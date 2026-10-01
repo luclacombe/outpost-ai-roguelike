@@ -56,9 +56,9 @@ Use `settings.FOO` directly; do not re-read `os.environ` in feature code.
 - `asyncio_mode = "auto"` is set in `pyproject.toml` — write plain `async def test_*` without decorators.
 - HTTP tests use `httpx.AsyncClient` over `ASGITransport(app=app)` — in-process, no port binding. Fixture: `client` in `tests/conftest.py`.
 - DB-touching tests should skip (not fail) when Postgres is unreachable so a `uv run pytest tests/` without Docker still runs clean.
-- Mock Anthropic with `respx`. Real-LLM integration tests live under the `integration` marker, real-LLM eval games under `eval`. Default runs exclude neither, so gate them with explicit `-m integration` when you want them.
+- Mock Anthropic with `respx`. Real-LLM integration tests live under the `integration` marker, real-LLM eval games under `eval`. `pyproject.toml` addopts deselect both; run them with explicit `-m integration` / `-m eval`.
 - Assert specific exception types (`pytest.raises(ValidationError)`, not `Exception`) — ruff B017 is on.
-- **Unit tests read your real `backend/.env`.** The LLM client is built at import from `settings`, so a `.env` pointed at OpenRouter makes the respx `api.anthropic.com` mocks miss (~9 failures in `test_nodes.py`). Blank shell overrides don't help (blank = unset → `.env` wins). Pin explicit values: `LLM_BASE_URL=https://api.anthropic.com LLM_AUTH_SCHEME=x-api-key LLM_MODEL_FAST=claude-haiku-4-5-20251001 LLM_MODEL_NARRATION=claude-sonnet-4-6 LLM_DISABLE_THINKING=false uv run pytest tests/`. CI has no `.env`, so it's unaffected.
+- **Unit runs ignore `.env` LLM/gate/tracing values.** `tests/conftest.py` first imports `tests/_settings_isolation.py`, which swaps `app.config.settings` for a copy with `LLM_*`, budget, `DEV_BYPASS_DAILY_GATE` and `LANGFUSE_*` pinned to test defaults (secrets and DB URLs still come from `.env`). Skipped when `-m` selects `integration`/`eval`, so those hit the real provider. New env-sensitive settings that tests assume a value for go in its `_PINNED`.
 
 ## Dev daily-gate bypass
 
