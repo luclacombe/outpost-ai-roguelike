@@ -8,6 +8,11 @@ the raw Supabase JWT claim dict. Feature routers depend on this and pull
 Transaction ownership stays with the caller: do `await db.commit()` after
 the business logic succeeds, or rely on the implicit rollback when the
 context manager exits with an exception.
+
+`get_run_seed_override` always returns None in production. In-process
+harnesses (playtest, balance sweep) override it via
+`app.dependency_overrides` so a new run uses the harness seed. It is a
+dependency, not a request field, so players can never choose a seed.
 """
 
 from collections.abc import AsyncGenerator
@@ -34,3 +39,8 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict:
     return decode_supabase_jwt(credentials.credentials)
+
+
+async def get_run_seed_override() -> int | None:
+    """Seed for a new run. None = service default (epoch-derived)."""
+    return None

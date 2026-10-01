@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_current_user, get_db, get_run_seed_override
 from app.game.exceptions import (
     DailyGateExceeded,
     GameError,
@@ -134,10 +134,11 @@ async def create_session(
     _body: GameSessionCreateRequest = Body(default_factory=GameSessionCreateRequest),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    seed_override: int | None = Depends(get_run_seed_override),
 ) -> GameSessionResponse:
     user_id = UUID(user["sub"])
     try:
-        state = await create_game_session(user_id=user_id, db=db)
+        state = await create_game_session(user_id=user_id, db=db, rng_seed_source=seed_override)
     except GameError as exc:
         raise _to_http_exception(exc) from exc
     setting = load_setting(state.setting_id)
