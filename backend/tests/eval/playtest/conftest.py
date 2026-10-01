@@ -9,27 +9,60 @@ from typing import Any
 import pytest
 
 # A fixture turn input for the vertical-slice smoke test. Mirrors the shape
-# the orchestrator will assemble from a real /game/{id}/turn SSE stream:
-# proposals + advisor reactions + dashboard state.
-FIXTURE_TURN_INPUT = {
+# `app/eval/playtest/turn_view.py::TurnViewTracker.build` assembles from a
+# real /game/{id}/turn SSE stream + game_sessions.state (UI parity).
+_ADVISORS = [
+    {"id": "a1", "name": "Marko", "role": "Commissar", "is_alive": True, "status_label": "STEADY"},
+    {
+        "id": "a2",
+        "name": "Nadia",
+        "role": "Quartermaster",
+        "is_alive": True,
+        "status_label": "STEWING",
+    },
+    {"id": "a3", "name": "Irena", "role": "Medic", "is_alive": True, "status_label": "STEADY"},
+    {
+        "id": "a4",
+        "name": "Yuri",
+        "role": "Radio Operator",
+        "is_alive": True,
+        "status_label": "TIRED",
+    },
+]
+
+
+def _resource(rid: str, name: str, value: int, max_: int = 100, crit: int = 20) -> dict[str, Any]:
+    return {"id": rid, "name": name, "value": value, "max": max_, "critical_threshold": crit}
+
+
+FIXTURE_TURN_INPUT: dict[str, Any] = {
     "turn": 1,
+    "day": 0,
+    "max_turns": 9,
+    "setting_name": "Vorgrad Station",
     "setting_lore": "Vorgrad Station — arctic research outpost reactivated after a "
     "geopolitical crisis. The ice was never supposed to be this political.",
     "dashboard": {
-        "resources": {"fuel": 80, "food": 70, "warmth": 65, "medicine": 50, "morale": 60},
         "legitimacy": 50,
-        "player_health": 100,
-        "advisors": [
-            {"id": "a1", "name": "Marko", "role": "Commissar"},
-            {"id": "a2", "name": "Nadia", "role": "Quartermaster"},
-            {"id": "a3", "name": "Irena", "role": "Medic"},
-            {"id": "a4", "name": "Yuri", "role": "Radio Operator"},
+        "resources": [
+            _resource("fuel", "Fuel", 80),
+            _resource("food", "Food", 18),
+            _resource("warmth", "Warmth", 65),
+            _resource("medicine", "Medicine", 8),
+            _resource("morale", "Morale", 60),
         ],
+        "advisors": _ADVISORS,
     },
     "event": {
+        "id": "ev_coil",
         "title": "Heating coil shows hairline cracks",
         "body": "The east-wing heating coil is on its last week.",
+        "category": "infrastructure",
+        "severity": 3,
+        "origin": "NATURAL",
     },
+    "event_log": [{"turn": 0, "text": "heating coil shows hairline cracks"}],
+    "last_turn": None,
     "proposals": [
         {
             "id": "p_dom",
@@ -37,6 +70,7 @@ FIXTURE_TURN_INPUT = {
             "flavor": "DOMINANT",
             "description": "Saves 12 fuel; -5 morale.",
             "proposed_by_agent_id": "a2",
+            "effects_preview": ["+12 fuel", "-5 morale"],
         },
         {
             "id": "p_mor",
@@ -44,6 +78,7 @@ FIXTURE_TURN_INPUT = {
             "flavor": "MORAL",
             "description": "-15 fuel; +2 morale; advisor backing.",
             "proposed_by_agent_id": "a3",
+            "effects_preview": ["-15 fuel", "+2 morale"],
         },
         {
             "id": "p_wld",
@@ -51,6 +86,7 @@ FIXTURE_TURN_INPUT = {
             "flavor": "WILDCARD",
             "description": "High variance; could fail.",
             "proposed_by_agent_id": "a1",
+            "effects_preview": [],
         },
     ],
     "advisor_reactions": [
@@ -59,6 +95,47 @@ FIXTURE_TURN_INPUT = {
         {"agent_id": "a3", "text": "Cold kills slower than hunger."},
         {"agent_id": "a4", "text": "There's a coupler in the southern shed. I think."},
     ],
+}
+
+# Turn 2 of the same game: one advisor died, the persona sees last turn's outcome.
+FIXTURE_TURN_INPUT_T2: dict[str, Any] = {
+    **FIXTURE_TURN_INPUT,
+    "turn": 2,
+    "day": 1,
+    "dashboard": {
+        **FIXTURE_TURN_INPUT["dashboard"],
+        "legitimacy": 46,
+        "advisors": [
+            *_ADVISORS[:3],
+            {**_ADVISORS[3], "is_alive": False, "status_label": "KIA"},
+        ],
+    },
+    "event": {
+        "id": "ev_storm",
+        "title": "Whiteout on the ridge",
+        "body": "The antenna mast is icing over.",
+        "category": "weather",
+        "severity": 4,
+        "origin": "SEED_FIRED",
+    },
+    "event_log": [
+        {"turn": 0, "text": "heating coil shows hairline cracks"},
+        {"turn": 0, "text": "Yuri died."},
+        {"turn": 1, "text": "whiteout on the ridge"},
+    ],
+    "last_turn": {
+        "chosen": {
+            "name": "Cut perimeter heating",
+            "flavor": "DOMINANT",
+            "effects_preview": ["+12 fuel", "-5 morale"],
+        },
+        "narration": "The perimeter went dark. Yuri did not come back from the shed.",
+        "deaths": ["Yuri"],
+        "legitimacy_delta": -4,
+        "resource_deltas": {"Fuel": 12, "Morale": -5},
+        "status_changes": [{"name": "Yuri", "from": "TIRED", "to": "KIA"}],
+    },
+    "advisor_reactions": FIXTURE_TURN_INPUT["advisor_reactions"][:3],
 }
 
 
@@ -85,6 +162,11 @@ def _canned_persona_response(
 @pytest.fixture
 def fixture_turn_input() -> dict[str, Any]:
     return FIXTURE_TURN_INPUT
+
+
+@pytest.fixture
+def fixture_turn_input_t2() -> dict[str, Any]:
+    return FIXTURE_TURN_INPUT_T2
 
 
 @pytest.fixture

@@ -653,7 +653,7 @@ async def test_turn_after_decide_emits_cached_agent_spoke(persisted_game, graph_
     → apply_tool_calls → [pause]` at the END of /decide, so by the time
     the harness POSTs /turn for the next turn, the graph is already
     paused at resolve. Without re-emitting cached agent_spoke frames in
-    that short-circuit branch, the harness's `_assemble_turn_input`
+    that short-circuit branch, the harness's `TurnViewTracker.build`
     sees zero advisor reactions and the dashboard renders every advisor
     as `(silent)` — which is exactly what the 2026-04-29 smoke saw, and
     which the persona then HONESTLY reported as silence.

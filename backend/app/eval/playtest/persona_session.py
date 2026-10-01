@@ -31,6 +31,7 @@ from app.eval.playtest.schemas import (
     PersonaTurnFlags,
     PersonaTurnOutput,
 )
+from app.eval.playtest.turn_message import format_turn_user_message as _format_turn_user_message
 
 logger = logging.getLogger(__name__)
 
@@ -168,62 +169,6 @@ def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
         raise PersonaParseError("inner result is not a JSON object")
 
     return session_id, inner
-
-
-def _format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: list[str]) -> str:
-    """Renders the harness's per-turn user-message text shown to the persona.
-
-    Section order: Setting → Dashboard → Event → Advisor reactions →
-    Proposals → "Pick one". Reactions deliberately precede proposals: the
-    earlier order (proposals first) caused Sonnet personas to skim past
-    the reactions section and fabricate `(silent)` allegations against
-    advisors whose reactions WERE rendered (24/0 false-positive ratio in
-    the 2026-04-29 smoke run).
-
-    Format is human-readable markdown so the LLM reads it naturally
-    (research finding: markdown beats JSON for narrative pattern matching
-    by LLMs).
-    """
-    proposals_by_id = {p["id"]: p for p in turn_input["proposals"]}
-    advisor_by_id = {a["id"]: a for a in turn_input["dashboard"]["advisors"]}
-    reactions_by_aid = {r["agent_id"]: r["text"] for r in turn_input["advisor_reactions"]}
-
-    lines: list[str] = [
-        f"# Turn {turn_input['turn']}",
-        "",
-        "## Setting",
-        turn_input["setting_lore"],
-        "",
-        "## Dashboard",
-        f"- Legitimacy: {turn_input['dashboard']['legitimacy']}",
-        f"- Player health: {turn_input['dashboard']['player_health']}",
-        "- Resources: "
-        + ", ".join(f"{k} {v}" for k, v in turn_input["dashboard"]["resources"].items()),
-        "",
-        "## Event",
-        f"**{turn_input['event']['title']}**",
-        turn_input["event"]["body"],
-        "",
-        "## Advisor reactions",
-    ]
-    for a in turn_input["dashboard"]["advisors"]:
-        text = reactions_by_aid.get(a["id"], "(silent)")
-        lines.append(f"- **{a['name']}** ({a['role']}): {text}")
-    lines.append("")
-    lines.append("## Proposals (in display order)")
-    for idx, pid in enumerate(displayed_order):
-        p = proposals_by_id[pid]
-        proposer = advisor_by_id.get(p.get("proposed_by_agent_id", ""))
-        proposer_name = proposer["name"] if proposer else "(unknown)"
-        lines.append(
-            f"{idx}. **{p['name']}** ({p['flavor']}, by {proposer_name}) — {p['description']}"
-        )
-    lines.append("")
-    lines.append(
-        f"Pick one of the three proposals above. Your `displayed_order` field "
-        f"in the response must be exactly: {displayed_order}"
-    )
-    return "\n".join(lines)
 
 
 def _displayed_order_count_mismatch(exc: ValidationError) -> bool:

@@ -39,10 +39,10 @@ from sqlalchemy import select
 
 from app.database import async_session_factory
 from app.dependencies import get_current_user, get_run_seed_override
+from app.eval.playtest.turn_view import TurnViewTracker
 from app.eval.types import RunRecord
 from app.game.models import GameSession, TurnLog
 from app.game.schemas import ColonyState, ToolCall
-from app.game.setting_loader import load_setting
 from app.main import app
 from tests.fixtures.simulated_player import SimulatedPlayer
 from tests.test_agent_router import _collect_stream
@@ -249,59 +249,14 @@ async def simulate_game(
     Returns a `RunRecord` populated from the final DB state + per-turn
     `turn_logs` rows + the SSE-derived narration / responses streams.
     """
-    player = SimulatedPlayer(policy, seed=seed)
-    aggregator = _RunAggregator()
-
-    tokens = _install_overrides(user_id, seed)
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            create_resp = await client.post("/game/session")
-            assert create_resp.status_code == 201, create_resp.text
-            game_id = UUID(create_resp.json()["game_id"])
-
-            ended = False
-            for _turn_idx in range(max_turns):
-                # ---- /turn ----
-                async with client.stream("POST", f"/game/{game_id}/turn") as resp:
-                    assert resp.status_code == 200, await resp.aread()
-                    turn_frames = await _collect_stream(resp)
-                aggregator.absorb_frames(turn_frames)
-
-                if any(f["event"] == "run_over" for f in turn_frames):
-                    ended = True
-                    break
-
-                pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
-                if pr is None:
-                    # Defensive — a healthy /turn always pauses with proposals.
-                    break
-
-                proposals = _proposals_from_frame(pr)
-                if not proposals:
-                    break
-
-                chosen_id = player.pick(proposals)  # SimulatedPlayer is non-blocking
-
-                # ---- /decide ----
-                async with client.stream(
-                    "POST",
-                    f"/game/{game_id}/decide",
-                    json={"chosen_proposal_id": chosen_id},
-                ) as resp:
-                    assert resp.status_code == 200, await resp.aread()
-                    decide_frames = await _collect_stream(resp)
-                aggregator.absorb_frames(decide_frames)
-
-                if any(f["event"] == "run_over" for f in decide_frames):
-                    ended = True
-                    break
-    finally:
-        _reset_overrides(tokens)
-
-    # `ended` is informational — `final_state.end_state` is authoritative.
-    _ = ended
-
-    return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
+    return await _drive_game(
+        player=SimulatedPlayer(policy, seed=seed),
+        policy=policy,
+        seed=seed,
+        max_turns=max_turns,
+        user_id=user_id,
+        on_turn_input=None,
+    )
 
 
 async def simulate_game_with_player(
@@ -319,8 +274,9 @@ async def simulate_game_with_player(
 
     Differences vs. simulate_game:
       - No `policy` argument; caller passes an already-constructed `player`.
-      - `on_turn_input(turn_input_dict)` fires before each pick so the
-        LLMPlayer can wire its turn_input_provider closure.
+      - `on_turn_input(turn_view)` fires before each pick with the UI-parity
+        view from `app/eval/playtest/turn_view.py`, so the LLMPlayer's
+        turn_input_provider closure sees what a player would see.
 
     The `setting_id` argument is informational (server picks the setting
     from (user_id, UTC day)); the returned RunRecord reflects what the
@@ -330,7 +286,29 @@ async def simulate_game_with_player(
 
     `real_llm` is a no-op flag here; intercept network externally via respx.
     """
+    policy = str(getattr(player, "persona", None) and player.persona.id or "llm")
+    return await _drive_game(
+        player=player,
+        policy=policy,
+        seed=seed,
+        max_turns=max_turns,
+        user_id=user_id,
+        on_turn_input=on_turn_input,
+    )
+
+
+async def _drive_game(
+    *,
+    player: Any,
+    policy: str,
+    seed: int,
+    max_turns: int,
+    user_id: UUID,
+    on_turn_input: Callable[[dict[str, Any]], None] | None,
+) -> RunRecord:
+    """Shared /session → (/turn → pick → /decide)* loop."""
     aggregator = _RunAggregator()
+    view = TurnViewTracker()
 
     tokens = _install_overrides(user_id, seed)
     try:
@@ -339,37 +317,41 @@ async def simulate_game_with_player(
             assert create_resp.status_code == 201, create_resp.text
             game_id = UUID(create_resp.json()["game_id"])
 
-            for _turn_idx in range(max_turns):
+            for turn_idx in range(max_turns):
                 # ---- /turn ----
                 async with client.stream("POST", f"/game/{game_id}/turn") as resp:
                     assert resp.status_code == 200, await resp.aread()
                     turn_frames = await _collect_stream(resp)
                 aggregator.absorb_frames(turn_frames)
+                view.absorb(turn_frames)
 
                 if any(f["event"] == "run_over" for f in turn_frames):
                     break
 
                 pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
                 if pr is None:
+                    # Defensive — a healthy /turn always pauses with proposals.
                     break
                 proposals = _proposals_from_frame(pr)
                 if not proposals:
                     break
 
-                # Assemble per-turn input dict for the LLM persona and notify
-                # the caller before pick() so turn_input_provider is wired.
                 if on_turn_input is not None:
                     colony = await _load_final_state(game_id)
                     on_turn_input(
-                        _assemble_turn_input(turn_frames, proposals, _turn_idx + 1, colony)
+                        view.build(
+                            turn=turn_idx + 1,
+                            colony=colony,
+                            turn_frames=turn_frames,
+                            proposals=proposals,
+                        )
                     )
 
-                # `player.pick` is sync (LLMPlayer subprocess-blocks on
-                # `claude --print`); calling it inline here would block the
-                # asyncio event loop, serializing all concurrent games' picks.
-                # Hand it to a thread so other games' /turn HTTP calls can
-                # progress while this one's persona thinks.
+                # `player.pick` may be sync and slow (LLMPlayer subprocess-blocks
+                # on `claude --print`); calling it inline would block the event
+                # loop and serialize concurrent games. Hand it to a thread.
                 chosen_id = await asyncio.to_thread(player.pick, proposals)
+                view.record_choice(next(p for p in proposals if p["id"] == chosen_id))
 
                 # ---- /decide ----
                 async with client.stream(
@@ -380,75 +362,14 @@ async def simulate_game_with_player(
                     assert resp.status_code == 200, await resp.aread()
                     decide_frames = await _collect_stream(resp)
                 aggregator.absorb_frames(decide_frames)
+                view.absorb(decide_frames)
 
                 if any(f["event"] == "run_over" for f in decide_frames):
                     break
     finally:
         _reset_overrides(tokens)
 
-    policy = str(getattr(player, "persona", None) and player.persona.id or "llm")
     return await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
-
-
-def _assemble_turn_input(
-    turn_frames: list[dict[str, Any]],
-    proposals: list[dict[str, Any]],
-    turn_number: int,
-    colony: ColonyState,
-) -> dict[str, Any]:
-    """Project SSE frames + current ColonyState into the dict shape that
-    PersonaSession._format_turn_user_message expects.
-
-    Frame names emitted by app/agent/service.py:
-      - `agent_spoke`     — {agent_id, text}
-      - `proposals_ready` — {turn_number, current_event, proposals}
-      - `narration`       — {text}
-      - `turn_advanced`   — {turn_number, legitimacy, player_health, cost_cents}
-      - `decision_applied`, `autonomous_action`, `death`, `run_over`, `done`
-
-    There is no `dashboard` or `event_intro` frame. The dashboard is assembled
-    from the ColonyState (loaded after /turn completes, before pick). The event
-    comes from proposals_ready.current_event.
-    """
-    # Event: from proposals_ready frame.
-    pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
-    raw_event = (pr["data"].get("current_event") or {}) if pr else {}
-
-    # Advisor reactions: one agent_spoke frame per advisor.
-    advisor_reactions = [
-        {"agent_id": f["data"]["agent_id"], "text": f["data"]["text"]}
-        for f in turn_frames
-        if f["event"] == "agent_spoke" and isinstance(f.get("data"), dict)
-    ]
-
-    # Setting lore from setting file.
-    try:
-        setting = load_setting(colony.setting_id)
-        setting_lore = setting.lore
-    except Exception:  # noqa: BLE001 — file missing in test env is acceptable
-        setting_lore = ""
-
-    # Dashboard resources: {resource_id: value}.
-    resources = {rid: r.value for rid, r in colony.resources.items()}
-
-    # Advisor list from colony agents (alive only, so persona doesn't see dead advisors).
-    advisors = [
-        {"id": str(a.id), "name": a.name, "role": a.role} for a in colony.agents if a.is_alive
-    ]
-
-    return {
-        "turn": turn_number,
-        "setting_lore": setting_lore,
-        "dashboard": {
-            "resources": resources,
-            "legitimacy": colony.legitimacy,
-            "player_health": colony.player_health,
-            "advisors": advisors,
-        },
-        "event": raw_event,
-        "proposals": proposals,
-        "advisor_reactions": advisor_reactions,
-    }
 
 
 async def _build_run_record(

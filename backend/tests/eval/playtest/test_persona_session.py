@@ -638,3 +638,72 @@ def test_parse_envelope_handles_fence_variants(envelope_json: str, expects_raise
         session_id, inner = _parse_envelope_and_inner(envelope_json)
         assert session_id == "s"
         assert isinstance(inner, dict)
+
+
+# ---------------------------------------------------------------------------
+# UI-parity rendering (turn_view.py → _format_turn_user_message)
+# ---------------------------------------------------------------------------
+
+_ORDER = ["p_mor", "p_dom", "p_wld"]
+
+
+def test_user_message_renders_header_and_dashboard(fixture_turn_input: dict[str, Any]) -> None:
+    msg = _format_turn_user_message(turn_input=fixture_turn_input, displayed_order=_ORDER)
+    assert "Day 00 / 9" in msg
+    assert "Vorgrad Station" in msg
+    assert "Legitimacy: 50 (warning)" in msg
+    assert "Fuel 80/100" in msg
+    assert "Food 18/100 (low)" in msg
+    assert "Medicine 8/100 (critical)" in msg
+    assert "Nadia (Quartermaster): STEWING" in msg
+    assert "infrastructure · serious" in msg
+
+
+def test_user_message_hides_what_the_ui_hides(fixture_turn_input: dict[str, Any]) -> None:
+    msg = _format_turn_user_message(turn_input=fixture_turn_input, displayed_order=_ORDER)
+    assert "health" not in msg.lower()
+    assert "grievance" not in msg.lower()
+    assert "critical at" not in msg.lower()
+
+
+def test_user_message_renders_effects_preview(fixture_turn_input: dict[str, Any]) -> None:
+    msg = _format_turn_user_message(turn_input=fixture_turn_input, displayed_order=_ORDER)
+    proposals = msg[msg.index("## Proposals") :]
+    assert "Effects: +12 fuel; -5 morale" in proposals
+    assert "Effects: (none shown)" in proposals
+
+
+def test_user_message_first_turn_has_no_last_turn(fixture_turn_input: dict[str, Any]) -> None:
+    msg = _format_turn_user_message(turn_input=fixture_turn_input, displayed_order=_ORDER)
+    assert "## Last turn" not in msg
+
+
+def test_user_message_renders_last_turn_outcome(fixture_turn_input_t2: dict[str, Any]) -> None:
+    msg = _format_turn_user_message(turn_input=fixture_turn_input_t2, displayed_order=_ORDER)
+    last = msg[msg.index("## Last turn") : msg.index("## Event")]
+    assert "You chose: **Cut perimeter heating** (DOMINANT)" in last
+    assert "Effects shown: +12 fuel; -5 morale" in last
+    assert "The perimeter went dark." in last
+    assert "Legitimacy -4" in last
+    assert "Fuel +12" in last and "Morale -5" in last
+    assert "Deaths: Yuri" in last
+    assert "Yuri: TIRED → KIA" in last
+    # Section order: dashboard, log, last turn, event, reactions, proposals.
+    order = [
+        "## Dashboard",
+        "## Log",
+        "## Last turn",
+        "## Event",
+        "## Advisor reactions",
+        "## Proposals",
+    ]
+    positions = [msg.index(h) for h in order]
+    assert positions == sorted(positions)
+
+
+def test_user_message_dead_advisors_are_not_silent(fixture_turn_input_t2: dict[str, Any]) -> None:
+    """KIA advisors appear in the roster, not in reactions, so no `(silent)`."""
+    msg = _format_turn_user_message(turn_input=fixture_turn_input_t2, displayed_order=_ORDER)
+    assert "Yuri (Radio Operator): KIA" in msg
+    assert "(silent)" not in msg
+    assert "CONSEQUENCE" in msg
