@@ -20,8 +20,8 @@ pytestmark = [pytest.mark.eval, pytest.mark.asyncio]
     reason="OUTPOST_PLAYTEST_REAL_LLM not set; skipping real-LLM playtest",
 )
 async def test_real_llm_one_persona_one_game(graph_postgres, tmp_path: Path) -> None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set")
+    if not (os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
+        pytest.skip("LLM_API_KEY / ANTHROPIC_API_KEY not set")
     if shutil.which("claude") is None:
         pytest.skip("claude CLI not on PATH")
 

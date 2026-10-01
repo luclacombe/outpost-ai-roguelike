@@ -159,8 +159,8 @@ async def test_real_llm_simulated_run(eval_user_id, graph_postgres) -> None:
     Pinned to a small turn budget so the cost stays under ~30¢ per
     invocation. Used by the nightly eval job (Task 5.5), not by CI.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set; cannot run live eval.")
+    if not (os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
+        pytest.skip("LLM_API_KEY / ANTHROPIC_API_KEY not set; cannot run live eval.")
 
     run = await simulate_game(
         setting_id="arctic_station_v1",

@@ -52,9 +52,9 @@ from app.main import app
 from tests.test_agent_router import _collect_stream
 
 # Collect-time skip if the env var isn't set. Keeps `pytest tests/` safe.
-if not os.environ.get("ANTHROPIC_API_KEY"):
+if not (os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
     pytest.skip(
-        "ANTHROPIC_API_KEY not set; skipping full-run integration test.",
+        "LLM_API_KEY / ANTHROPIC_API_KEY not set; skipping full-run integration test.",
         allow_module_level=True,
     )
 
