@@ -25,6 +25,12 @@ from app.game.setting_loader import list_available_settings
 
 LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
 
+# Harness-only end state for a run the driver stopped because it could not
+# continue (`RunRecord.abort_reason`, e.g. a turn with zero proposals). Not an
+# `EndState`: the engine never produces it. Aborted runs are listed and
+# counted in summaries but kept out of end-state stats.
+ABORTED = "ABORTED"
+
 
 def require_local_database(url: str, *, allow_remote: bool = False) -> None:
     """Exit unless DATABASE_URL points at a local Postgres.
@@ -76,9 +82,10 @@ def resolve_unfinished_end_state(state: ColonyState) -> EndState:
     """Derive a terminal `EndState` for a run the harness left ambiguous.
 
     Sub-bug (ii) fix: if the harness loop exits with `state.end_state is
-    None` (e.g. the iteration counter exhausted before `/decide` ran for
-    the terminal turn, or a defensive `pr is None` break fired), the run
-    is recorded as `UNKNOWN` and the verdict step never runs. This
+    None` (the iteration counter exhausted before `/decide` ran for the
+    terminal turn), the run is recorded as `UNKNOWN` and the verdict step
+    never runs. Do NOT call this for aborted runs (`RunRecord.abort_reason`
+    set): a turn with no proposals is a broken run, not a survived one. This
     function fills in the gap per SPEC §10 — every run resolves to one
     of {ENDURED, COLLAPSED, OUSTED, KILLED}.
 

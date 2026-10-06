@@ -9,6 +9,9 @@ fixes sub-bug (ii): runs that exit the harness loop with `end_state=None` becaus
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -253,3 +256,119 @@ def test_playtest_defaults_pin_persona_model_and_disable_tracing() -> None:
     assert args.personas == "optimizer,pessimist"
     assert args.max_turns == 3
     assert args.trace is True
+
+
+# ---------------------------------------------------------------------------
+# Aborted runs (zero-proposal turns): reported as ABORTED, never resolved
+# ---------------------------------------------------------------------------
+
+
+def _aborted_run_record(game_id: UUID) -> Any:
+    from app.eval.types import RunRecord
+
+    return RunRecord(
+        setting_id="arctic_station_v1",
+        policy="optimizer",
+        seed=7,
+        end_state=None,
+        turns_played=2,
+        final_player_health=100,
+        agents_alive_at_end=4,
+        total_agents=4,
+        cost_cents=4,
+        game_id=game_id,
+        abort_reason="no_proposals at turn 2",
+    )
+
+
+async def test_drive_one_game_returns_aborted_archive_without_resolving(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from scripts import play_test
+    from scripts.play_test import PlaytestConfig
+    from tests.fixtures import run_simulator
+
+    async def fake_simulate(**kwargs: Any) -> Any:
+        return _aborted_run_record(GAME_ID)
+
+    async def noop(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    class _FakePlayer:
+        def __init__(self, **kwargs: Any) -> None:
+            self.per_turn_outputs: list[Any] = []
+            self.per_turn_inputs: list[Any] = []
+
+    def no_db() -> Any:
+        raise AssertionError("aborted runs must not touch the DB / post-mortem path")
+
+    monkeypatch.setattr(run_simulator, "simulate_game_with_player", fake_simulate)
+    monkeypatch.setattr(play_test, "_provision_synthetic_user", noop)
+    monkeypatch.setattr(play_test, "LLMPlayer", _FakePlayer)
+    monkeypatch.setattr(play_test, "async_session_factory", no_db)
+
+    arc = await play_test._drive_one_game(
+        persona_id="optimizer",
+        setting_id="arctic_station_v1",
+        seed=7,
+        pool=None,  # type: ignore[arg-type]
+        config=PlaytestConfig(shell_dir=tmp_path),
+    )
+    assert arc.end_state == "ABORTED"
+    assert arc.abort_reason == "no_proposals at turn 2"
+    assert arc.run_id == str(GAME_ID)
+    assert arc.verdict is None
+    assert arc.turns_played == 2
+
+
+async def test_run_harness_lists_aborted_runs_outside_corpus(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from contextlib import asynccontextmanager
+
+    from app.eval.playtest.output import PerRunArchive
+    from scripts import play_test
+    from scripts.play_test import PlaytestConfig
+
+    @asynccontextmanager
+    async def fake_app_state():
+        yield None
+
+    async def fake_drive(*, persona_id: str, setting_id: str, seed: int, pool, config):
+        aborted = setting_id == "orbital_colony_v1"
+        return PerRunArchive(
+            run_id=str(uuid4()),
+            persona_id=persona_id,
+            setting_id=setting_id,
+            seed=seed,
+            end_state="ABORTED" if aborted else "ENDURED",
+            abort_reason="no_proposals at turn 1" if aborted else None,
+            turns_played=1 if aborted else 10,
+            per_turn_outputs=[],
+            verdict=None,
+            run_record_summary={"tool_calls": [], "narration_per_turn": []},
+            per_run_oracles={},
+        )
+
+    monkeypatch.setattr(play_test, "harness_app_state", fake_app_state)
+    monkeypatch.setattr(play_test, "_drive_one_game", fake_drive)
+
+    config = PlaytestConfig(
+        personas=["optimizer"],
+        runs_per_persona=2,
+        settings=["arctic_station_v1", "orbital_colony_v1"],
+        out_dir=tmp_path,
+        shell_dir=tmp_path / "shell",
+    )
+    await play_test.run_harness(config=config)
+
+    runs = json.loads((tmp_path / "runs.json").read_text())
+    assert [r["end_state"] for r in runs["per_run_summaries"]] == ["ENDURED"]
+    [aborted] = runs["harness_findings"]["aborted_runs"]
+    assert aborted["setting"] == "orbital_colony_v1"
+    assert aborted["reason"] == "no_proposals at turn 1"
+    assert aborted["end_state"] == "ABORTED"
+    # The aborted run's raw archive is still on disk for forensics.
+    raw = json.loads((tmp_path / aborted["raw_json_path"]).read_text())
+    assert raw["end_state"] == "ABORTED"
+    assert raw["abort_reason"] == "no_proposals at turn 1"

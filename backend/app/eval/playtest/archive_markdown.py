@@ -72,6 +72,7 @@ def render_per_run_markdown(a: PerRunArchive) -> str:
         f"**Persona:** {a.persona_id}",
         f"**Setting:** {a.setting_id}",
         f"**End state:** {a.end_state}",
+        *([f"**Abort reason:** {a.abort_reason}"] if a.abort_reason else []),
         f"**Turns played:** {a.turns_played}",
         f"**Final legitimacy:** {_fmt(a.final_legitimacy)}",
         f"**Final mean resource fraction:** {_fmt(a.final_resource_frac)}",

@@ -336,10 +336,15 @@ async def _drive_game(
     user_id: UUID,
     on_turn_input: Callable[[dict[str, Any]], None] | None,
 ) -> RunRecord:
-    """Shared /session → (/turn → pick → /decide)* loop."""
+    """Shared /session → (/turn → pick → /decide)* loop.
+
+    Stops on `run_over`, on `max_turns`, or with `RunRecord.abort_reason`
+    set when a /turn yields no proposals (see the loop body).
+    """
     aggregator = _RunAggregator()
     view = TurnViewTracker()
     choice_spread: list[dict[str, Any]] = []
+    abort_reason: str | None = None
 
     tokens = _install_overrides(user_id, seed)
     try:
@@ -359,12 +364,17 @@ async def _drive_game(
                 if any(f["event"] == "run_over" for f in turn_frames):
                     break
 
+                # A live /turn must pause with proposals. If it doesn't, the
+                # run cannot continue: record why and stop. Callers report it
+                # as ABORTED; resolving it to an end state would fake a result
+                # (zero-proposal debates used to show up as ENDURED runs).
                 pr = next((f for f in turn_frames if f["event"] == "proposals_ready"), None)
                 if pr is None:
-                    # Defensive — a healthy /turn always pauses with proposals.
+                    abort_reason = f"no_proposals_frame at turn {turn_idx + 1}"
                     break
                 proposals = _proposals_from_frame(pr)
                 if not proposals:
+                    abort_reason = f"no_proposals at turn {turn_idx + 1}"
                     break
 
                 if on_turn_input is not None:
@@ -405,8 +415,10 @@ async def _drive_game(
     finally:
         _reset_overrides(tokens)
 
+    if abort_reason is not None:
+        logger.warning("game %s aborted by harness: %s", game_id, abort_reason)
     record = await _build_run_record(game_id, aggregator, policy=policy, seed=seed)
-    return record.model_copy(update={"choice_spread": choice_spread})
+    return record.model_copy(update={"choice_spread": choice_spread, "abort_reason": abort_reason})
 
 
 async def _build_run_record(

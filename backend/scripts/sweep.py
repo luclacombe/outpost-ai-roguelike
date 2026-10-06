@@ -10,7 +10,10 @@ Default 3 policies × 10 seeds × 3 settings = 90 games.
 
 Output: `docs/playtest/<YYYY-MM-DD>-sweep[-N]/` with `summary.json`,
 `summary.md` (`app/eval/sweep_summary.py`) and `raw/<policy>-<setting>-seed<n>.json`
-per game, written as each game finishes. Each game provisions its own
+per game, written as each game finishes. A game the driver aborted
+(e.g. a turn with zero proposals) is written with `end_state: "ABORTED"` +
+`abort_reason` and listed under `aborted` in the summary, outside the
+end-state stats. Each game provisions its own
 synthetic user (daily gate). Langfuse tracing is off unless `--trace`; a
 non-local DATABASE_URL is refused unless `--allow-remote-db`.
 
@@ -44,6 +47,7 @@ from app.eval.types import RunRecord
 from app.game.models import GameSession
 from app.game.schemas import ColonyState, EndState
 from scripts._harness import (
+    ABORTED,
     _cleanup_synthetic_user,
     _provision_synthetic_user,
     _uuid_for_setting,
@@ -84,17 +88,28 @@ def game_record(
     colony: ColonyState,
     requested_setting: str,
     cost_cents: int,
-    end_state: EndState,
+    end_state: EndState | None,
     resolved_by_harness: bool,
 ) -> dict[str, Any]:
-    """One finished game as a JSON-ready dict (`raw/*.json` row)."""
+    """One driven game as a JSON-ready dict (`raw/*.json` row).
+
+    An aborted run (`record.abort_reason`) gets `end_state="ABORTED"`;
+    otherwise `end_state` must be the engine's (or harness-resolved) state.
+    """
+    if record.abort_reason is not None:
+        end_state_value = ABORTED
+    elif end_state is None:
+        raise ValueError("end_state is required for a run that was not aborted")
+    else:
+        end_state_value = end_state.value
     return {
         "policy": record.policy,
         "setting": record.setting_id,
         "requested_setting": requested_setting,
         "seed": record.seed,
         "game_id": str(record.game_id),
-        "end_state": end_state.value,
+        "end_state": end_state_value,
+        "abort_reason": record.abort_reason,
         "end_state_resolved_by_harness": resolved_by_harness,
         "turns_played": record.turns_played,
         "max_turns": colony.max_turns,
@@ -132,6 +147,23 @@ async def _drive_one_sweep_game(
                 await s.execute(select(GameSession).where(GameSession.id == record.game_id))
             ).scalar_one()
         colony = ColonyState.model_validate(row.state)
+        if record.abort_reason is not None:
+            logger.warning(
+                "sweep game %s (%s/%s/%s) aborted: %s",
+                row.id,
+                policy,
+                setting,
+                seed,
+                record.abort_reason,
+            )
+            return game_record(
+                record,
+                colony=colony,
+                requested_setting=setting,
+                cost_cents=row.cost_cents,
+                end_state=None,
+                resolved_by_harness=False,
+            )
         end_state = resolve_unfinished_end_state(colony)
         if colony.end_state is None:
             logger.warning(
@@ -185,7 +217,21 @@ async def run_sweep(config: SweepConfig) -> dict[str, Any]:
             # Persist per game so an interrupted sweep still leaves data.
             name = f"{policy}-{row['setting']}-seed{seed}.json"
             (raw_dir / name).write_text(json.dumps(row, indent=2, default=str))
-            games.append(row)
+            if row["end_state"] == ABORTED:
+                # Listed and counted, never summarized as an outcome.
+                aborted.append(
+                    {
+                        "policy": policy,
+                        "setting": setting,
+                        "seed": seed,
+                        "game_id": row["game_id"],
+                        "turns_played": row["turns_played"],
+                        "abort_reason": row["abort_reason"],
+                        "error": row["abort_reason"],
+                    }
+                )
+            else:
+                games.append(row)
             logger.info("sweep %d/%d done", len(games) + len(aborted), len(allocations))
 
     with tracing_disabled(enabled=not config.trace):

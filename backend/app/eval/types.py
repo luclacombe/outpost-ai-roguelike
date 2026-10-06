@@ -62,6 +62,13 @@ class RunRecord(BaseModel):
     """Per paused turn: `app.eval.choice_spread.compute_choice_spread` output
     plus `turn` and `picked_proposal_id`. Empty for hand-built records."""
 
+    abort_reason: str | None = None
+    """Set when the harness stopped a live run it could not continue, e.g.
+    `"no_proposals at turn 3"` (debate yielded zero proposals) or
+    `"no_proposals_frame at turn 3"` (no `proposals_ready` frame). An aborted
+    run is not a finished game: harness CLIs report it as ABORTED and keep
+    it out of end-state stats instead of resolving it to ENDURED."""
+
 
 class TurnJudgeInput(BaseModel):
     """One (agent, turn, reasoning, action) tuple to feed the coherence judge."""

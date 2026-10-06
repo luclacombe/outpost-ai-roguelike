@@ -70,6 +70,11 @@ class PerRunArchive:
     turn_context: list[dict[str, Any]] = field(default_factory=list)
     final_legitimacy: int | None = None
     final_resource_frac: float | None = None
+    # Set (with end_state="ABORTED") when the driver stopped a run it could
+    # not continue, e.g. "no_proposals at turn 3". The orchestrator writes
+    # the archive but lists the run under harness_findings.aborted_runs
+    # instead of the corpus.
+    abort_reason: str | None = None
 
 
 def _archive_basename(a: PerRunArchive) -> str:
@@ -83,6 +88,7 @@ def _archive_to_dict(a: PerRunArchive) -> dict[str, Any]:
         "setting_id": a.setting_id,
         "seed": a.seed,
         "end_state": a.end_state,
+        "abort_reason": a.abort_reason,
         "turns_played": a.turns_played,
         "per_turn_outputs": [t.model_dump() for t in a.per_turn_outputs],
         "verdict": a.verdict.model_dump() if a.verdict else None,

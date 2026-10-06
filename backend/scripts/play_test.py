@@ -11,6 +11,10 @@ side runs through the `claude` CLI (model pinned by `persona_model`, default
 `sonnet`) and bills against the user's Claude Code subscription. Langfuse
 tracing is off unless `--trace`. The CLI refuses a non-local DATABASE_URL.
 
+A run the driver aborts (a turn with zero proposals) is archived with
+`end_state: "ABORTED"` + `abort_reason` and listed under
+`harness_findings.aborted_runs`, outside the corpus stats.
+
 The meta-aggregator runs SEPARATELY via the /playtest-aggregate slash command
 in the user's Claude Code session — see .claude/commands/playtest-aggregate.md.
 """
@@ -38,6 +42,7 @@ from app.eval.playtest.llm_player import LLMPlayer
 from app.eval.playtest.oracles import compute_corpus_oracles, compute_per_run_oracles
 from app.eval.playtest.output import (
     PerRunArchive,
+    _archive_basename,
     write_corpus_artifacts,
     write_one_archive,
 )
@@ -53,6 +58,7 @@ from app.game.models import GameSession
 from app.game.post_mortem import build_post_mortem
 from app.game.schemas import ColonyState
 from scripts._harness import (
+    ABORTED,
     _cleanup_synthetic_user,
     _provision_synthetic_user,
     _uuid_for_setting,
@@ -165,6 +171,41 @@ async def _drive_one_game(
             on_turn_input=on_turn_input,
         )
 
+        if run_record.abort_reason is not None:
+            # The driver stopped a run it could not continue (e.g. a turn
+            # with no proposals). It is not a finished game: no end-state
+            # resolution, no post-mortem, no verdict.
+            logger.warning(
+                "game %s aborted (persona=%s setting=%s seed=%s): %s",
+                run_record.game_id,
+                persona_id,
+                setting_id,
+                seed,
+                run_record.abort_reason,
+            )
+            return PerRunArchive(
+                run_id=str(run_record.game_id),
+                persona_id=persona_id,
+                setting_id=run_record.setting_id,
+                seed=seed,
+                end_state=ABORTED,
+                abort_reason=run_record.abort_reason,
+                turns_played=run_record.turns_played,
+                per_turn_outputs=player.per_turn_outputs,
+                verdict=None,
+                run_record_summary={
+                    "end_state": None,
+                    "abort_reason": run_record.abort_reason,
+                    "cost_cents": run_record.cost_cents,
+                    "tool_calls": [tc.model_dump() for tc in run_record.tool_calls],
+                    "narration_per_turn": run_record.narration_per_turn,
+                    "choice_spread": run_record.choice_spread,
+                },
+                per_run_oracles={
+                    "choice_spread_summary": summarize_choice_spread(run_record.choice_spread)
+                },
+            )
+
         # End-of-run: look up the most-recently started game session for this user.
         async with async_session_factory() as session:
             session_row = (
@@ -181,8 +222,8 @@ async def _drive_one_game(
             # and persist it back so build_post_mortem succeeds and the
             # verdict step has something to score. The harness loop exits
             # without setting end_state when its iteration counter exhausts
-            # before /decide fires for the terminal turn, OR when a defensive
-            # break (`pr is None`, `not proposals`) trips on a healthy run.
+            # before /decide fires for the terminal turn. Zero-proposal turns
+            # never reach here: they return ABORTED above.
             final_state = ColonyState.model_validate(session_row.state)
             if final_state.end_state is None:
                 resolved = resolve_unfinished_end_state(final_state)
@@ -310,7 +351,22 @@ async def run_harness(*, config: PlaytestConfig) -> None:
                 # Persist before append so a SIGTERM mid-orchestrator-loop still
                 # leaves a recoverable corpus on disk.
                 write_one_archive(config.out_dir, arc)
-                archives.append(arc)
+                if arc.abort_reason is not None:
+                    # Listed and counted, kept out of the corpus stats.
+                    pool.findings.aborted_runs.append(
+                        {
+                            "persona": persona_id,
+                            "setting": setting_id,
+                            "seed": seed,
+                            "reason": arc.abort_reason,
+                            "end_state": ABORTED,
+                            "run_id": arc.run_id,
+                            "turns_played": arc.turns_played,
+                            "raw_json_path": f"raw/{_archive_basename(arc)}.json",
+                        }
+                    )
+                else:
+                    archives.append(arc)
             except Exception as exc:  # noqa: BLE001 — log and continue
                 logger.exception("game %s/%s/%s failed: %s", persona_id, setting_id, seed, exc)
                 pool.findings.aborted_runs.append(
