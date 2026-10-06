@@ -68,7 +68,9 @@ class LLMPlayer:
                 turn_input=turn_input,
                 displayed_order=displayed_order,
             )
-            self._first_turn_done = True
+            # A first turn that degraded to the fallback has no session to
+            # --resume; start a fresh one next turn instead.
+            self._first_turn_done = self._session.session_id is not None
         else:
             result = self.pool.run_subsequent_turn(
                 session=self._session,

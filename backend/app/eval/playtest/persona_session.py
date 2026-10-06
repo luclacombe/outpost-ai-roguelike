@@ -57,6 +57,7 @@ __all__ = [
     "_format_turn_user_message",
     "_validate_quotes_against_dashboard",
     "_validate_turn_output",
+    "preflight_claude_cli",
 ]
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,43 @@ def _parse_envelope_and_inner(raw_stdout: str) -> tuple[str, dict[str, Any]]:
     return session_id, inner
 
 
+def _cli_error_detail(stdout: str, stderr: str) -> str:
+    """Why a `claude --print` call failed. Auth and API errors land in the
+    stdout JSON envelope's `result` with an empty stderr, so read both."""
+    detail = stderr.strip()
+    try:
+        envelope = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        envelope = None
+    if isinstance(envelope, dict) and isinstance(envelope.get("result"), str):
+        detail = f"{detail} {envelope['result']}".strip()
+    return detail[:500]
+
+
+def preflight_claude_cli(*, shell_dir: Path, model: str, timeout_seconds: int = 120) -> None:
+    """One tiny `claude --print` call before a harness run. Raises
+    PersonaSubprocessError with the CLI's own message (e.g. an expired login)
+    so a broken CLI fails the run up front instead of degrading every turn
+    to the fallback pick."""
+    shell_dir.mkdir(parents=True, exist_ok=True)
+    cmd = ["claude", "--print", "--output-format", "json", "--model", model, "Reply with: ok"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=shell_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PersonaTimeout(f"preflight timeout after {exc.timeout}s") from exc
+    if proc.returncode != 0:
+        raise PersonaSubprocessError(
+            f"preflight returned {proc.returncode}: {_cli_error_detail(proc.stdout, proc.stderr)}"
+        )
+
+
 def _displayed_order_count_mismatch(exc: ValidationError) -> bool:
     """Detect whether a `PersonaTurnOutput` ValidationError fired specifically
     because `displayed_order` had a length other than 3.
@@ -185,7 +223,8 @@ class PersonaSession:
 
         if proc.returncode != 0:
             raise PersonaSubprocessError(
-                f"{kind} subprocess returned {proc.returncode}: {proc.stderr[:500]}"
+                f"{kind} subprocess returned {proc.returncode}: "
+                f"{_cli_error_detail(proc.stdout, proc.stderr)}"
             )
         return proc.stdout
 

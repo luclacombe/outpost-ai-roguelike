@@ -12,10 +12,12 @@ import pytest
 from app.eval.playtest.persona_session import (
     PersonaParseError,
     PersonaSession,
+    PersonaSubprocessError,
     _build_system_prompt,
     _format_turn_user_message,
     _parse_envelope_and_inner,
     _validate_quotes_against_dashboard,
+    preflight_claude_cli,
 )
 from app.eval.playtest.personas import OPTIMIZER
 from app.eval.playtest.schemas import PersonaTurnFlags, PersonaTurnOutput
@@ -728,3 +730,56 @@ def test_user_message_dead_advisors_are_not_silent(fixture_turn_input_t2: dict[s
     assert "Yuri (Radio Operator): KIA" in msg
     assert "(silent)" not in msg
     assert "CONSEQUENCE" in msg
+
+
+_AUTH_FAIL_ENVELOPE = json.dumps(
+    {
+        "type": "result",
+        "is_error": True,
+        "session_id": "dead-session",
+        "result": "Failed to authenticate: OAuth session expired and could not be refreshed",
+    }
+)
+
+
+def test_nonzero_exit_surfaces_envelope_result(
+    monkeypatch: pytest.MonkeyPatch, fixture_turn_input: dict[str, Any], tmp_shell_dir
+) -> None:
+    """`claude --print` reports auth/API failures in the stdout envelope with an
+    empty stderr; the error must carry that text, not just the exit code."""
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=1, stdout=_AUTH_FAIL_ENVELOPE, stderr=""
+        )
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+    session = PersonaSession(persona=OPTIMIZER, shell_dir=tmp_shell_dir)
+    with pytest.raises(PersonaSubprocessError, match="OAuth session expired"):
+        session.first_turn(
+            turn_input=fixture_turn_input, displayed_order=["p_mor", "p_dom", "p_wld"]
+        )
+
+
+def test_preflight_raises_with_cli_error(monkeypatch: pytest.MonkeyPatch, tmp_shell_dir) -> None:
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=1, stdout=_AUTH_FAIL_ENVELOPE, stderr=""
+        )
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+    with pytest.raises(PersonaSubprocessError, match="OAuth session expired"):
+        preflight_claude_cli(shell_dir=tmp_shell_dir, model="sonnet")
+
+
+def test_preflight_passes_and_pins_model(monkeypatch: pytest.MonkeyPatch, tmp_shell_dir) -> None:
+    seen: dict[str, list[str]] = {}
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        seen["cmd"] = cmd
+        ok = {"type": "result", "is_error": False, "session_id": "s", "result": "ok"}
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=json.dumps(ok), stderr="")
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+    preflight_claude_cli(shell_dir=tmp_shell_dir, model="opus")
+    assert seen["cmd"][seen["cmd"].index("--model") + 1] == "opus"

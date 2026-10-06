@@ -89,3 +89,42 @@ def test_player_forwards_persona_model(tmp_shell_dir) -> None:
         model="haiku",
     )
     assert player._session.model == "haiku"  # noqa: SLF001
+
+
+def test_player_retries_first_turn_after_degraded_first_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_turn_input: dict[str, Any],
+    canned_persona_response_factory,
+    tmp_shell_dir,
+) -> None:
+    """A first turn that degrades to the fallback leaves no session to resume.
+    The next pick must start a fresh session instead of crashing on --resume."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        calls.append(cmd)
+        if len(calls) <= 2:  # both first-turn attempts fail
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="boom")
+        user_msg = cmd[-1]
+        line = next(line for line in user_msg.splitlines() if "displayed_order" in line)
+        import ast
+
+        order = ast.literal_eval(line[line.find("[") : line.rfind("]") + 1])
+        canned = canned_persona_response_factory(chosen_proposal_id=order[0], displayed_order=order)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=canned, stderr="")
+
+    monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
+
+    player = LLMPlayer(
+        persona=OPTIMIZER,
+        pool=SubprocessPool(max_concurrency=1),
+        shell_dir=tmp_shell_dir,
+        seed=0,
+        turn_input_provider=lambda: fixture_turn_input,
+    )
+    proposals = fixture_turn_input["proposals"]
+    player.pick(proposals)
+    assert player.fallback_turns  # first turn degraded
+    player.pick(proposals)  # must not raise
+    assert "--resume" not in calls[2]
+    assert len(player.per_turn_outputs) == 2

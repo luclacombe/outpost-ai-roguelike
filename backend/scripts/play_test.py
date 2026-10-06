@@ -46,6 +46,7 @@ from app.eval.playtest.output import (
     write_corpus_artifacts,
     write_one_archive,
 )
+from app.eval.playtest.persona_session import PersonaSessionError, preflight_claude_cli
 from app.eval.playtest.personas import PERSONAS, get_persona
 from app.eval.playtest.schemas import PersonaId
 from app.eval.playtest.seeds import paired_cells
@@ -478,6 +479,11 @@ def main() -> None:  # pragma: no cover — CLI entry
         config.personas = [p.strip() for p in args.personas.split(",") if p.strip()]  # type: ignore[misc]
         for pid in config.personas:
             get_persona(pid)  # fail fast on a typo
+
+    try:
+        preflight_claude_cli(shell_dir=config.shell_dir, model=config.persona_model)
+    except PersonaSessionError as exc:
+        raise SystemExit(f"`claude` CLI preflight failed: {exc}") from exc
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     asyncio.run(run_harness(config=config))
