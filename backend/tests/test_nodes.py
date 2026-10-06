@@ -245,7 +245,8 @@ async def test_generate_event_is_deterministic_for_same_seed_and_turn():
 
 @respx.mock
 async def test_agent_debate_makes_exactly_one_anthropic_call():
-    """Invariant #6: one batched Haiku call regardless of alive count."""
+    """Invariant #6: one batched Haiku call regardless of alive count (when
+    it yields 3 valid proposals; fewer triggers the single retry)."""
     colony = make_colony_state()  # 4 alive by default
     event = Event(
         id="evt_storm",
@@ -259,7 +260,9 @@ async def test_agent_debate_makes_exactly_one_anthropic_call():
     alive = [a for a in colony.agents if a.is_alive]
     xml = "".join(f'<agent name="{a.name}">She nods.</agent>' for a in alive)
     route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_haiku_response(text_xml=xml))
+        return_value=Response(
+            200, json=fake_haiku_response(text_xml=xml, tool_uses=_valid_tool_uses(colony))
+        )
     )
 
     state: dict[str, Any] = {
@@ -295,6 +298,7 @@ async def test_agent_debate_accumulates_cost_cents():
             200,
             json=fake_haiku_response(
                 text_xml='<agent name="Nadia">ok.</agent>',
+                tool_uses=_valid_tool_uses(colony),
                 usage_overrides=usage_fields,
             ),
         )
@@ -338,7 +342,10 @@ async def test_agent_debate_cache_control_layout():
     route = respx.post(_ANTHROPIC_URL).mock(
         return_value=Response(
             200,
-            json=fake_haiku_response(text_xml='<agent name="Nadia">ok.</agent>'),
+            json=fake_haiku_response(
+                text_xml='<agent name="Nadia">ok.</agent>',
+                tool_uses=_valid_tool_uses(colony),
+            ),
         )
     )
 
@@ -369,6 +376,175 @@ async def test_agent_debate_cache_control_layout():
         "colony_state rendering must live in the user message so the last "
         "system cache_control (on personas) points at run-stable content"
     )
+
+
+# ---------------------------------------------------------------------------
+# agent_debate retry on < 3 valid proposals (call_fast mocked)
+# ---------------------------------------------------------------------------
+
+_FLAVORS = ("DOMINANT", "MORAL", "WILDCARD")
+
+
+def _proposal_tool_use(i: int, caller: Agent, **overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "name": f"Plan {i}",
+        "description": f"Option {i}.",
+        "flavor": _FLAVORS[i % 3],
+        "effects_preview": ["-5 fuel"],
+        "tool_calls_on_pick": [
+            {
+                "name": "modify_resource",
+                "args": {"resource_id": "fuel", "delta": -5, "reason": "burn"},
+            }
+        ],
+        "caller_agent_id": str(caller.id),
+    }
+    payload.update(overrides)
+    return {"name": "propose_action", "input": payload}
+
+
+def _debate_message(
+    colony: ColonyState, tool_uses: list[dict[str, Any]], reaction: str = "ok."
+) -> Any:
+    from anthropic.types import Message
+
+    xml = f'<agent name="{colony.agents[0].name}">{reaction}</agent>'
+    return Message.model_validate(fake_haiku_response(text_xml=xml, tool_uses=tool_uses))
+
+
+def _valid_tool_uses(colony: ColonyState, n: int = 3) -> list[dict[str, Any]]:
+    return [_proposal_tool_use(i, colony.agents[i % len(colony.agents)]) for i in range(n)]
+
+
+class _FakeCallFast:
+    """Stands in for `nodes.call_fast`; returns queued responses in order."""
+
+    def __init__(self, responses: list[Any]) -> None:
+        self._responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(
+        self, system_blocks: list, user_message: str, tools: Any = None, max_tokens: int = 2000
+    ) -> Any:
+        self.calls.append(
+            {"system": system_blocks, "user": user_message, "tools": tools, "max": max_tokens}
+        )
+        return self._responses.pop(0)
+
+
+def _debate_state(colony: ColonyState, cost: float = 0.0) -> dict[str, Any]:
+    event = Event(
+        id="evt_storm",
+        category="weather",
+        title="Ice storm",
+        body="Wind.",
+        severity=2,
+        origin=EventOrigin.NATURAL,
+    )
+    return {"colony_state": colony, "current_event": event, "cost_cents_this_turn": cost}
+
+
+def _install_fake(monkeypatch: pytest.MonkeyPatch, responses: list[Any]) -> _FakeCallFast:
+    from app.agent import nodes
+
+    fake = _FakeCallFast(responses)
+    monkeypatch.setattr(nodes, "call_fast", fake)
+    return fake
+
+
+async def test_agent_debate_no_retry_when_three_valid(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_tool_uses(colony))
+    fake = _install_fake(monkeypatch, [first])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 1
+    assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
+    assert result["cost_cents_this_turn"] == pytest.approx(cost_cents_of(first, MODEL_HAIKU))
+
+
+async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, [], reaction="first")
+    second = _debate_message(colony, _valid_tool_uses(colony), reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony, cost=1.0))
+
+    assert len(fake.calls) == 2
+    assert len(result["debate_tool_calls"]) == 3
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
+    expected = 1.0 + cost_cents_of(first, MODEL_HAIKU) + cost_cents_of(second, MODEL_HAIKU)
+    assert result["cost_cents_this_turn"] == pytest.approx(expected)
+
+
+async def test_agent_debate_keeps_first_when_retry_is_not_better(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_tool_uses(colony, n=1), reaction="first")
+    second = _debate_message(colony, [], reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0"]
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "first"
+    expected = cost_cents_of(first, MODEL_HAIKU) + cost_cents_of(second, MODEL_HAIKU)
+    assert result["cost_cents_this_turn"] == pytest.approx(expected)
+
+
+async def test_agent_debate_no_retry_when_turn_budget_spent(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, [])
+    fake = _install_fake(monkeypatch, [first])
+
+    result = await agent_debate(_debate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN)))
+
+    assert len(fake.calls) == 1
+    assert result["debate_tool_calls"] == []
+
+
+async def test_agent_debate_counts_only_validator_accepted_proposals(monkeypatch):
+    """Empty name, empty input and a disallowed nested tool are all rejected
+    by the validator, so 3 propose_action blocks with 1 valid still retry."""
+    colony = make_colony_state()
+    nadia = colony.agents[0]
+    bad_nested = [{"name": "initiate_coup", "args": {}}]
+    first = _debate_message(
+        colony,
+        [
+            _proposal_tool_use(0, nadia),
+            _proposal_tool_use(1, nadia, name=""),
+            {"name": "propose_action", "input": {}},
+            _proposal_tool_use(2, nadia, tool_calls_on_pick=bad_nested),
+        ],
+    )
+    second = _debate_message(colony, _valid_tool_uses(colony))
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert len(result["debate_tool_calls"]) == 3
+
+
+async def test_agent_debate_retry_keeps_cached_prefix(monkeypatch):
+    """The retry may only change the user message: system blocks and tools
+    must be identical so the cached prefix still hits."""
+    colony = make_colony_state()
+    fake = _install_fake(
+        monkeypatch,
+        [_debate_message(colony, []), _debate_message(colony, _valid_tool_uses(colony))],
+    )
+
+    await agent_debate(_debate_state(colony))
+
+    first, retry = fake.calls
+    assert retry["system"] == first["system"]
+    assert retry["tools"] == first["tools"]
+    assert retry["user"].startswith(first["user"])
+    assert "propose_action" in retry["user"][len(first["user"]) :]
 
 
 # ---------------------------------------------------------------------------

@@ -449,12 +449,15 @@ async def test_openrouter_debate_response_parses_and_costs(monkeypatch):
         {"colony_state": colony, "current_event": event, "cost_cents_this_turn": 0.0}
     )
 
-    # Request shape: one call, cache_control preserved on the last system block.
-    assert route.call_count == 1
-    sent = json.loads(route.calls.last.request.content)
-    assert sent["model"] == MODEL_DEEPSEEK_V4_1_FLASH
-    assert sent["thinking"] == {"type": "disabled"}
-    assert sent["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    # One proposal < 3, so the debate retries once; the retry returns the
+    # same body (not better), so the first parse is kept. Request shape on
+    # both calls: thinking off, cache_control on the last system block.
+    assert route.call_count == 2
+    for call in route.calls:
+        sent = json.loads(call.request.content)
+        assert sent["model"] == MODEL_DEEPSEEK_V4_1_FLASH
+        assert sent["thinking"] == {"type": "disabled"}
+        assert sent["system"][-1]["cache_control"] == {"type": "ephemeral"}
 
     # Parse path.
     assert result["debate_per_agent_text"][nadia.id] == "Burn it."
@@ -464,9 +467,9 @@ async def test_openrouter_debate_response_parses_and_costs(monkeypatch):
     assert "caller_agent_id" not in tc.args
 
     # Cost path: DeepSeek V4.1 Flash rates (cents / MTok): 2.7 in, 2.7 cache
-    # write, 2.7 cache read, 60 out.
+    # write, 2.7 cache read, 60 out. Both calls are billed.
     expected = (1_000 * 2.7 + 200 * 2.7 + 4_000 * 2.7 + 500 * 60) / 1_000_000
-    assert result["cost_cents_this_turn"] == pytest.approx(expected)
+    assert result["cost_cents_this_turn"] == pytest.approx(2 * expected)
     assert expected > 0
 
 

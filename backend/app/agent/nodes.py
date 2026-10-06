@@ -8,8 +8,9 @@ via `interrupt_before=["resolve"]` (wired in Task 4.6); nodes above
 Invariants enforced here:
   * #5 — prompt caching is mandatory: system blocks come from `prompts`
     builders which stamp `cache_control: ephemeral` on each block.
-  * #6 — one batched LLM call per debate. `agent_debate` makes exactly
-    one `call_fast` regardless of how many advisors are alive.
+  * #6 — one batched LLM call per debate. `agent_debate` makes one
+    `call_fast` regardless of how many advisors are alive, plus at most one
+    retry (same system blocks + tools) when it yields < 3 valid proposals.
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
     `resolve` derives consequence tool calls (modify_legitimacy,
@@ -43,7 +44,15 @@ from app.config import settings
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
-from app.game.schemas import AdvisorStatus, Agent, DecisionRef, ResolvedEvent, SeedPayload
+from app.game.schemas import (
+    AdvisorStatus,
+    Agent,
+    ColonyState,
+    DecisionRef,
+    ResolvedEvent,
+    SeedPayload,
+    ToolCall,
+)
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
@@ -151,10 +160,39 @@ async def generate_event(state: GameTurnState) -> GameTurnState:
     }
 
 
-async def agent_debate(state: GameTurnState) -> GameTurnState:
-    """Batched Haiku debate: one call, XML-delimited per-agent reactions.
+# Proposals the player must see each turn (one per flavor).
+DEBATE_TARGET_PROPOSALS = 3
 
-    Invariant #6 — one LLM call per debate regardless of alive count.
+# Appended to the user message on the single debate retry. User-side only,
+# so the cached system prefix (preamble + personas) and tools stay identical.
+_DEBATE_RETRY_NOTE = (
+    "\n\n<retry_note>Your previous reply had {valid} valid propose_action "
+    "call(s). Call propose_action exactly 3 times (one DOMINANT, one MORAL, "
+    "one WILDCARD), each with a non-empty name, description and "
+    "tool_calls_on_pick.</retry_note>"
+)
+
+
+def count_valid_proposals(colony_state: ColonyState, tool_calls: list[ToolCall]) -> int:
+    """Proposals the engine would accept from these debate tool calls.
+
+    Runs the exact path the `apply_tool_calls` node runs
+    (`engine.apply_tool_calls` -> `validator.validate_tool_call`) on a
+    throwaway copy and counts the new `turn_proposals`. Pure; nothing is kept.
+    """
+    applied = engine.apply_tool_calls(colony_state, tool_calls)
+    return len(applied.turn_proposals) - len(colony_state.turn_proposals)
+
+
+async def agent_debate(state: GameTurnState) -> GameTurnState:
+    """Batched debate: one call, XML-delimited per-agent reactions.
+
+    Invariant #6 — one batched LLM call per debate regardless of alive count.
+    If that call yields fewer than 3 engine-valid proposals, the same batched
+    request is retried ONCE with a short corrective note in the user message
+    (system blocks untouched, so the cache still hits). The response with
+    more valid proposals wins (ties keep the first); both calls are costed.
+    No retry once the turn's cost has reached MAX_COST_CENTS_PER_TURN.
     """
     colony_state = state["colony_state"]
     event = state["current_event"]
@@ -178,13 +216,38 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
         tools=AGENT_TOOL_SCHEMAS,
         max_tokens=2000,
     )
-    cost = cost_cents_of(response, settings.LLM_MODEL_FAST)
+    turn_cost = state.get("cost_cents_this_turn", 0.0)
+    turn_cost += cost_cents_of(response, settings.LLM_MODEL_FAST)
     parsed = parse_debate_response(response, alive_agents)
+    valid = count_valid_proposals(colony_state, parsed.tool_calls)
+
+    if valid < DEBATE_TARGET_PROPOSALS and turn_cost < MAX_COST_CENTS_PER_TURN:
+        retry_response = await call_fast(
+            system_blocks,
+            user_message + _DEBATE_RETRY_NOTE.format(valid=valid),
+            tools=AGENT_TOOL_SCHEMAS,
+            max_tokens=2000,
+        )
+        turn_cost += cost_cents_of(retry_response, settings.LLM_MODEL_FAST)
+        retry_parsed = parse_debate_response(retry_response, alive_agents)
+        retry_valid = count_valid_proposals(colony_state, retry_parsed.tool_calls)
+        logger.warning(
+            "agent_debate: %d/%d valid proposals for game %s turn %s; retried once, "
+            "retry had %d; keeping %s",
+            valid,
+            DEBATE_TARGET_PROPOSALS,
+            colony_state.game_id,
+            colony_state.turn_number,
+            retry_valid,
+            "retry" if retry_valid > valid else "first",
+        )
+        if retry_valid > valid:
+            parsed = retry_parsed
 
     return {
         "debate_per_agent_text": parsed.per_agent_text,
         "debate_tool_calls": parsed.tool_calls,
-        "cost_cents_this_turn": state.get("cost_cents_this_turn", 0.0) + cost,
+        "cost_cents_this_turn": turn_cost,
     }
 
 
