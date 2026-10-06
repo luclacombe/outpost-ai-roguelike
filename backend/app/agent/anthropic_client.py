@@ -45,16 +45,26 @@ def build_client(s: Settings) -> AsyncAnthropic:
     )
 
 
-def request_extras() -> dict[str, Any]:
+def request_extras(*, fast: bool = False) -> dict[str, Any]:
     """Provider-specific kwargs merged into every `messages.create` call.
 
     Empty under defaults, so Anthropic requests are byte-identical to the
     pre-provider-config shape. `thinking: {"type": "disabled"}` is the native
     Messages API field; OpenRouter maps it to `reasoning: {enabled: false}`.
+
+    `fast=True` (only `call_fast`) also pins OpenRouter providers when
+    `LLM_PROVIDER_ORDER` is set: `extra_body` merges a top-level `provider`
+    object into the JSON body, tried in order with no fallback to other hosts.
+    Settings validation guarantees the base URL is OpenRouter in that case.
     """
+    extras: dict[str, Any] = {}
     if settings.LLM_DISABLE_THINKING:
-        return {"thinking": {"type": "disabled"}}
-    return {}
+        extras["thinking"] = {"type": "disabled"}
+    if fast and settings.LLM_PROVIDER_ORDER:
+        extras["extra_body"] = {
+            "provider": {"order": list(settings.LLM_PROVIDER_ORDER), "allow_fallbacks": False}
+        }
+    return extras
 
 
 def pricing_for(model: str) -> ModelPricing:
@@ -106,7 +116,7 @@ async def call_fast(
         "max_tokens": max_tokens,
         "system": system_blocks,
         "messages": [{"role": "user", "content": user_message}],
-        **request_extras(),
+        **request_extras(fast=True),
     }
     if tools is not None:
         kwargs["tools"] = tools

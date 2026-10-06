@@ -43,6 +43,7 @@ _PINNED: dict[str, Any] = {
     "LLM_MODEL_NARRATION": "claude-sonnet-4-6",
     "LLM_DISABLE_THINKING": False,
     "LLM_PRICING_OVERRIDES": {},
+    "LLM_PROVIDER_ORDER": [],
     "MAX_COST_CENTS_PER_TURN": 15,
     "MAX_COST_CENTS_PER_RUN": 40,
     "SONNET_NARRATION_ENABLED": True,

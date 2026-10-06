@@ -5,10 +5,10 @@ ValidationError) if any required key is missing, which is what we want — the
 process should not start against a half-configured Supabase project.
 """
 
-from typing import Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEV_ENVIRONMENTS = frozenset({"dev", "development", "local", "test"})
 
@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # "output": c}}, cents per million tokens. Extends / overrides
     # app.agent.constants.MODEL_PRICING without a code change.
     LLM_PRICING_OVERRIDES: dict[str, dict[str, float]] = Field(default_factory=dict)
+    # OpenRouter provider order for the fast/tool-calling model only
+    # (call_fast: debate + autonomous). Comma-separated, e.g.
+    # `StreamLake,Novita`: those hosts are tried in order and nothing else
+    # (allow_fallbacks=false). Narration stays unpinned. Requires an
+    # OpenRouter LLM_BASE_URL. Blank = no pinning.
+    LLM_PROVIDER_ORDER: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = None
@@ -59,6 +65,22 @@ class Settings(BaseSettings):
     # Dev only: skip the one-run-per-day gate so local testing doesn't need
     # DB edits. Rejected at startup unless ENVIRONMENT is a dev environment.
     DEV_BYPASS_DAILY_GATE: bool = False
+
+    @field_validator("LLM_PROVIDER_ORDER", mode="before")
+    @classmethod
+    def _split_provider_order(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @model_validator(mode="after")
+    def _provider_order_needs_openrouter(self) -> Self:
+        if self.LLM_PROVIDER_ORDER and "openrouter.ai" not in (self.LLM_BASE_URL or ""):
+            raise ValueError(
+                "LLM_PROVIDER_ORDER is OpenRouter-only; LLM_BASE_URL must point at "
+                f"openrouter.ai (got {self.LLM_BASE_URL!r})."
+            )
+        return self
 
     @model_validator(mode="after")
     def _require_llm_key(self) -> Self:

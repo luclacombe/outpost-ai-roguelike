@@ -16,7 +16,13 @@ from pydantic import ValidationError
 
 from app.agent import anthropic_client
 from app.agent.anthropic_client import build_client, call_fast, call_narration, cost_cents_of
-from app.agent.constants import MODEL_DEEPSEEK_V4_1_FLASH, MODEL_HAIKU, MODEL_SONNET
+from app.agent.constants import (
+    MODEL_DEEPSEEK_V4_1_FLASH,
+    MODEL_DEEPSEEK_V4_PRO,
+    MODEL_HAIKU,
+    MODEL_SONNET,
+    ModelPricing,
+)
 from app.agent.nodes import agent_debate
 from app.config import Settings
 from app.game.schemas import Event, EventOrigin
@@ -39,6 +45,7 @@ _LLM_ENV_KEYS = (
     "LLM_MODEL_NARRATION",
     "LLM_DISABLE_THINKING",
     "LLM_PRICING_OVERRIDES",
+    "LLM_PROVIDER_ORDER",
 )
 _OPENROUTER_BASE = "https://openrouter.ai/api"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/messages"
@@ -54,16 +61,15 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **llm_env: str) -> Settings:
 
 
 def _openrouter_settings(monkeypatch: pytest.MonkeyPatch, **extra: str) -> Settings:
-    return _settings(
-        monkeypatch,
-        LLM_BASE_URL=_OPENROUTER_BASE,
-        LLM_API_KEY="sk-or-v1-test",
-        LLM_AUTH_SCHEME="bearer",
-        LLM_MODEL_FAST=MODEL_DEEPSEEK_V4_1_FLASH,
-        LLM_MODEL_NARRATION=MODEL_DEEPSEEK_V4_1_FLASH,
-        LLM_DISABLE_THINKING="true",
-        **extra,
-    )
+    env = {
+        "LLM_BASE_URL": _OPENROUTER_BASE,
+        "LLM_API_KEY": "sk-or-v1-test",
+        "LLM_AUTH_SCHEME": "bearer",
+        "LLM_MODEL_FAST": MODEL_DEEPSEEK_V4_1_FLASH,
+        "LLM_MODEL_NARRATION": MODEL_DEEPSEEK_V4_1_FLASH,
+        "LLM_DISABLE_THINKING": "true",
+    }
+    return _settings(monkeypatch, **{**env, **extra})
 
 
 def _text_response(text: str = "ok", model: str = MODEL_HAIKU) -> dict[str, Any]:
@@ -275,6 +281,108 @@ def test_request_defaults_helper(monkeypatch):
     s2 = _openrouter_settings(monkeypatch)
     monkeypatch.setattr(anthropic_client, "settings", s2)
     assert anthropic_client.request_extras() == {"thinking": {"type": "disabled"}}
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter provider pinning (fast model only)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_order_defaults_to_empty(monkeypatch):
+    s = _openrouter_settings(monkeypatch)
+    assert s.LLM_PROVIDER_ORDER == []
+
+
+def test_provider_order_parses_comma_list_with_whitespace(monkeypatch):
+    s = _openrouter_settings(monkeypatch, LLM_PROVIDER_ORDER=" StreamLake , Novita,, ")
+    assert s.LLM_PROVIDER_ORDER == ["StreamLake", "Novita"]
+
+
+def test_provider_order_single_entry(monkeypatch):
+    s = _openrouter_settings(monkeypatch, LLM_PROVIDER_ORDER="StreamLake")
+    assert s.LLM_PROVIDER_ORDER == ["StreamLake"]
+
+
+def test_provider_order_blank_means_empty(monkeypatch):
+    s = _openrouter_settings(monkeypatch, LLM_PROVIDER_ORDER="")
+    assert s.LLM_PROVIDER_ORDER == []
+
+
+def test_provider_order_blank_in_dotenv_means_empty(monkeypatch, tmp_path):
+    for key in (*_LLM_ENV_KEYS, *_BASE_ENV):
+        monkeypatch.delenv(key, raising=False)
+    env_file = tmp_path / ".env"
+    lines = [f"{k}={v}" for k, v in _BASE_ENV.items()]
+    lines += ["LLM_API_KEY=sk-or-x", f"LLM_BASE_URL={_OPENROUTER_BASE}", "LLM_PROVIDER_ORDER="]
+    env_file.write_text("\n".join(lines) + "\n")
+    assert Settings(_env_file=env_file).LLM_PROVIDER_ORDER == []
+
+
+def test_provider_order_from_dotenv_file(monkeypatch, tmp_path):
+    for key in (*_LLM_ENV_KEYS, *_BASE_ENV):
+        monkeypatch.delenv(key, raising=False)
+    env_file = tmp_path / ".env"
+    lines = [f"{k}={v}" for k, v in _BASE_ENV.items()]
+    lines += [
+        "LLM_API_KEY=sk-or-x",
+        f"LLM_BASE_URL={_OPENROUTER_BASE}",
+        "LLM_PROVIDER_ORDER=StreamLake,Novita",
+    ]
+    env_file.write_text("\n".join(lines) + "\n")
+    assert Settings(_env_file=env_file).LLM_PROVIDER_ORDER == ["StreamLake", "Novita"]
+
+
+def test_provider_order_rejected_without_openrouter_base_url(monkeypatch):
+    with pytest.raises(ValidationError, match="LLM_PROVIDER_ORDER"):
+        _settings(monkeypatch, ANTHROPIC_API_KEY="k", LLM_PROVIDER_ORDER="StreamLake")
+
+
+def test_request_extras_pin_provider_only_for_fast(monkeypatch):
+    s = _openrouter_settings(monkeypatch, LLM_PROVIDER_ORDER="StreamLake,Novita")
+    monkeypatch.setattr(anthropic_client, "settings", s)
+    provider = {"order": ["StreamLake", "Novita"], "allow_fallbacks": False}
+    assert anthropic_client.request_extras(fast=True) == {
+        "thinking": {"type": "disabled"},
+        "extra_body": {"provider": provider},
+    }
+    assert anthropic_client.request_extras() == {"thinking": {"type": "disabled"}}
+
+
+def test_request_extras_no_provider_block_when_order_empty(monkeypatch):
+    s = _openrouter_settings(monkeypatch)
+    monkeypatch.setattr(anthropic_client, "settings", s)
+    assert "extra_body" not in anthropic_client.request_extras(fast=True)
+
+
+@respx.mock
+async def test_provider_order_sent_on_call_fast_not_call_narration(monkeypatch):
+    s = _openrouter_settings(
+        monkeypatch,
+        LLM_PROVIDER_ORDER="StreamLake,Novita",
+        LLM_MODEL_FAST=MODEL_DEEPSEEK_V4_PRO,
+    )
+    monkeypatch.setattr(anthropic_client, "settings", s)
+    monkeypatch.setattr(anthropic_client, "client", build_client(s))
+    route = respx.post(_OPENROUTER_URL).mock(
+        return_value=Response(200, json=_text_response(model=MODEL_DEEPSEEK_V4_PRO))
+    )
+
+    await call_fast([{"type": "text", "text": "sys"}], "hi", tools=[])
+    await call_narration([{"type": "text", "text": "sys"}], "hi")
+
+    fast_body = json.loads(route.calls[0].request.content)
+    narration_body = json.loads(route.calls[1].request.content)
+    assert fast_body["provider"] == {"order": ["StreamLake", "Novita"], "allow_fallbacks": False}
+    assert fast_body["model"] == MODEL_DEEPSEEK_V4_PRO
+    assert fast_body["tools"] == []
+    assert "provider" not in narration_body
+    assert narration_body["model"] == MODEL_DEEPSEEK_V4_1_FLASH
+
+
+def test_v4_pro_priced_at_novita_ceiling():
+    assert anthropic_client.pricing_for(MODEL_DEEPSEEK_V4_PRO) == ModelPricing(
+        input=99, cache_write=99, cache_read=99, output=297
+    )
 
 
 # ---------------------------------------------------------------------------

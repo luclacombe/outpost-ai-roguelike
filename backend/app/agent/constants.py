@@ -19,6 +19,7 @@ MODEL_HAIKU = "claude-haiku-4-5-20251001"
 MODEL_SONNET = "claude-sonnet-4-6"
 # OpenRouter model slug (Anthropic-compatible Messages endpoint).
 MODEL_DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
+MODEL_DEEPSEEK_V4_PRO = "deepseek/deepseek-v4-pro-0813"
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,12 @@ MODEL_PRICING: dict[str, ModelPricing] = {
     # input_cache_write price is published, so cache writes bill at the
     # prompt rate.
     MODEL_DEEPSEEK_V4_1_FLASH: ModelPricing(input=2.7, cache_write=2.7, cache_read=2.7, output=60),
+    # OpenRouter, fetched 2026-10-06. Pinned via LLM_PROVIDER_ORDER to
+    # StreamLake ($0.66 in / $1.98 out per MTok) with Novita as fallback
+    # ($0.99 / $2.97). The table uses Novita's rates as the ceiling so the
+    # budget rails never under-count. Cache discounts are not assumed:
+    # cache reads and writes bill at the input rate.
+    MODEL_DEEPSEEK_V4_PRO: ModelPricing(input=99, cache_write=99, cache_read=99, output=297),
 }
 
 # Budget rails per ARCHITECTURE §5.2.

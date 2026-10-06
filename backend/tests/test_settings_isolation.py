@@ -35,3 +35,9 @@ def test_markexpr_last_flag_wins(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_default_run_uses_pinned_settings() -> None:
     for name, value in _PINNED.items():
         assert getattr(config.settings, name) == value
+
+
+def test_provider_order_is_pinned_empty() -> None:
+    """A dev .env with LLM_PROVIDER_ORDER set would otherwise fail Settings()
+    against the pinned Anthropic base URL (OpenRouter-only validation)."""
+    assert _PINNED["LLM_PROVIDER_ORDER"] == []
