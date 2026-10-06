@@ -118,11 +118,13 @@ and fail closed.
   re-prompts ONCE via `--resume` with the three ids echoed, and only raises
   `PersonaParseError` if the second attempt also fails.
 - **Defensive end-state resolution.** The simulator loop can exit with
-  `game_sessions.end_state = NULL` (max_turns exhausted, defensive break).
+  `game_sessions.end_state = NULL` when max_turns is exhausted.
   `scripts._harness.resolve_unfinished_end_state` reuses
   `engine.compute_end_state` with `turn_number = max_turns`. play_test
   persists it (post-mortem needs it); the sweep only records it
-  (`end_state_resolved_by_harness`).
+  (`end_state_resolved_by_harness`). Never for aborted runs: a turn with no
+  proposals sets `RunRecord.abort_reason`, and the CLIs report
+  `end_state: "ABORTED"` (`scripts._harness.ABORTED`) outside the stats.
 - **`VerdictResult` + `verdict_error`.** A twice-failed verdict surfaces as
   `PerRunArchive.verdict_error` / `verdict_failed` in `runs.json`.
 

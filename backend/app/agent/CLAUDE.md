@@ -47,6 +47,18 @@ response into `(per_agent_text, tool_calls)`.
 - Unknown agent names, malformed XML, malformed JSON, invalid UUIDs → logged at
   WARNING, skipped. The parser never raises on bad model output.
 
+## Debate retry (< 3 valid proposals)
+
+`agent_debate` counts proposals with `count_valid_proposals`, which runs
+`engine.apply_tool_calls` (the validator path the `apply_tool_calls` node
+uses) on a throwaway state. Under 3, it retries the same batched call ONCE
+with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
+tools are unchanged, so the cached prefix still hits. The response with more
+valid proposals wins (ties keep the first; reactions follow the kept
+response). Both calls go into `cost_cents_this_turn`. No retry once the turn
+has reached `MAX_COST_CENTS_PER_TURN`. A missing `tool_calls_on_pick` still
+counts as valid: the validator allows it.
+
 ## Cache layout (2 breakpoints + colony state in user message)
 
 Two `cache_control: {"type": "ephemeral"}` blocks per Haiku request, both in
@@ -117,6 +129,15 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
   OpenRouter maps to `reasoning.enabled=false`
   (openrouter.ai/docs/guides/best-practices/reasoning-tokens, "Reasoning with
   the Anthropic Messages API"). DeepSeek V4.1 Flash reasons by default.
+- `LLM_PROVIDER_ORDER` (comma list, e.g. `StreamLake,Novita`) pins OpenRouter
+  hosts for `call_fast` ONLY (`request_extras(fast=True)` →
+  `extra_body={"provider": {"order": [...], "allow_fallbacks": False}}`):
+  listed hosts in order, nothing else. Narration and eval judges stay
+  unpinned. `Settings` refuses a non-empty order unless `LLM_BASE_URL` is on
+  openrouter.ai. Why: V4.1 Flash often returned `propose_action` with no
+  `name`/`description` or `{}` input (0 proposals); V4 Pro on StreamLake gave
+  5/5 valid debates, Novita 4/5. `MODEL_PRICING` bills V4 Pro at Novita's
+  (higher) rates so the rails never under-count.
 - Narration/thinking blocks: parsers only read `text` and `tool_use` blocks,
   so any `thinking` block a provider returns is skipped harmlessly.
 

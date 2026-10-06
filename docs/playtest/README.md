@@ -134,6 +134,17 @@ docs/playtest/<YYYY-MM-DD>-sweep[-N]/      # balance sweep
 `flagged_quotes`, `bugs_noticed`, `end_states`, `choice_spread`, `paired`,
 `corpus_oracles`, `harness_findings`.
 
+**Aborted runs.** If a `/turn` comes back with no `proposals_ready` frame
+or an empty proposal list, the driver stops the game and sets
+`RunRecord.abort_reason` (`no_proposals_frame at turn N` /
+`no_proposals at turn N`). It is not a finished game, so it is never
+resolved to an end state. The raw per-run JSON gets
+`end_state: "ABORTED"` + `abort_reason` (persona `.md` shows the reason);
+the run is listed under `harness_findings.aborted_runs` (persona) or
+`aborted` (sweep, `error` = the reason) and kept out of every end-state,
+paired and corpus stat. Per-game exceptions land in the same lists with the
+exception text. Before 2026-10-06 these runs were silently labelled ENDURED.
+
 Sweep stats per group: end-state counts/shares (out-of-band vs SPEC §10
 marked), turns survived, final legitimacy / player health / resource
 fraction, `picked_rejected_rate` (resolve-time, from the oracle),
@@ -173,15 +184,16 @@ seven baseline questions.
 | /turn replays an old run | game_id reused as LangGraph thread_id | `generate_run(run_key=...)` from `create_game_session` |
 | All advisors render `(silent)` from turn 2+ | `/turn` short-circuit not re-emitting cached `agent_spoke` frames | `app/agent/service.py::stream_turn` |
 | Persona fabricates `(silent)` quotes | Runtime guard drops the flag | `app/eval/playtest/turn_contract.py` |
-| `aborted_runs` / sweep `aborted` non-empty | Per-game exception caught by orchestrator | the CLI's log output for the traceback |
+| `aborted_runs` / sweep `aborted` non-empty | `no_proposals at turn N`: the debate produced no valid proposals even after its retry. Otherwise a per-game exception caught by the orchestrator | engine model / `LLM_PROVIDER_ORDER`, `agent_debate` WARNING logs; the CLI's log for tracebacks |
 | `malformed_json_count` > ~5% | Persona output schema drifted or prompt regressed | `app/eval/playtest/prompts.py` |
 
 ## Cost / time
 
 - Persona harness (42 games, concurrency 5, max_turns 12): ~30-50 min wall.
   Persona side billed to the Claude Code subscription.
-- Engine LLM cost depends on the configured provider (DeepSeek V4.1 Flash on
-  OpenRouter since 2026-10-01). Read actual spend from
+- Engine LLM cost depends on the configured provider (on OpenRouter since
+  2026-10-01: DeepSeek V4 Pro for debate/autonomous, V4.1 Flash narration).
+  A debate retry doubles that turn's debate cost. Read actual spend from
   `game_sessions.cost_cents` (sweep `cost_cents` column) after a smoke
   before scaling; the per-turn budget rail (`MAX_COST_CENTS_PER_TURN`)
   caps narration.
