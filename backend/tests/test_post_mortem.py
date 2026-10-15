@@ -311,6 +311,7 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
                         "flavor": "DOMINANT",
                         "proposed_by_agent_id": str(agent_b),
                         "effects_preview": ["fuel −12"],
+                        "risk_note": "The core may not hold.",
                     }
                 ],
                 chosen={"chosen_proposal_id": "p1"},
@@ -385,6 +386,10 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
     final_status = {a.id: a.final_status for a in post_mortem.agents}
     assert final_status[agent_a] == "ACTIVE"
     assert final_status[agent_b] == "ACTIVE"
+
+    # risk_note passes through from the stored proposal; absent stays None.
+    assert post_mortem.turns[0].proposals[0].risk_note == "The core may not hold."
+    assert post_mortem.turns[1].proposals[0].risk_note is None
 
     # Turn 0: advisor lines collapsed to single sentence.
     line_a_t0 = next(
