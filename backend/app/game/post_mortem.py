@@ -1,7 +1,7 @@
 """Post-mortem aggregation.
 
-Reads completed run rows (game_sessions, agents, turn_logs, consequence_seeds)
-and projects them into a `PostMortem` payload.
+Reads completed run rows (game_sessions, including `state.consequence_seeds`,
+agents and turn_logs) and projects them into a `PostMortem` payload.
 
 Aggregation lives here, not in the router, so the same function can drive
 both the player-private endpoint (GET /game/{id}/post-mortem) and the
@@ -13,15 +13,18 @@ authorization; this module assumes the caller has already gated access.
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.game import models as game_models
+from app.game import schemas as game_schemas
 from app.game.exceptions import GameNotEnded, GameNotFound
 from app.game.schemas import AdvisorStatus, EndState, Quadrant
 from app.game.schemas_io import (
@@ -36,6 +39,8 @@ from app.game.schemas_io import (
     PostMortemTurn,
 )
 from app.game.setting_loader import load_setting
+
+logger = logging.getLogger(__name__)
 
 # Faction formation kicks in at ≥7 (SPEC §5.1); coup eligibility at ≥9.
 NEAR_MISS_COUP_THRESHOLD = 7
@@ -121,24 +126,15 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
         .scalars()
         .all()
     )
-    seeds = (
-        (
-            await db.execute(
-                select(game_models.ConsequenceSeed).where(
-                    game_models.ConsequenceSeed.game_id == game_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
+    seeds = _seeds_from_state(session)
+    title_by_turn = {tl.turn_number: str((tl.event or {}).get("title", "")) for tl in turn_logs}
 
     setting = load_setting(session.setting_id)
 
     # Build seed lookup by id and by fires_at_turn for fast joins.
-    seeds_by_id: dict[UUID, game_models.ConsequenceSeed] = {s.id: s for s in seeds}
-    seeds_fired_by_turn: dict[int, list[game_models.ConsequenceSeed]] = {}
-    seeds_written_by_turn: dict[int, list[game_models.ConsequenceSeed]] = {}
+    seeds_by_id: dict[UUID, game_schemas.ConsequenceSeed] = {s.id: s for s in seeds}
+    seeds_fired_by_turn: dict[int, list[game_schemas.ConsequenceSeed]] = {}
+    seeds_written_by_turn: dict[int, list[game_schemas.ConsequenceSeed]] = {}
     for s in seeds:
         if s.fired:
             seeds_fired_by_turn.setdefault(s.fires_at_turn, []).append(s)
@@ -213,18 +209,15 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
         # event references an originating seed; fall back to firing-turn join.
         fired_refs: list[PostMortemSeedRef] = []
         for s in seeds_fired_by_turn.get(tl.turn_number, []):
-            fired_refs.append(_seed_to_ref(s, agents))
-        # Some runs lose their seed rows after firing (Phase 4 quirk: the
-        # consequence_seeds row gets removed when the seed event fires). Fall
-        # back to the embedded `origin_seed_id` so the post-mortem still
-        # surfaces "this turn's event came from a prior decision."
+            fired_refs.append(_seed_to_ref(s, title_by_turn))
+        # A seed-fired event names its seed; use it when the firing-turn join finds none.
         if not fired_refs and origin_seed_id is not None:
             seed = seeds_by_id.get(origin_seed_id)
             if seed is not None:
-                fired_refs.append(_seed_to_ref(seed, agents))
+                fired_refs.append(_seed_to_ref(seed, title_by_turn))
 
         written_refs = [
-            _seed_to_ref(s, agents) for s in seeds_written_by_turn.get(tl.turn_number, [])
+            _seed_to_ref(s, title_by_turn) for s in seeds_written_by_turn.get(tl.turn_number, [])
         ]
 
         turn_models.append(
@@ -263,7 +256,7 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
 
     counterfactuals = _build_counterfactuals(
         seeds=seeds,
-        agents=agents,
+        title_by_turn=title_by_turn,
         grievance_history=grievance_history,
     )
 
@@ -298,8 +291,8 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
 
 def _build_counterfactuals(
     *,
-    seeds: list[game_models.ConsequenceSeed],
-    agents: list[game_models.Agent],
+    seeds: list[game_schemas.ConsequenceSeed],
+    title_by_turn: dict[int, str],
     grievance_history: list[dict[UUID, int]],
 ) -> PostMortemCounterfactuals:
     """Compute the three counterfactuals signals.
@@ -315,7 +308,7 @@ def _build_counterfactuals(
     dormant_refs: list[PostMortemSeedRef] = []
     for s in seeds:
         if s.dormant or not s.fired:
-            dormant_refs.append(_seed_to_ref(s, agents))
+            dormant_refs.append(_seed_to_ref(s, title_by_turn))
 
     near_miss = _peak_near_miss(grievance_history)
 
@@ -382,22 +375,25 @@ def _coerce_uuid(value: Any) -> UUID | None:
         return None
 
 
-def _seed_to_ref(
-    seed: game_models.ConsequenceSeed,
-    agents: list[game_models.Agent],
-) -> PostMortemSeedRef:
-    """Project a ConsequenceSeed row into the public ref shape.
+def _seeds_from_state(session: Any) -> list[game_schemas.ConsequenceSeed]:
+    """Seeds live in game_sessions.state; the consequence_seeds table is never written.
 
-    `payload_summary` and `origin_event_title` are derived from the JSONB
-    columns; both have many possible shapes across engine versions, so we
-    defensively `.get()` rather than assume.
+    A malformed entry (older engine versions) is skipped and logged, so an
+    old shared link still renders.
     """
-    payload = seed.payload or {}
-    origin = seed.origin_decision or {}
-    payload_summary = (
-        payload.get("title") or payload.get("summary") or payload.get("category") or "consequence"
-    )
-    origin_title = origin.get("event_title") or origin.get("event", {}).get("title")
+    out: list[game_schemas.ConsequenceSeed] = []
+    for raw in (session.state or {}).get("consequence_seeds") or []:
+        try:
+            out.append(game_schemas.ConsequenceSeed.model_validate(raw))
+        except ValidationError:
+            logger.warning("post_mortem: skipping malformed seed in game %s", session.id)
+    return out
+
+
+def _seed_to_ref(
+    seed: game_schemas.ConsequenceSeed, title_by_turn: dict[int, str]
+) -> PostMortemSeedRef:
+    """Project a seed into the public ref shape (spec §4.5)."""
     return PostMortemSeedRef(
         id=seed.id,
         written_at_turn=seed.written_at_turn,
@@ -405,8 +401,8 @@ def _seed_to_ref(
         foreshadowed=seed.foreshadowed,
         fired=seed.fired,
         dormant=seed.dormant,
-        payload_summary=str(payload_summary),
-        origin_event_title=str(origin_title) if origin_title else None,
+        payload_summary=seed.payload.description,
+        origin_event_title=title_by_turn.get(seed.origin_decision.turn_number) or None,
     )
 
 

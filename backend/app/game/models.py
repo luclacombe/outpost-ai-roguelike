@@ -161,7 +161,10 @@ class TurnLog(Base):
 
 
 class ConsequenceSeed(Base):
-    """A scheduled future event written at decision time.
+    """Deprecated: never written by app code; seeds live in
+    game_sessions.state.consequence_seeds. Kept until a cleanup migration drops the table.
+
+    A scheduled future event written at decision time.
 
     `fired` and `dormant` are scalar columns for efficient filtering;
     `payload` and `origin_decision` hold the full Pydantic model output.
