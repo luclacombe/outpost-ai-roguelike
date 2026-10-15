@@ -24,7 +24,7 @@ USER = UUID("bbbbbbbb-0000-0000-0000-000000000002")
 def colony() -> ColonyState:
     state = generate_run(user_id=USER, setting_id="arctic_station_v1", seed=7)
     fuel = state.resources["fuel"]
-    # Fuel one below max so a +5 overflows (validator rejects, never clamps).
+    # Fuel one below max so a +5 clamps to +1.
     resources = {**state.resources, "fuel": fuel.model_copy(update={"value": fuel.max - 1})}
     return state.model_copy(update={"turn_number": 4, "legitimacy": 60, "resources": resources})
 
@@ -60,7 +60,7 @@ def _triple(colony: ColonyState) -> list[Proposal]:
         _proposal(
             "p_wld",
             ProposalFlavor.WILDCARD,
-            # Overflow is rejected by the validator, not clamped.
+            # Overflow clamps at max.
             [_tc("modify_resource", resource_id="fuel", delta=5)],
             a2,
         ),
@@ -83,9 +83,8 @@ def test_options_report_engine_deltas(colony: ColonyState) -> None:
     assert mor["grievance_deltas"][dom_proposer] > 0
 
     wld = by_id["p_wld"]
-    assert wld["resource_deltas"]["fuel"] == 0
-    assert [r["name"] for r in wld["rejected_calls"]] == ["modify_resource"]
-    assert wld["rejected_calls"][0]["reason"] == "would_overflow"
+    assert wld["resource_deltas"]["fuel"] == 1
+    assert wld["rejected_calls"] == []
     assert wld["n_calls"] >= 1
 
 
@@ -150,7 +149,15 @@ def test_status_change_and_input_untouched(colony: ColonyState) -> None:
 
 
 def test_summary_aggregates_turns(colony: ColonyState) -> None:
-    t1 = compute_choice_spread(colony, _triple(colony))
+    # Overflow clamps now, so make the picked option reject on delta range.
+    triple = _triple(colony)
+    triple[2] = _proposal(
+        "p_wld",
+        ProposalFlavor.WILDCARD,
+        [_tc("modify_resource", resource_id="fuel", delta=60)],
+        colony.agents[2].id,
+    )
+    t1 = compute_choice_spread(colony, triple)
     t1["picked_proposal_id"] = "p_wld"
     calls = [_tc("modify_resource", resource_id="fuel", delta=-3)]
     t2 = compute_choice_spread(

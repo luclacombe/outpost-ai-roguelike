@@ -23,15 +23,12 @@ grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
-## When to split engine.py
+## Resolution rules live in resolution.py
 
-`engine.py` has a 300-line soft-target waiver (root CLAUDE.md). Section 7
-(`derive_resolution_consequences` + rule constants) is the natural split
-point — it's a self-contained pure function with its own constants and
-helpers, no shared state with Sections 1-6, and is the most likely
-section to grow as new severe-payload semantics emerge. If the file
-crosses ~600 lines, extract Section 7 to `engine_consequences.py` (or
-`consequence_rules.py`) before adding more.
+`derive_resolution_consequences` + its rule constants moved out of
+`engine.py` into `resolution.py` (re-exported from `engine`). It emits one
+`modify_legitimacy` call per triggered rule, each with a named reason, so
+the preview can show every part. `resolution.py` must not import `engine`.
 
 ## Engine-only tools
 
@@ -41,7 +38,7 @@ instance with `caller_id is not None` (reason: `engine_only_tool`). Current
 members:
 
 - `modify_legitimacy(delta, reason)` — emitted by
-  `engine.derive_resolution_consequences` when a picked proposal's payload
+  `resolution.derive_resolution_consequences` (and `engine.close_turn` for the end-of-turn decay) when a picked proposal's payload
   or cross-proposal context warrants a legitimacy shift.
 - `set_advisor_status(target_id, new_status, reason)` — emitted by the
   engine at pick time when an advisor-status transition rides in

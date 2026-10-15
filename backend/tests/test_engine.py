@@ -17,8 +17,11 @@ from app.game.engine import (
     apply_tool_call,
     apply_tool_calls,
     check_deaths,
+    close_turn,
     compute_end_state,
+    record_rejected,
     resolve_coup,
+    stamp_phase,
 )
 from app.game.schemas import (
     EndState,
@@ -573,16 +576,9 @@ def test_advance_turn_increments_turn_number() -> None:
     assert new_state.turn_number == 4
 
 
-def test_advance_turn_decrements_legitimacy() -> None:
-    state = _colony(legitimacy=60)
-    new_state = advance_turn(state)
-    assert new_state.legitimacy == 59
-
-
-def test_advance_turn_legitimacy_does_not_go_below_zero() -> None:
-    state = _colony(legitimacy=0)
-    new_state = advance_turn(state)
-    assert new_state.legitimacy == 0
+def test_advance_turn_no_longer_decays() -> None:
+    state = _colony(legitimacy=50)
+    assert advance_turn(state).legitimacy == 50
 
 
 def test_advance_turn_clears_per_turn_fields() -> None:
@@ -1123,7 +1119,7 @@ def test_derive_severe_health_reason_handles_player_target():
 
     derived = derive_resolution_consequences(state, picked, [picked])
     legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
-    assert "the player" in legit.args["reason"]
+    assert legit.args["reason"] == "severe harm to you"
 
 
 def test_derive_multi_target_severe_health_stacks_legitimately():
@@ -1162,11 +1158,11 @@ def test_derive_multi_target_severe_health_stacks_legitimately():
     )
 
     derived = derive_resolution_consequences(state, picked, [picked])
-    legit = [tc for tc in derived if tc.name == "modify_legitimacy"][0]
-    # Three triggers; legitimacy delta should be deeper than a single trigger.
-    assert legit.args["delta"] <= -30, (
-        f"expected <= -30 for triple drain, got {legit.args['delta']}"
-    )
+    legit = [tc for tc in derived if tc.name == "modify_legitimacy"]
+    # One call per triggered rule; the total is deeper than a single trigger.
+    assert len(legit) == 3
+    total = sum(tc.args["delta"] for tc in legit)
+    assert total <= -30, f"expected <= -30 for triple drain, got {total}"
 
 
 def test_derive_emitted_calls_have_caller_id_none():
@@ -1212,6 +1208,92 @@ def test_derive_composite_severe_health_plus_overrule_stacks_cleanly():
 
     legit_calls = [tc for tc in derived if tc.name == "modify_legitimacy"]
     grievance_calls = [tc for tc in derived if tc.name == "adjust_grievance"]
-    assert len(legit_calls) == 1, "consolidate to one modify_legitimacy"
+    assert len(legit_calls) == 2, "one modify_legitimacy per triggered rule"
     assert len(grievance_calls) == 1, "one grievance hit per overruled proposer"
-    assert legit_calls[0].args["delta"] <= -8, "severe-health stacks with overrule"
+    assert sum(tc.args["delta"] for tc in legit_calls) <= -8, "severe-health stacks with overrule"
+
+
+# ---------------------------------------------------------------------------
+# applied_delta, phase stamping, close_turn (spec 4.1, 4.4)
+# ---------------------------------------------------------------------------
+
+
+def test_applied_delta_records_full_change() -> None:
+    state = _colony(resources={"fuel": _resource(value=50, max_=100)})
+    out = apply_tool_call(
+        state, _tc("modify_resource", {"resource_id": "fuel", "delta": -10, "reason": "r"})
+    )
+    assert out.turn_tool_calls[-1].applied_delta == -10
+
+
+def test_overflow_clamps_and_records_applied_delta() -> None:
+    state = _colony(resources={"fuel": _resource(value=95, max_=100)})
+    out = apply_tool_call(
+        state, _tc("modify_resource", {"resource_id": "fuel", "delta": 20, "reason": "r"})
+    )
+    assert out.resources["fuel"].value == 100
+    last = out.turn_tool_calls[-1]
+    assert last.rejection_reason is None
+    assert last.applied_delta == 5
+
+
+def test_applied_delta_for_legitimacy_health_grievance() -> None:
+    a = _agent(name="Jaya", health=10, grievance=9)
+    state = _colony(agents=[a], legitimacy=1)
+    calls = [
+        _tc("modify_legitimacy", {"delta": -2, "reason": "r"}),
+        _tc("modify_health", {"target_id": str(a.id), "delta": -40, "reason": "r"}),
+        _tc("adjust_grievance", {"target_id": str(a.id), "delta": 3, "reason": "r"}),
+    ]
+    out = apply_tool_calls(state, calls)
+    assert [tc.applied_delta for tc in out.turn_tool_calls] == [-1, -10, 1]
+
+
+def test_applied_delta_none_for_rejected_and_non_numeric() -> None:
+    a = _agent(name="Jaya")
+    state = _colony(agents=[a])
+    rejected = apply_tool_call(
+        state, _tc("modify_resource", {"resource_id": "nope", "delta": 1, "reason": "r"})
+    )
+    assert rejected.turn_tool_calls[-1].rejection_reason is not None
+    assert rejected.turn_tool_calls[-1].applied_delta is None
+
+    remembered = apply_tool_call(state, _tc("remember", {"fact": "f"}, caller_id=a.id))
+    assert remembered.turn_tool_calls[-1].rejection_reason is None
+    assert remembered.turn_tool_calls[-1].applied_delta is None
+
+
+def test_stamp_phase_does_not_mutate_input() -> None:
+    calls = [_tc("modify_legitimacy", {"delta": -1, "reason": "r"})]
+    stamped = stamp_phase(calls, "resolve")
+    assert stamped[0].phase == "resolve"
+    assert calls[0].phase is None
+
+
+def test_record_rejected_logs_without_applying() -> None:
+    state = _colony(resources={"fuel": _resource(value=50)})
+    tc = _tc("modify_resource", {"resource_id": "fuel", "delta": -5, "reason": "r"})
+    out = record_rejected(state, tc, "not_allowed_in_debate")
+    assert out.resources["fuel"].value == 50
+    assert out.turn_tool_calls[-1].rejection_reason == "not_allowed_in_debate"
+
+
+def test_close_turn_emits_validated_decay_call() -> None:
+    state = _colony(legitimacy=40)
+    out = close_turn(state)
+    assert out.legitimacy == 39
+    last = out.turn_tool_calls[-1]
+    assert (last.name, last.phase, last.caller_id) == ("modify_legitimacy", "close", None)
+    assert last.args == {"delta": -1, "reason": "end of turn"}
+    assert last.applied_delta == -1
+
+
+def test_close_turn_runs_even_when_run_has_ended() -> None:
+    state = _colony(legitimacy=40).model_copy(update={"end_state": EndState.OUSTED})
+    assert close_turn(state).legitimacy == 39
+
+
+def test_close_turn_at_zero_records_zero_applied() -> None:
+    out = close_turn(_colony(legitimacy=0))
+    assert out.legitimacy == 0
+    assert out.turn_tool_calls[-1].applied_delta == 0

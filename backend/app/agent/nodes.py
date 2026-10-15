@@ -509,8 +509,8 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
 async def advance_turn(state: GameTurnState) -> GameTurnState:
     """Advance the run and persist — the sole DB-write site in the graph.
 
-    Delegates to `engine.advance_turn` for the pure bits (turn++, decay,
-    end-state evaluation, per-turn field clearing), marks dormant seeds
+    Delegates to `engine.close_turn` (decay) then `engine.advance_turn` for the
+    pure bits (turn++, end-state evaluation, per-turn field clearing), marks dormant seeds
     on transition to a terminal end state, accumulates the turn's cost,
     writes both the `game_sessions` snapshot and the immutable `turn_logs`
     row, and surfaces `is_run_over` for the graph's terminal edge.
@@ -518,7 +518,8 @@ async def advance_turn(state: GameTurnState) -> GameTurnState:
     colony_state = state["colony_state"]
     prev_end_state = colony_state.end_state
 
-    new_colony = engine.advance_turn(colony_state)
+    closed = engine.close_turn(colony_state)
+    new_colony = engine.advance_turn(closed)
 
     if new_colony.end_state is not None and prev_end_state is None:
         new_colony = consequence.mark_dormant_seeds(new_colony)
