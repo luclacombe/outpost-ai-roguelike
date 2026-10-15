@@ -80,6 +80,10 @@ def test_unknown_name_mid_sentence_is_soft() -> None:
         "It held — Barely.",  # after a dash
         "“Hold,” Astrid said.",  # curly quotes
         "Astrid’s hands shook.",  # possessive
+        "The pump was Astrid’s idea.",  # allowed possessive mid-sentence
+        'Astrid said, "Hold the line." The pump held.',  # opening double quote
+        "Astrid said, 'Hold the line.' The pump held.",  # opening single quote
+        "You said I should wait.",  # bare I is not a name token
         "On Monday the pump held.",  # stop-list
         "You held Vorgrad together.",  # lexicon
         "The Quartermaster counted twice.",  # role
@@ -132,3 +136,32 @@ def test_risk_note_kept_with_own_resource_name() -> None:
 
 def test_risk_note_none_stays_none() -> None:
     assert sanitize_risk_note(None, ARCTIC, ALLOWED, ROSTER) is None
+
+
+def test_possessive_of_unknown_name_flags_the_bare_name() -> None:
+    assert codes("The ration went to Ilya’s crew.") == ["unknown_name:Ilya"]
+
+
+def test_hyphenated_unknown_name_is_one_token() -> None:
+    assert codes("You met Jean-Luc at the gate.") == ["unknown_name:Jean-Luc"]
+
+
+def test_hyphenated_allowed_term_passes() -> None:
+    allowed = build_allowed_terms(ARCTIC, COLONY, ["Port-Royal lies south."])
+    assert validate_narration("You reached Port-Royal at dusk.", allowed, ROSTER) == []
+
+
+def test_accented_name_mid_sentence_is_flagged() -> None:
+    assert codes("You heard Márton key the radio.") == ["unknown_name:Márton"]
+
+
+def test_accented_pool_name_sentence_initial_is_flagged() -> None:
+    # "Márton" is in the orbital name_pool, not on this arctic roster.
+    assert "unknown_name:Márton" in codes("Márton keyed the radio twice.")
+
+
+def test_risk_note_with_inline_setting() -> None:
+    inline = ARCTIC.model_copy(update={"id": "test_setting_v1"})
+    assert sanitize_risk_note("The water could freeze.", inline, ALLOWED, ROSTER) is None
+    note = "Fuel may run short before the convoy."
+    assert sanitize_risk_note(note, inline, ALLOWED, ROSTER) == note

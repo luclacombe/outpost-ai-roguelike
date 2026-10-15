@@ -27,7 +27,7 @@ _MARKUP = re.compile(r"<[A-Za-z/][^>]*>")
 _FOURTH_WALL = re.compile(r"\bthe player\b", re.IGNORECASE)
 _ECHO_PREFIXES = ("now write", "write a", "context:", "characters:", "recap", "keep tone")
 # Spec §4.2: word-boundary anchors so "iPhone" and "McKay" yield no name token.
-_TOKEN = re.compile(r"\b[A-Z][a-z]+(?:[-'][A-Za-z]+)*\b")
+_TOKEN = re.compile(r"\b[A-ZÀ-Þ][a-zß-ÿ]+(?:[-'][A-Za-zÀ-ÿ]+)*\b")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _STAT_WORDS = re.compile(r"\b(legitimacy|health|grievance)\b", re.IGNORECASE)
 _QUOTES = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"})
@@ -86,7 +86,21 @@ def _tokens(text: str) -> list[tuple[str, int]]:
     return out
 
 
+def _after_opening_quote(text: str, start: int) -> bool:
+    """True when the token directly follows an opening quote (spec §4.2)."""
+    j = start
+    while j > 0 and text[j - 1] in "\"'(":
+        if text[j - 1] != "(":
+            before = text[j - 2] if j >= 2 else ""
+            if not before or before.isspace() or before == "(":
+                return True
+        j -= 1
+    return False
+
+
 def _is_sentence_initial(text: str, start: int) -> bool:
+    if _after_opening_quote(text, start):
+        return True
     prefix = text[:start].rstrip(" \t\"'(")
     if not prefix:
         return True
@@ -113,15 +127,18 @@ def _all_name_pool_names() -> frozenset[str]:
 
 
 @cache
-def _foreign_resource_words(setting_id: str) -> frozenset[str]:
-    own = {w for r in load_setting(setting_id).resources for w in (r.id, r.name.lower())}
-    every = {
+def _shipped_resource_words() -> frozenset[str]:
+    return frozenset(
         w
         for sid in list_available_settings()
         for r in load_setting(sid).resources
         for w in (r.id, r.name.lower())
-    }
-    return frozenset(every - own)
+    )
+
+
+def _foreign_resource_words(setting: Setting) -> frozenset[str]:
+    own = {w for r in setting.resources for w in (r.id, r.name.lower())}
+    return _shipped_resource_words() - own
 
 
 def _term_tokens(texts: Iterable[str]) -> frozenset[str]:
@@ -209,7 +226,7 @@ def sanitize_risk_note(
     if re.search(r"\d", note) or _STAT_WORDS.search(note):
         return None
     words = {w.lower() for w in re.findall(r"[A-Za-z]+", note)}
-    if words & _foreign_resource_words(setting.id):
+    if words & _foreign_resource_words(setting):
         return None
     blocking = {"markup", "fourth_wall", "script", "unknown_name"}
     if any(v.kind in blocking for v in validate_narration(note, allowed_terms, roster_names)):
