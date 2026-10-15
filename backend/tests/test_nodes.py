@@ -790,17 +790,20 @@ async def test_autonomous_stamps_autonomy_phase(monkeypatch):
 
 
 async def test_retry_ignores_discarded_first_attempt_for_duplicate_names(monkeypatch):
-    """The retry is judged on the pre-debate state, so a discarded first
-    attempt's proposals never trip the duplicate-name check."""
+    """The retry is judged on the pre-debate state. The first attempt's two
+    valid proposals share names with the retry's three; if the retry were
+    judged on a state that had absorbed the first attempt, every retry
+    proposal would read as a duplicate and the weaker first attempt would win."""
     colony = make_colony_state()
-    first = _debate_message(colony, _valid_tool_uses(colony, n=1), reaction="first")
-    second = _debate_message(colony, _valid_tool_uses(colony), reaction="second")
+    first = _debate_message(colony, _valid_tool_uses(colony, n=2), reaction="first")
+    second = _debate_message(colony, _valid_tool_uses(colony, n=3), reaction="second")
     fake = _install_fake(monkeypatch, [first, second])
 
     result = await agent_debate(_debate_state(colony))
 
     assert len(fake.calls) == 2
     assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
     assert result["turn_meta"]["debate_retried"] is True
 
 
