@@ -34,6 +34,8 @@ def build_narration_system_block(setting: Setting, agents: list[Agent]) -> dict[
         'description: "a trucker", "the trader\'s cousin". Never invent a name.\n'
         "  * Show what the choice did. Don't repeat the numbers from <effects>.\n"
         "  * Plain prose: no tags, no headings, no lists, no notes about the task.\n"
+        "  * Latin script only: write every name in Latin letters. No timestamps, "
+        "turn numbers or other scaffolding.\n"
     )
     return {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
 

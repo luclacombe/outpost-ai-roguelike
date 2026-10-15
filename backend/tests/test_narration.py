@@ -82,3 +82,10 @@ def test_fallback_lines() -> None:
     assert fallback_line(PICKED, "Sol") == "You backed Sol: Share the water."
     assert fallback_line(PICKED, None) == "You chose: Share the water."
     assert fallback_line(None, None) == "The day closes."
+
+
+def test_every_setting_block_forbids_non_latin_and_scaffolding() -> None:
+    for sid in list_available_settings():
+        text = build_narration_system_block(load_setting(sid), [])["text"]
+        assert "Latin script only: write every name in Latin letters." in text, sid
+        assert "No timestamps, turn numbers or other scaffolding." in text, sid
