@@ -7,5 +7,7 @@ Order is mandatory (spec §9):
 3. Deploy the backend. Without step 1, every `select(TurnLog)` fails: post-mortems, share links and turn persistence.
 4. Deploy the frontend.
 
+Pushing `main` auto-deploys both Railway (backend) and Vercel (frontend), per root `CLAUDE.md`. Do not push `main` until step 2 confirms `a7c3e9d41f20` on prod; merging the branch is the deploy.
+
 Known separate blocker: Railway lacks the `LLM_*` variables.
 In-flight games: one turn may show the old LLM previews after the deploy; accepted.
