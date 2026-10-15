@@ -1,15 +1,13 @@
 """Choice-spread oracle: how different are the three options, mechanically?
 
 At a paused turn, apply each offered proposal to its own copy of the colony
-through the same path `nodes.resolve` uses
-(`engine.derive_resolution_consequences` + `engine.apply_tool_calls` on
-`tool_calls_on_pick`), then `engine.check_deaths`. Pure: no LLM, no DB, no
-LangGraph checkpoint forking (`advance_turn` is the sole DB-write node, so
+through the same path `nodes.resolve` uses (`preview.simulate_option`).
+Pure: no LLM, no DB, no LangGraph checkpoint forking (`advance_turn` is the sole DB-write node, so
 forking the graph would clobber the real game row).
 
-Scope: the immediate resolution only. Autonomous actions, narration,
-consequence seeds and `advance_turn` decay come after and are not
-simulated, so this measures what the choice itself does.
+Scope: the immediate resolution only. End-of-turn decay is excluded (it is
+the same for every option and shown once in the UI); autonomous actions and
+seeds come after the pick and are not simulated.
 
 Spread metric: each option becomes a vector of
   [Δresource / resource.max for each resource (sorted id)] + [Δlegitimacy / 100,
@@ -25,69 +23,8 @@ from itertools import combinations
 from statistics import mean, median
 from typing import Any
 
-from app.game import engine
+from app.game.preview import simulate_option
 from app.game.schemas import ColonyState, Proposal
-
-
-def _agent_status(agent: Any) -> str:
-    return "DEAD" if not agent.is_alive else str(agent.status.value)
-
-
-def _option_outcome(
-    colony: ColonyState, picked: Proposal, proposals: list[Proposal]
-) -> dict[str, Any]:
-    before = colony.model_copy(deep=True)
-    derived = engine.derive_resolution_consequences(before, picked, proposals)
-    calls = [*picked.tool_calls_on_pick, *derived]
-    after = engine.apply_tool_calls(before, calls)
-    after = engine.check_deaths(after)
-
-    new_calls = after.turn_tool_calls[len(before.turn_tool_calls) :]
-    rejected = [
-        {"name": tc.name, "reason": tc.rejection_reason}
-        for tc in new_calls
-        if tc.rejection_reason is not None
-    ]
-
-    resource_ids = sorted(before.resources)
-    resource_deltas = {
-        rid: after.resources[rid].value - before.resources[rid].value for rid in resource_ids
-    }
-    legitimacy_delta = after.legitimacy - before.legitimacy
-    player_health_delta = after.player_health - before.player_health
-
-    before_agents = {a.id: a for a in before.agents}
-    grievance_deltas: dict[str, int] = {}
-    status_changes: list[dict[str, str]] = []
-    for a in after.agents:
-        prev = before_agents.get(a.id)
-        if prev is None:
-            continue
-        if a.grievance != prev.grievance:
-            grievance_deltas[a.name] = a.grievance - prev.grievance
-        if _agent_status(a) != _agent_status(prev):
-            status_changes.append(
-                {"agent": a.name, "from": _agent_status(prev), "to": _agent_status(a)}
-            )
-
-    vector = [resource_deltas[rid] / max(1, before.resources[rid].max) for rid in resource_ids]
-    vector += [legitimacy_delta / 100, player_health_delta / 100]
-
-    end_state = engine.compute_end_state(after)
-    return {
-        "proposal_id": picked.id,
-        "flavor": str(picked.flavor.value),
-        "name": picked.name,
-        "resource_deltas": resource_deltas,
-        "legitimacy_delta": legitimacy_delta,
-        "player_health_delta": player_health_delta,
-        "grievance_deltas": grievance_deltas,
-        "status_changes": status_changes,
-        "n_calls": len(new_calls),
-        "rejected_calls": rejected,
-        "ends_run": end_state.value if end_state is not None else None,
-        "vector": vector,
-    }
 
 
 def _l1(a: list[float], b: list[float]) -> float:
@@ -96,7 +33,7 @@ def _l1(a: list[float], b: list[float]) -> float:
 
 def compute_choice_spread(colony: ColonyState, proposals: list[Proposal]) -> dict[str, Any]:
     """Per-option outcomes + spread for one paused turn. Never mutates input."""
-    options = [_option_outcome(colony, p, proposals) for p in proposals]
+    options = [simulate_option(colony, p, proposals).to_spread_dict(p) for p in proposals]
     dists = [_l1(a["vector"], b["vector"]) for a, b in combinations(options, 2)]
     spread_max = max(dists) if dists else 0.0
     return {
