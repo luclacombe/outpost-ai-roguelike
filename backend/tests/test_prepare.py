@@ -316,3 +316,25 @@ async def test_property_preview_equals_real_resolve_node() -> None:
                 assert rendered == picked.effects_preview, (setting_id, seed, picked.name)
                 checked += 1
     assert checked > 50
+
+
+def test_scaffold_prefix_is_stripped_from_surfaced_proposal_names() -> None:
+    colony = _colony()
+    ids = [a.id for a in colony.agents]
+    calls = [
+        _propose(
+            ids[0],
+            "DOMINANT: Hold the line",
+            "DOMINANT",
+            [_nested("modify_resource", resource_id="fuel", delta=-3)],
+        ),
+        _propose(
+            ids[1],
+            "Rank flavor: Open the stores",
+            "MORAL",
+            [_nested("modify_resource", resource_id="food", delta=-3)],
+        ),
+    ]
+    out = prepare_proposals(colony, calls, ARCTIC)
+    assert [p.name for p in out.proposals] == ["Hold the line", "Open the stores"]
+    assert [p.name for p in out.state.turn_proposals] == ["Hold the line", "Open the stores"]
