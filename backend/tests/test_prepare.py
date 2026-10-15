@@ -160,6 +160,48 @@ def test_full_clamp_counts_as_no_effect() -> None:
     assert prepare_proposals(colony, [call], ARCTIC).classes == ["no_effect"]
 
 
+def test_cancelling_calls_count_as_no_effect() -> None:
+    colony = _colony()
+    call = _propose(
+        colony.agents[0].id,
+        "Churn",
+        "DOMINANT",
+        [
+            _nested("modify_resource", resource_id="fuel", delta=5),
+            _nested("modify_resource", resource_id="fuel", delta=-5),
+        ],
+    )
+    out = prepare_proposals(colony, [call], ARCTIC)
+    assert out.classes == ["no_effect"]
+    assert out.valid_count == 0
+    assert out.proposals[0].effects_preview[0] == "no immediate effect"
+
+
+def test_clamp_cancel_counts_as_no_effect() -> None:
+    colony = _colony()
+    fuel = colony.resources["fuel"]
+    colony = colony.model_copy(
+        update={
+            "resources": {
+                **colony.resources,
+                "fuel": fuel.model_copy(update={"value": fuel.max - 5}),
+            }
+        }
+    )
+    call = _propose(
+        colony.agents[0].id,
+        "Churn",
+        "DOMINANT",
+        [
+            _nested("modify_resource", resource_id="fuel", delta=10),
+            _nested("modify_resource", resource_id="fuel", delta=-5),
+        ],
+    )
+    out = prepare_proposals(colony, [call], ARCTIC)
+    assert out.classes == ["no_effect"]
+    assert out.proposals[0].effects_preview[0] == "no immediate effect"
+
+
 def test_risk_notes_sanitized_and_counted() -> None:
     colony = _colony()
     ids = [a.id for a in colony.agents]

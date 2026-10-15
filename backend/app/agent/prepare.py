@@ -12,7 +12,7 @@ from typing import Literal
 
 from app.agent.narration_guard import build_allowed_terms, sanitize_risk_note
 from app.game import engine
-from app.game.preview import render_effects, simulate_option
+from app.game.preview import has_own_effect, render_effects, simulate_option
 from app.game.schemas import ColonyState, Proposal, ToolCall
 from app.game.setting_loader import Setting
 
@@ -94,11 +94,11 @@ def prepare_proposals(
 
 
 def _strip(state: ColonyState, proposal: Proposal) -> tuple[list[ToolCall], list[ToolCall], bool]:
-    """Apply nested calls one by one; drop rejects. Returns (kept, records, changed)."""
+    """Apply nested calls one by one; drop rejects. Returns (kept, records, changed), `changed` being the NET effect."""
     running = state
     kept: list[ToolCall] = []
     records: list[ToolCall] = []
-    changed = False
+    applied: list[ToolCall] = []
     for nested in proposal.tool_calls_on_pick:
         after = engine.apply_tool_call(running, nested)
         logged = after.turn_tool_calls[-1]
@@ -113,7 +113,7 @@ def _strip(state: ColonyState, proposal: Proposal) -> tuple[list[ToolCall], list
             )
             continue
         kept.append(nested)
-        changed = changed or nested.name == "set_advisor_status" or bool(logged.applied_delta)
+        applied.append(logged)
         records.append(logged.model_copy(update={"phase": "prepare", "applied_delta": None}))
         running = after
-    return kept, records, changed
+    return kept, records, has_own_effect(applied, count_legitimacy=True)

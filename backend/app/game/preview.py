@@ -108,6 +108,38 @@ def simulate_option(
     return outcome_from_calls(after.turn_tool_calls[len(before.turn_tool_calls) :], before)
 
 
+def has_own_effect(calls: list[ToolCall], *, count_legitimacy: bool = False) -> bool:
+    """True when the proposal's own applied calls leave a NET change somewhere.
+
+    Sums `applied_delta` per target (resource, player or advisor health, advisor
+    grievance, optionally legitimacy), so `+5` then `-5` or a clamp that cancels
+    counts as no change. A status change always counts. Overrule grievance is a
+    resolution rule, not the proposal's own doing. Rejected calls are ignored.
+    Shared by `outcome_from_calls` and the preparation class (spec §4.1).
+    """
+    nets: dict[tuple[str, str], int] = {}
+    for tc in calls:
+        if tc.rejection_reason is not None:
+            continue
+        got = tc.applied_delta or 0
+        if tc.name == "set_advisor_status":
+            return True
+        if tc.name == "modify_resource":
+            key = ("res", str(tc.args["resource_id"]))
+        elif tc.name == "modify_health":
+            key = ("hp", str(tc.args["target_id"]))
+        elif tc.name == "adjust_grievance":
+            if tc.args.get("reason") == OVERRULE_GRIEVANCE_REASON:
+                continue
+            key = ("grv", str(tc.args["target_id"]))
+        elif count_legitimacy and tc.name in ("modify_legitimacy", "back_leader"):
+            key = ("legit", "")
+        else:
+            continue
+        nets[key] = nets.get(key, 0) + got
+    return any(nets.values())
+
+
 def outcome_from_calls(calls: list[ToolCall], state_before: ColonyState) -> OptionOutcome:
     """Build an OptionOutcome from recorded calls (carrying `applied_delta`).
 
@@ -130,7 +162,6 @@ def outcome_from_calls(calls: list[ToolCall], state_before: ColonyState) -> Opti
     grievance_capped: set[UUID] = set()
     statuses: list[tuple[UUID, str, str]] = []
     status_before = {a.id: a.status.value for a in state_before.agents}
-    own_effect = False
 
     for tc in applied:
         got = tc.applied_delta or 0
@@ -141,11 +172,9 @@ def outcome_from_calls(calls: list[ToolCall], state_before: ColonyState) -> Opti
             resource_deltas[rid] += got
             if clamped_gain:
                 capped_res.add(rid)
-            own_effect = own_effect or got != 0
         elif tc.name in ("modify_legitimacy", "back_leader"):
             parts.append(LegitimacyPart(str(tc.args.get("reason", "")), got))
         elif tc.name == "modify_health":
-            own_effect = own_effect or got != 0
             if tc.args["target_id"] == "player":
                 player_delta += got
                 player_capped = player_capped or clamped_gain
@@ -159,12 +188,9 @@ def outcome_from_calls(calls: list[ToolCall], state_before: ColonyState) -> Opti
             grievance[aid] = grievance.get(aid, 0) + got
             if clamped_gain:
                 grievance_capped.add(aid)
-            if tc.args.get("reason") != OVERRULE_GRIEVANCE_REASON:
-                own_effect = own_effect or got != 0
         elif tc.name == "set_advisor_status":
             aid = UUID(tc.args["target_id"])
             statuses.append((aid, status_before[aid], str(tc.args["new_status"])))
-            own_effect = True
 
     alive_before = {a.id for a in state_before.agents if a.is_alive}
     deaths = frozenset(a.id for a in after.agents if a.id in alive_before and not a.is_alive)
@@ -190,7 +216,7 @@ def outcome_from_calls(calls: list[ToolCall], state_before: ColonyState) -> Opti
         status_changes=tuple(statuses),
         rejected=tuple(tc for tc in calls if tc.rejection_reason is not None),
         n_calls=len(calls),
-        own_effect=own_effect,
+        own_effect=has_own_effect(applied),
         ends_run=ends_run,
         end_state=end_state.value if end_state is not None else None,
         agent_names={a.id: a.name for a in state_before.agents},

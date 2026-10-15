@@ -152,6 +152,35 @@ def test_no_own_effect_reads_no_immediate_effect(colony: ColonyState) -> None:
     assert lines[1].startswith("legitimacy −2")
 
 
+def test_cancelling_calls_read_no_immediate_effect(colony: ColonyState) -> None:
+    picked = _p(
+        "d",
+        ProposalFlavor.DOMINANT,
+        [
+            _tc("modify_resource", resource_id="fuel", delta=5),
+            _tc("modify_resource", resource_id="fuel", delta=-5),
+        ],
+    )
+    lines = render_effects(ARCTIC, simulate_option(colony, picked, [picked]))
+    assert lines[0] == "no immediate effect"
+    assert not any(line.startswith("fuel") for line in lines)
+
+
+def test_clamp_cancel_reads_no_immediate_effect(colony: ColonyState) -> None:
+    colony = _set(colony, "fuel", colony.resources["fuel"].max - 5)
+    picked = _p(
+        "d",
+        ProposalFlavor.DOMINANT,
+        [
+            _tc("modify_resource", resource_id="fuel", delta=10),
+            _tc("modify_resource", resource_id="fuel", delta=-5),
+        ],
+    )
+    lines = render_effects(ARCTIC, simulate_option(colony, picked, [picked]))
+    assert lines[0] == "no immediate effect"
+    assert not any(line.startswith("fuel") for line in lines)
+
+
 def test_status_change_renders(colony: ColonyState) -> None:
     target = colony.agents[3]
     picked = _p(
