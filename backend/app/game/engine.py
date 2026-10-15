@@ -430,7 +430,7 @@ def resolve_coup(state: ColonyState, initiator_id: UUID) -> ColonyState:
 
 
 # ---------------------------------------------------------------------------
-# Section 6: advance_turn + compute_end_state
+# Section 6: advance_turn + close_turn + compute_end_state
 # ---------------------------------------------------------------------------
 
 

@@ -65,10 +65,12 @@ from app.game.tools import AGENT_TOOL_SCHEMAS
 logger = logging.getLogger(__name__)
 
 # Whitelist of tools the autonomous (post-pause, introspective) phase offers
-# to the model. `propose_action`, `modify_resource`, and `modify_health` are
-# deliberately excluded — they belong to the pre-pause debate where the player
-# has visibility and control. Keeping this list in one place makes the scope
-# of off-turn agent behaviour auditable from the filter alone.
+# to the model. `propose_action` (the only top-level debate tool) and the
+# state tools nested in its `tool_calls_on_pick` (`modify_resource`,
+# `modify_health`, `adjust_grievance`) are deliberately excluded: they belong
+# to the pre-pause debate where the player has visibility and control. Keeping
+# this list in one place makes the scope of off-turn agent behaviour auditable
+# from the filter alone.
 AUTONOMOUS_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "adjust_own_grievance",
@@ -448,9 +450,10 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     parsed = parse_debate_response(response, alive_agents)
 
     # Drop any tool call the model emitted that isn't on the autonomous
-    # whitelist (propose_action, modify_resource, modify_health,
-    # adjust_grievance — all debate-phase only). Drops happen silently
-    # before the engine; they never appear in turn_tool_calls.
+    # whitelist (propose_action, or any tool that only belongs nested in
+    # `tool_calls_on_pick`: modify_resource, modify_health, adjust_grievance).
+    # Drops happen silently before the engine; they never appear in
+    # turn_tool_calls.
     autonomous_tool_calls = [tc for tc in parsed.tool_calls if tc.name in AUTONOMOUS_TOOL_NAMES]
 
     pre_tc_len = len(colony_state.turn_tool_calls)
