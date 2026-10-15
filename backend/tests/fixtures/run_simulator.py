@@ -19,11 +19,11 @@ The driver requires Postgres because:
   * `graph_postgres` is the only checkpointer that survives the /turn → /decide
     pause/resume hop.
 
-Tool-call provenance: the canonical record of all per-turn tool calls comes
-from the `turn_logs` rows written at `nodes.advance_turn`, NOT from SSE
-frames. SSE drops the chosen proposal's `tool_calls_on_pick` and the
-applied/rejected calls from `resolve`; reading the DB at end of run is the
-only way to reconstruct the full picture for the validity-rate metric.
+Tool-call provenance: the canonical record of all per-turn tool calls is
+`turn_logs.tool_calls`, written at `nodes.advance_turn` (phase-tagged, rejects
+included), NOT SSE frames. SSE drops the chosen proposal's `tool_calls_on_pick`
+and the applied/rejected calls from `resolve`. Rows from before 2026-10 have a
+NULL column and fall back to a lossy reconstruction.
 """
 
 from __future__ import annotations
@@ -203,21 +203,16 @@ class _RunAggregator:
 def _tool_calls_from_turn_log(row: TurnLog) -> list[ToolCall]:
     """Recover every ToolCall recorded against this turn.
 
-    Two sources, both round-tripped through `ToolCall.model_validate` so
-    `rejection_reason` is a real `str | None` field on the returned models.
-
-    1. The chosen proposal's `tool_calls_on_pick` — from the JSONB
-       `proposals` column, filtered by `chosen.chosen_proposal_id`. These
-       are the calls that ran through the engine at `resolve`.
-    2. `autonomous_actions` — applied autonomous-phase calls.
-
-    Calls rejected at `resolve` or `autonomous` aren't persisted in the
-    `turn_logs` schema today (engine clears `turn_tool_calls` at
-    `advance_turn`), so this still under-counts validity denominators on
-    runs where the engine rejects calls. Documented limitation; fixing it
-    requires snapshotting `turn_tool_calls` BEFORE the clear, which is an
-    `app/agent/nodes.py` change out of scope for Task 5.5.
+    Rows written since 2026-10 carry the full phase-tagged record in
+    `turn_logs.tool_calls` (debate, prepare, resolve, autonomy, close; rejected
+    calls included). Older rows fall back to a reconstruction from the chosen
+    proposal's `tool_calls_on_pick` plus `autonomous_actions`, which
+    under-counts rejects (the engine cleared `turn_tool_calls` at
+    `advance_turn` before this column existed).
     """
+    if getattr(row, "tool_calls", None) is not None:
+        return [ToolCall.model_validate(tc) for tc in row.tool_calls]
+
     out: list[ToolCall] = []
 
     chosen_id = (row.chosen or {}).get("chosen_proposal_id")

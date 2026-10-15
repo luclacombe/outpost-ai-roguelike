@@ -1474,3 +1474,60 @@ async def test_advance_turn_sets_is_run_over_when_end_state_set(persisted_colony
 
     assert result["is_run_over"] is True
     assert result["colony_state"].end_state is not None
+
+
+async def test_advance_turn_persists_tool_calls_and_turn_meta(persisted_colony):
+    colony = persisted_colony
+    event = _make_event(severity=2, event_id="evt_rec")
+    colony = colony.model_copy(update={"current_event": event})
+    meta = {"debate_retried": True, "proposal_classes": ["valid"], "risk_notes_dropped": 0}
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [_make_proposal(pid="p_rec", flavor=ProposalFlavor.DOMINANT)],
+        "player_choice": "p_rec",
+        "narration": "It held.",
+        "cost_cents_this_turn": 1.0,
+        "turn_meta": meta,
+    }
+    result = await advance_turn(state)
+    assert result["colony_state"].legitimacy == colony.legitimacy - 1
+
+    async with async_session_factory() as s:
+        row = (
+            await s.execute(
+                text("SELECT tool_calls, turn_meta FROM turn_logs WHERE game_id = :gid"),
+                {"gid": colony.game_id},
+            )
+        ).one()
+    close = [tc for tc in row.tool_calls if tc["phase"] == "close"]
+    assert close and close[0]["name"] == "modify_legitimacy" and close[0]["applied_delta"] == -1
+    assert row.turn_meta == meta
+
+
+async def test_advance_turn_without_turn_meta(persisted_colony):
+    """A game paused before this change resumes without turn_meta (Review Focus 5)."""
+    colony = persisted_colony
+    event = _make_event(severity=2, event_id="evt_old")
+    colony = colony.model_copy(update={"current_event": event})
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [],
+        "player_choice": None,
+        "narration": None,
+        "cost_cents_this_turn": 0.0,
+    }
+    await advance_turn(state)
+    async with async_session_factory() as s:
+        row = (
+            await s.execute(
+                text("SELECT turn_meta FROM turn_logs WHERE game_id = :gid"),
+                {"gid": colony.game_id},
+            )
+        ).one()
+    assert row.turn_meta == {}

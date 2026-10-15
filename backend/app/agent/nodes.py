@@ -540,16 +540,22 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
 async def advance_turn(state: GameTurnState) -> GameTurnState:
     """Advance the run and persist — the sole DB-write site in the graph.
 
-    Delegates to `engine.close_turn` (decay) then `engine.advance_turn` for the
-    pure bits (turn++, end-state evaluation, per-turn field clearing), marks dormant seeds
-    on transition to a terminal end state, accumulates the turn's cost,
-    writes both the `game_sessions` snapshot and the immutable `turn_logs`
-    row, and surfaces `is_run_over` for the graph's terminal edge.
+    Delegates to `engine.close_turn` (end-of-turn decay, a `close`-phase tool
+    call) then `engine.advance_turn` for the pure bits (turn++, end-state
+    evaluation, per-turn field clearing), marks dormant seeds on transition to
+    a terminal end state, accumulates the turn's cost, writes both the
+    `game_sessions` snapshot and the immutable `turn_logs` row, and surfaces
+    `is_run_over` for the graph's terminal edge. The full phase-tagged call
+    record (snapshotted before `advance_turn` clears it) and `turn_meta` land
+    in the same transaction as the turn log. `turn_meta` may be absent on a
+    game paused before it existed; it persists as `{}`.
     """
     colony_state = state["colony_state"]
     prev_end_state = colony_state.end_state
 
     closed = engine.close_turn(colony_state)
+    # Snapshot BEFORE engine.advance_turn clears turn_tool_calls.
+    turn_record = [tc.model_dump(mode="json") for tc in closed.turn_tool_calls]
     new_colony = engine.advance_turn(closed)
 
     if new_colony.end_state is not None and prev_end_state is None:
@@ -596,6 +602,8 @@ async def advance_turn(state: GameTurnState) -> GameTurnState:
             narration=state.get("narration"),
             state_snapshot=new_colony.model_dump(mode="json"),
             turn_cost_cents=turn_cost_int,
+            tool_calls=turn_record,
+            turn_meta=dict(state.get("turn_meta") or {}),
         )
         db.add(log)
         await db.commit()

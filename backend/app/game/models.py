@@ -145,6 +145,12 @@ class TurnLog(Base):
     narration: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     state_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     turn_cost_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    # Full phase-tagged tool-call record for the turn (spec §4.4). NULL on
+    # rows written before 2026-10. Mapping these columns means every
+    # select(TurnLog) needs the migration applied first.
+    tool_calls: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Debate retry, proposal classes, pre-pick stats, narration outcome.
+    turn_meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,

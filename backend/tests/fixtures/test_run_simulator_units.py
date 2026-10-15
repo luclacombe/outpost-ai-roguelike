@@ -235,3 +235,56 @@ async def test_drive_game_turn_budget_exhaustion_is_not_an_abort(
     _stub_driver(monkeypatch, [[_proposals_frame(_PROPOSALS)], []])
     record = await _drive(max_turns=1)
     assert record.abort_reason is None
+
+
+def test_tool_calls_from_turn_log_prefers_new_column() -> None:
+    from types import SimpleNamespace
+
+    from tests.fixtures.run_simulator import _tool_calls_from_turn_log
+
+    record = [
+        {
+            "name": "modify_legitimacy",
+            "caller_id": None,
+            "args": {"delta": -1, "reason": "end of turn"},
+            "phase": "close",
+            "applied_delta": -1,
+        },
+        {
+            "name": "modify_resource",
+            "caller_id": None,
+            "args": {"resource_id": "water"},
+            "phase": "prepare",
+            "rejection_reason": "stripped:unknown_resource",
+        },
+    ]
+    row = SimpleNamespace(tool_calls=record, chosen={}, proposals=[], autonomous_actions=[])
+    calls = _tool_calls_from_turn_log(row)
+    assert [tc.phase for tc in calls] == ["close", "prepare"]
+    assert calls[1].rejection_reason == "stripped:unknown_resource"
+
+
+def test_tool_calls_from_turn_log_falls_back_when_column_null() -> None:
+    from types import SimpleNamespace
+
+    from tests.fixtures.run_simulator import _tool_calls_from_turn_log
+
+    pick_call = {
+        "name": "modify_resource",
+        "caller_id": None,
+        "args": {"resource_id": "food", "delta": 2},
+        "phase": "resolve",
+    }
+    row = SimpleNamespace(
+        tool_calls=None,
+        chosen={"chosen_proposal_id": "p1"},
+        proposals=[
+            {"id": "p0", "tool_calls_on_pick": []},
+            {"id": "p1", "tool_calls_on_pick": [pick_call]},
+        ],
+        autonomous_actions=[],
+    )
+    calls = _tool_calls_from_turn_log(row)
+    assert len(calls) == 1
+    assert calls[0].name == "modify_resource"
+    assert calls[0].args == {"resource_id": "food", "delta": 2}
