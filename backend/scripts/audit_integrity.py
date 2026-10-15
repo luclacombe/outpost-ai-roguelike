@@ -17,9 +17,11 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import cache
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.agent.narration_guard import (
@@ -35,12 +37,12 @@ from app.eval.tool_validity import (
     tool_validity_by_phase,
     tool_validity_rate,
 )
-from app.game.events import _RESPITE_TEMPLATES
+from app.game.events import _RESPITE_TEMPLATES, _derive_title
 from app.game.models import GameSession, TurnLog
 from app.game.post_mortem import build_post_mortem
 from app.game.preview import outcome_from_calls, render_effects, state_from_compact
 from app.game.schemas import Event, ResolvedEvent, ToolCall
-from app.game.setting_loader import Setting, load_setting
+from app.game.setting_loader import Setting, list_available_settings, load_setting
 from scripts._harness import require_local_database
 
 COLD_WORDS = ("frost", "ice", "snow", "blizzard", "frozen", "sub-zero")
@@ -50,12 +52,13 @@ _SIGNED_THEN_WORD = re.compile(r"[+\-−]\s?\d+\s*%?\s*([A-Za-z]+)")
 _WORD_THEN_SIGNED = re.compile(r"([A-Za-z]+)\s*[+\-−]\s?\d+")
 _QUOTED = re.compile(r"\"([^\"]{2,})\"")
 _AFTERMATH = "Aftermath of "
-_TITLE_MAX = 48
+_SOMETIMES = re.compile(r"^sometimes\s+", re.IGNORECASE)
 
 
 @dataclass
 class Tally:
     turns: int = 0
+    skipped: int = 0
     preview_mismatch: int = 0
     mismatch_examples: list[str] = field(default_factory=list)
     picked_rejected: int = 0
@@ -63,6 +66,7 @@ class Tally:
     stored_hard: int = 0
     first_hard: int = 0
     stored_unknown: int = 0
+    prod_unknown: int = 0
     strict_unknown: int = 0
     fallbacks: int = 0
     titles: int = 0
@@ -70,6 +74,9 @@ class Tally:
     cold_words: Counter[str] = field(default_factory=Counter)
     tic_lines: Counter[tuple[str, str]] = field(default_factory=Counter)
     tic_hits: Counter[tuple[str, str]] = field(default_factory=Counter)
+    tic_no_key: set[tuple[str, str]] = field(default_factory=set)
+    tic_copies: int = 0
+    tic_copy_examples: list[str] = field(default_factory=list)
     classes: Counter[str] = field(default_factory=Counter)
     numbers_in_text: int = 0
     risk_dropped: int = 0
@@ -77,16 +84,55 @@ class Tally:
     calls: list[ToolCall] = field(default_factory=list)
 
 
-def title_ok(title: str, setting: Setting) -> bool:
+def _setting_titles(setting: Setting) -> set[str]:
+    """Authored titles, plus the derived fallback for categories without one."""
+    return {e.title or _derive_title(e.prompt_template) for e in setting.event_categories}
+
+
+@cache
+def _shipped_titles() -> frozenset[str]:
+    """Every title the engine may display: authored, derived, or respite."""
+    out = {title for title, _body in _RESPITE_TEMPLATES}
+    for setting_id in list_available_settings():
+        out |= _setting_titles(load_setting(setting_id))
+    return frozenset(out)
+
+
+def title_ok(title: str, setting: Setting | None = None) -> bool:
+    """A displayed title is from an allowed source: never just a short string.
+
+    Allowed: authored `EventCategory.title`, `_derive_title` of a category
+    without one, or a respite template title, across all shipped settings
+    (plus `setting`, when given), optionally prefixed with "Aftermath of ".
+    """
     core = title[len(_AFTERMATH) :] if title.startswith(_AFTERMATH) else title
-    authored = {e.title for e in setting.event_categories if e.title}
-    respite = {t for t, _ in _RESPITE_TEMPLATES}
-    return core in authored or core in respite or core.endswith("…") or len(core) <= _TITLE_MAX
+    if not core:
+        return False
+    return core in _shipped_titles() or (setting is not None and core in _setting_titles(setting))
 
 
 def tic_phrase(tic: str) -> str | None:
     m = _QUOTED.search(tic)
     return m.group(1).rstrip(" —-–") if m else None
+
+
+def tic_copy_needles(tic: str) -> list[str]:
+    """Literal fragments of a tic that must never show up in an advisor line.
+
+    The tic sentence with its leading "Sometimes" removed, its leading clause
+    (before an em dash or semicolon), and the quoted key phrase in its quoted
+    form. The bare key phrase is the tic working as intended, so it is not a
+    copy; it is measured by the share row instead.
+    """
+    text = _SOMETIMES.sub("", tic.strip()).rstrip(".").strip().lower()
+    needles = [text] if text else []
+    clause = re.split(r"\s+[—–-]\s+|;", text)[0].strip()
+    if len(clause.split()) >= 3 and clause not in needles:
+        needles.append(clause)
+    phrase = tic_phrase(tic)
+    if phrase:
+        needles.append(f'"{phrase.lower()}"')
+    return needles
 
 
 def numbers_near_stats(text: str, setting: Setting) -> bool:
@@ -95,6 +141,14 @@ def numbers_near_stats(text: str, setting: Setting) -> bool:
     hits = [m.group(1).lower() for m in _SIGNED_THEN_WORD.finditer(text)]
     hits += [m.group(1).lower() for m in _WORD_THEN_SIGNED.finditer(text)]
     return any(h in words for h in hits)
+
+
+def _event_or_none(raw: dict[str, Any] | None) -> Event | None:
+    """Parse a stored event; a malformed one (e.g. no title) must not crash the audit."""
+    try:
+        return Event.model_validate(raw) if raw else None
+    except ValidationError:
+        return None
 
 
 def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally) -> None:
@@ -106,6 +160,7 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
     """
     meta = row.turn_meta
     if not meta or "proposal_classes" not in meta or row.tool_calls is None:
+        t.skipped += 1
         return
     t.turns += 1
     calls = [ToolCall.model_validate(c) for c in row.tool_calls]
@@ -142,14 +197,19 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
 
     narration_meta = meta.get("narration") or {}
     t.fallbacks += narration_meta.get("source") == "fallback"
+    kept = narration_meta.get("kept_violations") or []
+    t.prod_unknown += any(str(code).startswith("unknown_name") for code in kept)
     first = narration_meta.get("first_attempt_violations") or []
     t.first_hard += any(code.split(":", 1)[0] in HARD_CODES for code in first)
 
     if row.narration and pre is not None:
-        event = Event.model_validate(row.event) if row.event else None
+        event = _event_or_none(row.event)
         state = pre.model_copy(update={"event_log": prior, "current_event": event})
         extra = [str(r.get("text", "")) for r in row.agent_responses or []]
-        extra += [str(p.get(k, "")) for p in row.proposals or [] for k in ("name", "description")]
+        for p in row.proposals or []:
+            # Mirrors nodes.py: each surfaced proposal's text and effects_preview lines.
+            extra += [str(p.get("name", "")), str(p.get("description", ""))]
+            extra += [str(line) for line in p.get("effects_preview") or []]
         roster = frozenset(a.name for a in pre.agents)
         found = validate_narration(
             row.narration, build_allowed_terms(setting, state, extra), roster
@@ -166,11 +226,19 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
         for r in row.agent_responses or []:
             role = role_by_agent.get(str(r.get("agent_id")))
             arch = next((a for a in setting.advisor_archetypes if a.role_name == role), None)
-            phrase = tic_phrase(arch.verbal_tic) if arch else None
-            if role and phrase:
-                key = (setting.id, role)
-                t.tic_lines[key] += 1
-                t.tic_hits[key] += phrase.lower() in str(r.get("text", "")).lower()
+            if arch is None or role is None:
+                continue
+            key = (setting.id, role)
+            line = str(r.get("text", "")).lower()
+            t.tic_lines[key] += 1
+            if any(n in line for n in tic_copy_needles(arch.verbal_tic)):
+                t.tic_copies += 1
+                t.tic_copy_examples.append(f"{key[0]} {role}: {str(r.get('text', ''))[:100]!r}")
+            phrase = tic_phrase(arch.verbal_tic)
+            if phrase:
+                t.tic_hits[key] += phrase.lower() in line
+            else:
+                t.tic_no_key.add(key)
 
 
 def _share(n: int, d: int) -> float:
@@ -190,6 +258,7 @@ def build_report(
         rows.append((name, value, target, "INFO"))
 
     n = t.turns
+    gate("Turns audited", n, "> 0", n > 0)
     gate("Preview ≠ resolve render", t.preview_mismatch, "0", t.preview_mismatch == 0)
     gate("Picked calls rejected at resolve", t.picked_rejected, "0", t.picked_rejected == 0)
     gate("Stat changes applied in debate", t.debate_stat_changes, "0", t.debate_stat_changes == 0)
@@ -209,6 +278,10 @@ def build_report(
         "{:.1%}",
     )
     info("Stored narrations, strict unknown_name", f"{_share(t.strict_unknown, n):.1%}")
+    info(
+        "Production-recorded unknown_name (kept)",
+        f"{_share(t.prod_unknown, n):.1%} ({t.prod_unknown} turns)",
+    )
     gate(
         "Narration fallbacks",
         _share(t.fallbacks, n),
@@ -223,9 +296,21 @@ def build_report(
         not t.titles_bad,
     )
     for sid, base in COLD_BASELINE.items():
-        info(f"Cold words in {sid} narration", str(t.cold_words[sid]), f"< baseline {base}")
+        count = t.cold_words[sid]
+        rows.append(
+            (
+                f"Cold words in {sid} narration",
+                f"{count} (baseline {base})",
+                f"< baseline {base}",
+                "WARN" if count >= base else "INFO",
+            )
+        )
+    gate("Literal tic text copied", t.tic_copies, "0", t.tic_copies == 0)
     for (sid, role), lines in sorted(t.tic_lines.items()):
-        info(f"Tic phrase share, {sid} {role}", f"{_share(t.tic_hits[(sid, role)], lines):.0%}")
+        if (sid, role) in t.tic_no_key:
+            info(f"Tic phrase share, {sid} {role}", f"no key phrase ({lines} lines)")
+        else:
+            info(f"Tic phrase share, {sid} {role}", f"{_share(t.tic_hits[(sid, role)], lines):.0%}")
     gate(
         "Games with dormant seeds but empty post-mortem",
         dormant_failures,
@@ -272,6 +357,7 @@ async def _run(game_ids: list[UUID] | None, since: datetime | None) -> int:
         if since is not None:
             query = query.where(GameSession.started_at >= since)
         games = (await db.execute(query)).scalars().all()
+        per_game: list[str] = []
         for game in games:
             setting = load_setting(game.setting_id)
             logs = (
@@ -286,19 +372,26 @@ async def _run(game_ids: list[UUID] | None, since: datetime | None) -> int:
                 .all()
             )
             prior: list[ResolvedEvent] = []
+            audited_before = t.turns
             for row in logs:
                 audit_turn(row, setting, list(prior), t)
                 if row.event:
                     chosen = str((row.chosen or {}).get("chosen_proposal_id") or "")
                     picked = next((p for p in row.proposals or [] if p.get("id") == chosen), {})
-                    prior.append(
-                        ResolvedEvent(
-                            turn_number=row.turn_number,
-                            event=Event.model_validate(row.event),
-                            chosen_proposal_id=chosen,
-                            summary=str(picked.get("description", "")),
+                    event = _event_or_none(row.event)
+                    if event is not None:
+                        prior.append(
+                            ResolvedEvent(
+                                turn_number=row.turn_number,
+                                event=event,
+                                chosen_proposal_id=chosen,
+                                summary=str(picked.get("description", "")),
+                            )
                         )
-                    )
+            per_game.append(
+                f"  {game.id} {game.setting_id}: {t.turns - audited_before}/{len(logs)} "
+                "turns audited"
+            )
             if game.end_state is not None:
                 costs.append(int(game.cost_cents))
                 has_dormant = any(
@@ -309,12 +402,21 @@ async def _run(game_ids: list[UUID] | None, since: datetime | None) -> int:
                     dormant_failures += not pm.counterfactuals.dormant_seeds
 
     rows = build_report(t, dormant_failures=dormant_failures, costs=costs)
-    print(f"Audited {len(games)} games, {t.turns} turns with turn_meta.\n")
+    print(
+        f"Audited {len(games)} games: {t.turns} turns audited, {t.skipped} skipped "
+        "(no turn_meta from this branch).\n"
+    )
+    for line in per_game[:50]:
+        print(line)
+    if per_game:
+        print()
     width = max(len(r[0]) for r in rows)
     for check, value, target, status in rows:
         print(f"{status:<5} {check:<{width}}  {value:>12}  target {target}")
     for example in t.mismatch_examples[:10]:
         print(f"  mismatch: {example}")
+    for example in t.tic_copy_examples[:10]:
+        print(f"  tic copy: {example}")
     for title in t.titles_bad[:10]:
         print(f"  bad title: {title!r}")
     return 1 if any(r[3] == "FAIL" for r in rows) else 0

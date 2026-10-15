@@ -11,6 +11,7 @@ from uuid import UUID
 
 from app.agent.prepare import prepare_proposals
 from app.game import engine
+from app.game.events import _derive_title
 from app.game.generator import generate_run
 from app.game.preview import compact_state
 from app.game.schemas import Event, EventOrigin, ToolCall
@@ -20,6 +21,7 @@ from scripts.audit_integrity import (
     audit_turn,
     build_report,
     numbers_near_stats,
+    tic_copy_needles,
     tic_phrase,
     title_ok,
 )
@@ -124,11 +126,32 @@ def test_paused_pre_branch_turn_with_narration_only_meta_is_skipped() -> None:
 
 
 def test_title_rules() -> None:
-    assert title_ok("Blizzard from the northeast", ARCTIC)
+    assert title_ok("Blizzard from the northeast", ARCTIC)  # authored
+    assert title_ok("Solar particle event", ARCTIC)  # authored, another shipped setting
     assert title_ok("Aftermath of Blizzard from the northeast", ARCTIC)
     assert title_ok("Window frost", ARCTIC)  # respite template
-    assert title_ok("A coded message arrives addressed to the…", ARCTIC)
+    assert not title_ok("Invented title", ARCTIC)  # short, but not from any source
+    assert not title_ok("Aftermath of Invented title", ARCTIC)
+    assert not title_ok("", ARCTIC)
+    assert not title_ok("Aftermath of ", ARCTIC)
     assert not title_ok("A coded message arrives addressed to the commissar by his ol", ARCTIC)
+    assert not title_ok("An invented headline that trails off into nothing much at all…", ARCTIC)
+
+
+def test_title_derived_from_prompt_template_passes() -> None:
+    cats = [c.model_copy(update={"title": None}) for c in ARCTIC.event_categories]
+    untitled = ARCTIC.model_copy(update={"event_categories": cats})
+    derived = _derive_title(cats[0].prompt_template)
+    assert title_ok(derived, untitled)
+    assert not title_ok(derived, None) or derived in {c.title for c in ARCTIC.event_categories}
+
+
+def test_missing_title_is_a_bad_title() -> None:
+    row = _row()
+    row.event = {k: v for k, v in row.event.items() if k != "title"}
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    assert t.titles_bad == [""]
 
 
 def test_tic_phrase_and_numbers() -> None:
@@ -164,3 +187,106 @@ def test_cli_refuses_a_non_local_database() -> None:
     )
     assert proc.returncode != 0
     assert "Refusing to run against non-local database host" in proc.stderr
+
+
+def test_empty_audit_fails_the_gate() -> None:
+    """No audited turns (bad --since, mistyped ids, pre-branch code) must not pass."""
+    t = Tally()
+    t.skipped = 5
+    rows = build_report(t, dormant_failures=0, costs=[])
+    status = {check: s for check, _value, _target, s in rows}
+    assert status["Turns audited"] == "FAIL"
+
+
+def test_skipped_turns_are_counted() -> None:
+    t = Tally()
+    audit_turn(_row(meta=False), ARCTIC, [], t)
+    assert (t.turns, t.skipped) == (0, 1)
+
+
+def _with_line(text: str, *, keyed: bool) -> tuple[SimpleNamespace, str]:
+    """A clean row whose one advisor line is `text`, from a role whose tic has (or lacks) a quoted key phrase."""
+    row = _row()
+    wanted = {
+        a.role_name
+        for a in ARCTIC.advisor_archetypes
+        if (tic_phrase(a.verbal_tic) is not None) == keyed
+    }
+    agent = next(a for a in row.turn_meta["pre_pick"]["agents"] if a["role"] in wanted)
+    row.agent_responses = [{"agent_id": agent["id"], "text": text}]
+    return row, agent["role"]
+
+
+def _tic_of(role: str) -> str:
+    return next(a.verbal_tic for a in ARCTIC.advisor_archetypes if a.role_name == role)
+
+
+def test_literal_tic_copy_fails_the_gate() -> None:
+    for keyed in (True, False):
+        row, role = _with_line("x", keyed=keyed)
+        needle = tic_copy_needles(_tic_of(role))[0]
+        row.agent_responses[0]["text"] = f"I will say it plainly: {needle.capitalize()} today."
+        t = Tally()
+        audit_turn(row, ARCTIC, [], t)
+        assert t.tic_copies == 1
+        rows = build_report(t, dormant_failures=0, costs=[10])
+        status = {check: s for check, _v, _t, s in rows}
+        assert status["Literal tic text copied"] == "FAIL"
+
+
+def test_plain_line_and_bare_key_phrase_are_not_copies() -> None:
+    row, role = _with_line("Burn the stores. Now.", keyed=True)
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    assert t.tic_copies == 0
+    phrase = tic_phrase(_tic_of(role))
+    assert phrase
+    row.agent_responses[0]["text"] = f"Agreed, {phrase}"
+    audit_turn(row, ARCTIC, [], t)
+    assert t.tic_copies == 0
+    assert t.tic_hits[("arctic_station_v1", role)] == 1
+
+
+def test_advisor_without_key_phrase_is_reported_not_dropped() -> None:
+    t = Tally()
+    row, role = _with_line("Burn the stores.", keyed=False)
+    audit_turn(row, ARCTIC, [], t)
+    rows = build_report(t, dormant_failures=0, costs=[10])
+    values = {c: v for c, v, _t, _s in rows}
+    assert values[f"Tic phrase share, arctic_station_v1 {role}"] == "no key phrase (1 lines)"
+
+
+def test_cold_word_bleed_warns_at_baseline_and_never_fails() -> None:
+    t = Tally()
+    t.turns = 1
+    t.cold_words["desert_outpost_v1"] = 23
+    t.cold_words["orbital_colony_v1"] = 3
+    rows = build_report(t, dormant_failures=0, costs=[10])
+    by = {c: (v, tgt, s) for c, v, tgt, s in rows}
+    assert by["Cold words in desert_outpost_v1 narration"] == (
+        "23 (baseline 23)",
+        "< baseline 23",
+        "WARN",
+    )
+    assert by["Cold words in orbital_colony_v1 narration"][2] == "INFO"
+
+
+def test_effects_preview_only_name_is_not_unknown() -> None:
+    """Production allows names that appear in a surfaced proposal's effects_preview."""
+    row = _row()
+    row.narration = "You backed them. The stores sank near Zorblax."
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    assert t.stored_unknown == 1
+    row.proposals[0]["effects_preview"] = [*row.proposals[0]["effects_preview"], "Zorblax"]
+    t2 = Tally()
+    audit_turn(row, ARCTIC, [], t2)
+    assert t2.stored_unknown == 0
+
+
+def test_production_recorded_unknown_names_are_counted() -> None:
+    row = _row()
+    row.turn_meta["narration"]["kept_violations"] = ["unknown_name:zorblax"]
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    assert t.prod_unknown == 1
