@@ -53,6 +53,7 @@ _WORD_THEN_SIGNED = re.compile(r"([A-Za-z]+)\s*[+\-−]\s?\d+")
 _QUOTED = re.compile(r"\"([^\"]{2,})\"")
 _AFTERMATH = "Aftermath of "
 _SOMETIMES = re.compile(r"^sometimes\s+", re.IGNORECASE)
+_STRAIGHTEN = str.maketrans({"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"})
 
 
 @dataclass
@@ -116,21 +117,32 @@ def tic_phrase(tic: str) -> str | None:
     return m.group(1).rstrip(" —-–") if m else None
 
 
+def straighten_quotes(text: str) -> str:
+    """Curly quotes and apostrophes to straight ones, so a model's typography can't dodge a match."""
+    return text.translate(_STRAIGHTEN)
+
+
 def tic_copy_needles(tic: str) -> list[str]:
     """Literal fragments of a tic that must never show up in an advisor line.
 
     The tic sentence with its leading "Sometimes" removed, its leading clause
-    (before an em dash or semicolon), and the quoted key phrase in its quoted
-    form. The bare key phrase is the tic working as intended, so it is not a
-    copy; it is measured by the share row instead.
+    (before an em dash or semicolon), the quoted key phrase exactly as quoted
+    in the tic (dash included: `"the probabilities suggest—"`), and that
+    phrase in its dash-less quoted form. The bare key phrase is the tic working
+    as intended, so it is not a copy; it is measured by the share row instead.
+    All needles use straight quotes; match against `straighten_quotes(line)`.
     """
+    tic = straighten_quotes(tic)
     text = _SOMETIMES.sub("", tic.strip()).rstrip(".").strip().lower()
     needles = [text] if text else []
     clause = re.split(r"\s+[—–-]\s+|;", text)[0].strip()
     if len(clause.split()) >= 3 and clause not in needles:
         needles.append(clause)
+    quoted = _QUOTED.search(tic)
+    if quoted:
+        needles.append(f'"{quoted.group(1).lower()}"')
     phrase = tic_phrase(tic)
-    if phrase:
+    if phrase and f'"{phrase.lower()}"' not in needles:
         needles.append(f'"{phrase.lower()}"')
     return needles
 
@@ -229,7 +241,7 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
             if arch is None or role is None:
                 continue
             key = (setting.id, role)
-            line = str(r.get("text", "")).lower()
+            line = straighten_quotes(str(r.get("text", ""))).lower()
             t.tic_lines[key] += 1
             if any(n in line for n in tic_copy_needles(arch.verbal_tic)):
                 t.tic_copies += 1

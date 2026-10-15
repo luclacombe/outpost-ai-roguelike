@@ -290,3 +290,38 @@ def test_production_recorded_unknown_names_are_counted() -> None:
     t = Tally()
     audit_turn(row, ARCTIC, [], t)
     assert t.prod_unknown == 1
+
+
+def _role_with_tic(fragment: str) -> str:
+    return next(a.role_name for a in ARCTIC.advisor_archetypes if fragment in a.verbal_tic)
+
+
+def _copies_for_line(role: str, text: str) -> int:
+    row = _row()
+    agent = next(a for a in row.turn_meta["pre_pick"]["agents"] if a["role"] == role)
+    row.agent_responses = [{"agent_id": agent["id"], "text": text}]
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    return t.tic_copies
+
+
+def test_dash_terminated_quoted_tic_is_a_copy_in_straight_and_curly_quotes() -> None:
+    role = _role_with_tic("I heard on the radio that")
+    assert tic_copy_needles(_tic_of(role))
+    assert _copies_for_line(role, 'Ah, "I heard on the radio that—" and so on.') == 1
+    assert _copies_for_line(role, "Ah, “I heard on the radio that—” and so on.") == 1
+
+
+def test_bare_tic_phrase_in_prose_is_not_a_copy() -> None:
+    role = _role_with_tic("I heard on the radio that")
+    assert _copies_for_line(role, "I heard on the radio that the pass is open.") == 0
+
+
+def test_orbital_dash_terminated_tic_needle_matches_the_raw_quote() -> None:
+    tic = next(
+        a.verbal_tic
+        for sid in ("orbital_colony_v1",)
+        for a in load_setting(sid).advisor_archetypes
+        if "probabilities suggest" in a.verbal_tic
+    )
+    assert '"the probabilities suggest—"' in tic_copy_needles(tic)
