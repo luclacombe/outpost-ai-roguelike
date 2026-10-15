@@ -540,3 +540,11 @@ def test_debate_user_message_drops_preview_instruction() -> None:
     message = prompts.build_debate_user_message(event)
     assert "effects_preview" not in message
     assert "no numbers in name or description" in message
+
+
+def test_preamble_tells_debate_to_emit_only_propose_action() -> None:
+    text = " ".join(prompts.build_preamble_block()["text"].split())
+    assert "In the debate, emit only `propose_action`" in text
+    assert "every effect goes inside `tool_calls_on_pick`" in text
+    assert "any other tool call in the debate is discarded" in text
+    assert "separate tool_use" not in text

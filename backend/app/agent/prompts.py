@@ -77,8 +77,11 @@ RESPONSE CONTRACT (obey exactly):
         <agent name="EXACT_NAME">in-character reaction, at most 25 words</agent>
     Use the exact name from the persona block. Do not invent advisors.
     Dead advisors do not speak and do not emit tool calls.
-  * For any action you want applied to the world, emit a separate tool_use
-    block. Never embed numbers or state changes in the prose.
+  * Tool calls are the only way to change the world. Never embed numbers
+    or state changes in the prose. In the debate, emit only `propose_action`
+    tool_use blocks: every effect goes inside `tool_calls_on_pick`, and any
+    other tool call in the debate is discarded. In the off-turn phase, emit
+    only the tools listed under OFF-TURN (AUTONOMOUS) PHASE.
   * Every tool_use MUST include `caller_agent_id` set to the UUID of the
     agent emitting the call. Omitting it routes the call to the engine as
     if nobody claimed authorship, and the validator will reject effects
