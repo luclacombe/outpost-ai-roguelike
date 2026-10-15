@@ -12,7 +12,11 @@ live in this package. Engine functions (app/game/) stay LLM-free.
   never assume a key is present unless you wrote it in an upstream node this turn.
 - `generate_event` is the sole node that **resets** per-turn keys (debate_*,
   applied/rejected_tool_calls, proposals, player_choice, autonomous_tool_calls,
-  narration, cost_cents_this_turn). Don't duplicate its clearing logic elsewhere.
+  narration, turn_meta, cost_cents_this_turn). Don't duplicate its clearing
+  logic elsewhere.
+- `turn_meta` is the per-turn diagnostics dict. Each node returns
+  `{**(state.get("turn_meta") or {}), ...}` so earlier keys survive;
+  `advance_turn` persists it to `turn_logs.turn_meta`.
 - `advance_turn` is the **sole DB-write site**. No other node mutates
   `game_sessions` / `turn_logs`. The graph checkpointer owns mid-turn state.
 
@@ -30,7 +34,7 @@ turn the picked proposal's payload + cross-proposal context into a list of
 validated tool calls (`modify_legitimacy`, `adjust_grievance`), then folds
 them through `engine.apply_tool_calls` alongside `picked.tool_calls_on_pick`.
 The previous flavor → legitimacy table (`_FLAVOR_LEGITIMACY_SHIFT`) was
-removed in favour of payload-driven dispatch — see `engine.py` Section 7.
+removed in favour of payload-driven dispatch — see `resolution.py`.
 
 ## Debate response parsing
 
@@ -50,27 +54,59 @@ response into `(per_agent_text, tool_calls)`.
 ## Debate retry (< 3 valid proposals)
 
 `agent_debate` counts proposals with `count_valid_proposals`, which runs
-`prepare.prepare_proposals` (the same step the `apply_tool_calls` node keeps)
-on the PRE-debate state and counts those classed `valid` (nested effects all
-apply, net change). A discarded first attempt therefore never blocks the
-retry's duplicate-name check. Under 3, it retries the same batched call ONCE
-with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
+`prepare.prepare_proposals` on a throwaway result and counts proposals
+classified `valid` (nothing stripped, at least one non-zero applied change).
+A missing or all-stripped `tool_calls_on_pick` is `no_effect`, not valid. The
+count runs on the PRE-debate state, so a discarded first attempt never blocks
+the retry's duplicate-name check. Under 3, it retries the same batched call
+ONCE with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
 tools are unchanged, so the cached prefix still hits. The response with more
 valid proposals wins (ties keep the first; reactions follow the kept
-response); `turn_meta.debate_retried` records it. Both calls go into `cost_cents_this_turn`. No retry once the turn
-has reached `MAX_COST_CENTS_PER_TURN`. The debate phase applies `propose_action` only; other tools are logged
-`not_allowed_in_debate`. Test debate bodies must give every proposal a nested
-effect or the turn retries.
+response); `turn_meta.debate_retried` records it. Both calls go into
+`cost_cents_this_turn`. No retry once the turn has reached
+`MAX_COST_CENTS_PER_TURN`. Test debate bodies must give every proposal a
+nested effect or the turn retries.
+
+## Debate phase applies proposals only
+
+`prepare.DEBATE_TOOL_NAMES = {"propose_action"}`. Any other debate call is
+recorded `not_allowed_in_debate` and never applied. `prepare_proposals`
+(run by the `apply_tool_calls` node):
+
+- strips rejected nested calls (record `phase="prepare"`,
+  `rejection_reason="stripped:<reason>"`);
+- classifies each proposal `valid`, `degraded` or `no_effect` and surfaces up
+  to 3 in that order;
+- renders `effects_preview` from the engine (`preview.simulate_option` +
+  `render_effects`) and sanitizes `risk_note`;
+- writes the rendered triple to both `state["proposals"]` and
+  `colony_state.turn_proposals`.
+
+The LLM never writes a number the player sees (root anti-pattern).
+
+## Prompt examples use placeholders
+
+Prompt examples never use proper nouns or a real resource id (placeholders
+only): a worked example with `resource_id: "fuel"` made models invent fuel in
+settings that have none.
+`tests/test_prompts.py::test_no_prompt_text_contains_a_name_pool_name`
+enforces that no `name_pool` name appears in a prompt constant.
 
 ## Narration (guarded, own system block)
 
 `narrate_turn` does not use the debate preamble (it taught `<agent>` markup
 that leaked into prose). `narration.build_narration_system_block` is a single
-run-stable block (setting voice + roster) with `cache_control`. Output goes
-through `narration_guard.validate_narration`; one retry with `RETRY_NOTE` on any
-violation (none once the turn cost cap is hit). Keep the attempt with no hard
-violation and fewest soft ones, else `narration.fallback_line`. Outcome lands in
-`turn_meta["narration"]` (`source`: llm/retry/fallback/cost_cap).
+run-stable block with `cache_control`: the setting's `narrative_voice` verbatim,
+the roster, and a rules line ("Latin script only: write every name in Latin
+letters. No timestamps, turn numbers or other scaffolding."). The user message
+carries the full event, not the 60-char title. Output goes through
+`narration_guard.validate_narration`, which splits hard from soft violations;
+one retry with `RETRY_NOTE` on any violation. Keep the attempt with no hard
+violation and fewest soft ones, else `narration.fallback_line` (`You backed
+{proposer}: {name}.`). Outcome lands in `turn_meta["narration"]` (`source`:
+llm/retry/fallback/cost_cap). `cost_cap` means the turn had hit
+`MAX_COST_CENTS_PER_TURN`, so no narration call was made and the fallback line
+was used.
 
 ## Cache layout (2 breakpoints + colony state in user message)
 

@@ -125,6 +125,8 @@ Use the right skill for the task:
 
 ## Anti-patterns (stop and rethink if doing)
 
+- Letting the LLM author any number the player sees. Previews are rendered by `app/game/preview.py` from validated calls; the LLM supplies only `tool_calls_on_pick` and an optional, sanitized `risk_note`
+- Deploying a backend that maps new `turn_logs` columns before running the migration on prod. Every `select(TurnLog)` selects them, so post-mortems, share links and turn persistence all fail
 - Calling `time.sleep()` in async code — use `await asyncio.sleep()` and never call it to wait for state
 - Mixing `sync` and `async` DB sessions
 - Writing a new Pydantic v1 `@validator` — use `@field_validator`
