@@ -70,6 +70,7 @@ class Tally:
     prod_unknown: int = 0
     strict_unknown: int = 0
     fallbacks: int = 0
+    cost_capped: int = 0
     titles: int = 0
     titles_bad: list[str] = field(default_factory=list)
     cold_words: Counter[str] = field(default_factory=Counter)
@@ -209,6 +210,7 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
 
     narration_meta = meta.get("narration") or {}
     t.fallbacks += narration_meta.get("source") == "fallback"
+    t.cost_capped += narration_meta.get("source") == "cost_cap"
     kept = narration_meta.get("kept_violations") or []
     t.prod_unknown += any(str(code).startswith("unknown_name") for code in kept)
     first = narration_meta.get("first_attempt_violations") or []
@@ -301,6 +303,7 @@ def build_report(
         _share(t.fallbacks, n) <= 0.05,
         "{:.1%}",
     )
+    info("Narrations skipped by the cost cap", f"{t.cost_capped} turns")
     gate(
         "Event titles outside the allowed sources",
         len(t.titles_bad),

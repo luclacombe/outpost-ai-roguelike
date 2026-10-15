@@ -325,3 +325,14 @@ def test_orbital_dash_terminated_tic_needle_matches_the_raw_quote() -> None:
         if "probabilities suggest" in a.verbal_tic
     )
     assert '"the probabilities suggest—"' in tic_copy_needles(tic)
+
+
+def test_cost_capped_narrations_are_counted_as_info() -> None:
+    row = _row()
+    row.turn_meta["narration"] = {"source": "cost_cap", "attempts": 0}
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    assert t.cost_capped == 1
+    rows = build_report(t, dormant_failures=0, costs=[10])
+    by = {c: (v, s) for c, v, _t, s in rows}
+    assert by["Narrations skipped by the cost cap"] == ("1 turns", "INFO")
