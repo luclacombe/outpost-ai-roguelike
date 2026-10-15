@@ -19,8 +19,9 @@ The single mutation pathway for all state changes:
 3. Valid → `_apply_valid_effect(state, tc)` mutates; tool call appended with `rejection_reason=None` and
    `applied_delta` (what actually changed after clamping).
 
-Every node stamps `phase` on its calls (`engine.stamp_phase`): `debate`,
-`prepare`, `resolve`, `autonomy`, `close`. End-of-turn decay is
+Every call carries a `phase`: `debate`, `prepare`, `resolve`, `autonomy`,
+`close` (set by `engine.stamp_phase` in the nodes, or `model_copy` in
+`prepare.py`). End-of-turn decay is
 `engine.close_turn` (`modify_legitimacy`, phase `close`). The full record
 persists to `turn_logs.tool_calls`.
 
@@ -60,12 +61,12 @@ members:
 
 `set_advisor_status` is in `_NESTED_TOOL_WHITELIST` (LLM may include it in
 a proposal's `tool_calls_on_pick`). `modify_legitimacy` is NOT — only
-`derive_resolution_consequences` emits it.
+the engine emits it (`derive_resolution_consequences`, `close_turn`).
 
-## propose_action: two-stage validation
+## propose_action: three-stage validation
 
 `tool_calls_on_pick` is the proposal's effect list — nested tool calls
-that fire at pick time. Validation is deliberately split:
+that fire at pick time. Validation is deliberately staged:
 
 - **Debate time** (`_validate_propose_action`): shape-only — each nested
   item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
@@ -75,11 +76,17 @@ that fire at pick time. Validation is deliberately split:
   `set_advisor_status` per `tool_calls_on_pick`
   (`multiple_status_mutations`) — mass-DETAIN would otherwise leave next
   turn with one ACTIVE author and break SPEC §7.3's three-author triple.
-- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
-  nested call re-validates against current state. State-dependent
-  rejects (e.g. `would_underflow` when resources have shifted between
-  propose and pick) fire here and land in `turn_tool_calls` with
-  `rejection_reason`, not in `_validate_propose_action`.
+- **Preparation** (`agent/prepare.py::_strip`, after the debate): each
+  nested call is applied one by one against the debate-time state.
+  State-dependent rejects (e.g. `would_underflow`) are dropped from the
+  proposal and recorded in `turn_tool_calls` with `phase="prepare"` and
+  `rejection_reason="stripped:<reason>"`, not in `_validate_propose_action`.
+  These records are what `tool_validity_rate` counts (`prepare` is an
+  LLM-originated phase).
+- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): resolve
+  receives only the kept calls and re-validates them as a safety net.
+  Rejects here are not expected; they would land in `turn_tool_calls`
+  with phase `resolve`, which the validity metric excludes.
 
 Nested calls are constructed as `ToolCall(name=..., caller_id=None,
 args=...)` — engine-emitted at pick. The proposing agent's UUID lives

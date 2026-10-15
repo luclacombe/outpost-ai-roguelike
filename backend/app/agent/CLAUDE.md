@@ -55,8 +55,9 @@ response into `(per_agent_text, tool_calls)`.
 
 `agent_debate` counts proposals with `count_valid_proposals`, which runs
 `prepare.prepare_proposals` on a throwaway result and counts proposals
-classified `valid` (nothing stripped, at least one non-zero applied change).
-A missing or all-stripped `tool_calls_on_pick` is `no_effect`, not valid. The
+classified `valid` (nothing stripped, a net non-zero applied change: `+5`/`-5`
+or a clamp that cancels counts as none). A missing or all-stripped
+`tool_calls_on_pick` is `no_effect`, not valid. The
 count runs on the PRE-debate state, so a discarded first attempt never blocks
 the retry's duplicate-name check. Under 3, it retries the same batched call
 ONCE with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
@@ -101,7 +102,8 @@ the roster, and a rules line ("Latin script only: write every name in Latin
 letters. No timestamps, turn numbers or other scaffolding."). The user message
 carries the full event, not the 60-char title. Output goes through
 `narration_guard.validate_narration`, which splits hard from soft violations;
-one retry with `RETRY_NOTE` on any violation. Keep the attempt with no hard
+one retry with `RETRY_NOTE` on any violation (skipped once the turn cost cap is
+reached). Keep the attempt with no hard
 violation and fewest soft ones, else `narration.fallback_line` (`You backed
 {proposer}: {name}.`). Outcome lands in `turn_meta["narration"]` (`source`:
 llm/retry/fallback/cost_cap). `cost_cap` means the turn had hit
