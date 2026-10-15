@@ -107,6 +107,7 @@ export function DashboardShell({ initialState, initialToken }: Props) {
           setting={setting}
           phase={choosePhase}
           legitimacy={stream.legitimacy ?? initialState.legitimacy}
+          closePreview={initialState.close_preview ?? []}
           onChoose={stream.submitChoice}
           onBeginTurn={stream.beginTurn}
           onContinue={stream.continueAfterNarration}

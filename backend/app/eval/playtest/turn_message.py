@@ -137,6 +137,8 @@ def format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: lis
         text = reactions_by_aid.get(a["id"], "(silent)")
         lines.append(f"- **{a['name']}** ({a['role']}): {text}")
     lines += ["", "## Proposals (in display order)"]
+    if view.get("close_preview"):
+        lines.append(f"Every option also: {'; '.join(view['close_preview'])}")
     for idx, pid in enumerate(displayed_order):
         p = proposals_by_id[pid]
         proposer = advisor_by_id.get(p.get("proposed_by_agent_id") or "")
@@ -146,6 +148,8 @@ def format_turn_user_message(*, turn_input: dict[str, Any], displayed_order: lis
             f"{idx}. **{p['name']}** ({p['flavor']}, by {proposer_name}) — {p['description']}"
         )
         lines.append(f"   Effects: {effects}")
+        if p.get("risk_note"):
+            lines.append(f"   Risk: {p['risk_note']}")
     lines += [
         "",
         f"Pick one of the three proposals above. Your `displayed_order` field "

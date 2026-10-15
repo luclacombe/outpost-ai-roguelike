@@ -170,6 +170,7 @@ async def build_post_mortem(*, game_id: UUID, db: AsyncSession) -> PostMortem:
                 flavor=p.get("flavor", "DOMINANT"),
                 proposed_by_agent_id=_coerce_uuid(p.get("proposed_by_agent_id")),
                 effects_preview=list(p.get("effects_preview", []) or []),
+                risk_note=p.get("risk_note"),
             )
             for p in (tl.proposals or [])
         ]

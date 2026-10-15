@@ -783,3 +783,17 @@ def test_preflight_passes_and_pins_model(monkeypatch: pytest.MonkeyPatch, tmp_sh
     monkeypatch.setattr("app.eval.playtest.persona_session.subprocess.run", fake_run)
     preflight_claude_cli(shell_dir=tmp_shell_dir, model="opus")
     assert seen["cmd"][seen["cmd"].index("--model") + 1] == "opus"
+
+
+def test_user_message_renders_close_preview_and_risk_note(
+    fixture_turn_input: dict[str, Any],
+) -> None:
+    turn_input = {**fixture_turn_input, "close_preview": ["−1 legitimacy at day's end"]}
+    first = turn_input["proposals"][0]
+    turn_input["proposals"] = [
+        {**first, "risk_note": "Stores may not last."},
+        *turn_input["proposals"][1:],
+    ]
+    msg = _format_turn_user_message(turn_input=turn_input, displayed_order=_ORDER)
+    assert "Every option also: −1 legitimacy at day's end" in msg
+    assert "   Risk: Stores may not last." in msg

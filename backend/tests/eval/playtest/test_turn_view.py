@@ -147,6 +147,7 @@ def test_second_view_reports_last_turn_outcome(colony: ColonyState) -> None:
         "name": "Cut heat",
         "flavor": "DOMINANT",
         "effects_preview": ["-10 fuel"],
+        "risk_note": None,
     }
     assert last["narration"] == "The heat died at midnight."
     assert last["deaths"] == [dead.name]
@@ -158,3 +159,25 @@ def test_second_view_reports_last_turn_outcome(colony: ColonyState) -> None:
         {"turn": 0, "text": f"{dead.name} died."},
         {"turn": 1, "text": "storm"},
     ]
+
+
+def test_view_carries_close_preview_and_risk_note(colony: ColonyState) -> None:
+    tracker = TurnViewTracker()
+    props = _proposals(colony)
+    props[0]["risk_note"] = "Stores may not last."
+    frames = [
+        {
+            "event": "proposals_ready",
+            "data": {
+                "turn_number": 0,
+                "current_event": _event("e1", "Coil Cracks"),
+                "proposals": props,
+                "close_preview": ["−1 legitimacy at day's end"],
+            },
+        }
+    ]
+    tracker.absorb(frames)
+    view = tracker.build(turn=1, colony=colony, turn_frames=frames, proposals=props)
+    assert view["close_preview"] == ["−1 legitimacy at day's end"]
+    tracker.record_choice(props[0])
+    assert tracker._last_choice["risk_note"] == "Stores may not last."

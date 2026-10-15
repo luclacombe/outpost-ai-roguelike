@@ -61,6 +61,7 @@ export type ProposalPublic = {
   name: string;
   description: string;
   effects_preview: string[];
+  risk_note?: string | null;
 };
 
 export type EventPublic = {
@@ -88,6 +89,8 @@ export type GameSessionResponse = {
   turn_proposals: ProposalPublic[];
   /** Null while the run is live; populated once the run terminates. */
   end_state: EndState | null;
+  /** Engine rule lines shown once above the choices. */
+  close_preview?: string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -123,6 +126,7 @@ export type PostMortemProposal = {
   flavor: ProposalFlavor;
   proposed_by_agent_id: string | null;
   effects_preview: string[];
+  risk_note?: string | null;
 };
 
 export type PostMortemAdvisorLine = {
@@ -199,6 +203,9 @@ export type ProposalsReadyPayload = {
   turn_number: number;
   current_event: EventPublic | null;
   proposals: ProposalPublic[];
+  // Not read by the stream: ChoosePanel takes close_preview from the initial
+  // game state (the rule is a constant), so this field only documents the wire shape.
+  close_preview?: string[];
 };
 
 export type DecisionAppliedPayload = {

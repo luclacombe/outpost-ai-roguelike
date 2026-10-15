@@ -42,6 +42,7 @@ type Props = {
   onContinue?: () => void;
   onIssueOrder?: () => void;
   legitimacy?: number;
+  closePreview?: string[];
 };
 
 export function ChoosePanel({
@@ -53,6 +54,7 @@ export function ChoosePanel({
   onContinue,
   onIssueOrder,
   legitimacy,
+  closePreview,
 }: Props) {
   const agentsById = new Map(agents.map((a) => [a.id, a]));
 
@@ -114,9 +116,19 @@ export function ChoosePanel({
 
   return (
     <Footer>
-      <h2 className="mb-3 font-display text-[10px] uppercase tracking-widest text-px-accent">
-        CHOOSE
-      </h2>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="font-display text-[10px] uppercase tracking-widest text-px-accent">
+          CHOOSE
+        </h2>
+        {closePreview && closePreview.length > 0 ? (
+          <p
+            data-testid="close-preview"
+            className="font-terminal text-sm text-px-text-dim"
+          >
+            {closePreview.join(" · ")}
+          </p>
+        ) : null}
+      </div>
       <ol className="flex flex-col gap-2">
         {proposals.map((p, i) => {
           const proposer = p.proposed_by_agent_id
@@ -170,6 +182,14 @@ export function ChoosePanel({
                         </li>
                       ))}
                     </ul>
+                  ) : null}
+                  {p.risk_note ? (
+                    <span
+                      data-testid="risk-note"
+                      className="font-body text-sm italic leading-snug text-px-text-dim"
+                    >
+                      {p.risk_note}
+                    </span>
                   ) : null}
                 </span>
               </button>

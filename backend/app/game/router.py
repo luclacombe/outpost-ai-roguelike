@@ -26,6 +26,7 @@ from app.game.post_mortem import (
     build_post_mortem_by_token,
     ensure_share_token,
 )
+from app.game.preview import render_close
 from app.game.schemas import ColonyState
 from app.game.schemas_io import (
     AgentPublic,
@@ -105,6 +106,7 @@ def _shape_response(state: ColonyState, *, setting_name: str) -> GameSessionResp
             name=p.name,
             description=p.description,
             effects_preview=p.effects_preview,
+            risk_note=p.risk_note,
         )
         for p in state.turn_proposals
     ]
@@ -122,6 +124,7 @@ def _shape_response(state: ColonyState, *, setting_name: str) -> GameSessionResp
         current_event=state.current_event,
         turn_proposals=proposals,
         end_state=state.end_state,
+        close_preview=render_close(),
     )
 
 
