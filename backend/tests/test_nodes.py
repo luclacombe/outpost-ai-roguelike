@@ -1237,60 +1237,135 @@ async def test_check_deaths_flips_agent_is_alive():
 # ---------------------------------------------------------------------------
 
 
+def _narrate_state(colony: ColonyState, cost: float = 1.0) -> dict[str, Any]:
+    picked = _make_proposal(pid="p_n", flavor=ProposalFlavor.DOMINANT).model_copy(
+        update={"proposed_by_agent_id": colony.agents[0].id, "name": "Hold the line"}
+    )
+    return {
+        "colony_state": colony,
+        "cost_cents_this_turn": cost,
+        "current_event": _make_event(),
+        "proposals": [picked],
+        "player_choice": "p_n",
+        "turn_meta": {"debate_retried": False},
+    }
+
+
+def _sonnet(text: str) -> Response:
+    return Response(200, json=fake_sonnet_response(text))
+
+
 @respx.mock
-async def test_narrate_turn_skips_sonnet_when_over_budget():
+async def test_narrate_turn_skips_call_when_over_budget():
     colony = make_colony_state()
     route = respx.post(_ANTHROPIC_URL)
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": float(MAX_COST_CENTS_PER_TURN) + 1.0,
-        "current_event": _make_event(),
-    }
-    result = await narrate_turn(state)
-
+    result = await narrate_turn(_narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) + 1.0))
     assert route.call_count == 0
-    assert "narration" in result
-    assert "Colony stands" in result["narration"]
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "cost_cap"
+    assert result["turn_meta"]["debate_retried"] is False
 
 
 @respx.mock
-async def test_narrate_turn_calls_sonnet_when_under_budget():
+async def test_narrate_turn_first_pass_success():
     colony = make_colony_state()
-    narration_text = "The wall held. Nadia counted the rations twice."
-    route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_sonnet_response(narration_text))
-    )
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": 1.0,
-        "current_event": _make_event(),
-    }
-    result = await narrate_turn(state)
-
+    text = "The wall held. Nadia counted the rations twice."
+    route = respx.post(_ANTHROPIC_URL).mock(return_value=_sonnet(text))
+    result = await narrate_turn(_narrate_state(colony))
     assert route.call_count == 1
-    assert result["narration"] == narration_text
-    # Cost accumulates.
+    assert result["narration"] == text
+    assert result["turn_meta"]["narration"] == {
+        "source": "llm",
+        "attempts": 1,
+        "first_attempt_violations": [],
+        "kept_violations": [],
+    }
     assert result["cost_cents_this_turn"] > 1.0
+
+
+@respx.mock
+async def test_narrate_turn_uses_own_cached_system_block():
+    colony = make_colony_state()
+    route = respx.post(_ANTHROPIC_URL).mock(return_value=_sonnet("The wall held."))
+    await narrate_turn(_narrate_state(colony))
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["system"]) == 1
+    assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "<agent" not in body["system"][0]["text"]
+
+
+@respx.mock
+async def test_narrate_turn_retry_then_success():
+    colony = make_colony_state()
+    bad = '<agent name="Nadia">Held.</agent>'
+    good = "The wall held. Nadia slept."
+    route = respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(bad), _sonnet(good)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert route.call_count == 2
+    assert "retry_note" in route.calls[1].request.content.decode()
+    assert result["narration"] == good
+    meta = result["turn_meta"]["narration"]
+    assert meta["source"] == "retry" and meta["attempts"] == 2
+    assert "markup" in meta["first_attempt_violations"]
+
+
+@respx.mock
+async def test_narrate_turn_soft_violations_keep_fewer():
+    colony = make_colony_state()
+    first = "You backed Nadia, and Ilyana and Borek watched."
+    second = "You backed Nadia, and Ilyana watched."
+    respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(first), _sonnet(second)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == second
+    assert result["turn_meta"]["narration"]["kept_violations"] == ["unknown_name:Ilyana"]
+
+
+@respx.mock
+async def test_narrate_hard_violation_twice_falls_back():
+    colony = make_colony_state()
+    russian = "Стена выдержала. Никто не спал."
+    respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(russian), _sonnet(russian)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    meta = result["turn_meta"]["narration"]
+    assert meta["source"] == "fallback"
+    assert meta["first_attempt_violations"] == ["script"]
+
+
+@respx.mock
+async def test_narrate_turn_no_retry_once_cost_cap_reached():
+    colony = make_colony_state()
+    # Sonnet call itself pushes the turn over the cap.
+    state = _narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) - 0.01)
+    route = respx.post(_ANTHROPIC_URL).mock(
+        side_effect=[_sonnet('<agent name="Nadia">Held.</agent>'), _sonnet("Never sent.")]
+    )
+    result = await narrate_turn(state)
+    assert route.call_count == 1
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "fallback"
+    assert result["turn_meta"]["narration"]["attempts"] == 1
+
+
+@respx.mock
+async def test_narrate_turn_no_retry_over_cap_keeps_soft_only():
+    colony = make_colony_state()
+    state = _narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) - 0.01)
+    text = "You backed Nadia, and Ilyana watched."
+    route = respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(text), _sonnet("Never sent.")])
+    result = await narrate_turn(state)
+    assert route.call_count == 1
+    assert result["narration"] == text
+    assert result["turn_meta"]["narration"]["kept_violations"] == ["unknown_name:Ilyana"]
 
 
 @respx.mock
 async def test_narrate_turn_falls_back_on_api_error():
     colony = make_colony_state()
     respx.post(_ANTHROPIC_URL).mock(return_value=Response(500, json={"error": "boom"}))
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": 1.0,
-        "current_event": _make_event(),
-    }
-    # Should not raise; templated fallback instead.
-    result = await narrate_turn(state)
-
-    assert "narration" in result
-    assert "Colony stands" in result["narration"]
-    # No cost accumulation on error.
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "fallback"
     assert "cost_cents_this_turn" not in result
 
 

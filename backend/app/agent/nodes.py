@@ -25,13 +25,16 @@ import logging
 import random
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import anthropic
 from sqlalchemy import select
 
+from app.agent import narration
 from app.agent.anthropic_client import call_fast, call_narration, cost_cents_of
 from app.agent.constants import MAX_COST_CENTS_PER_TURN
+from app.agent.narration_guard import Violation, build_allowed_terms, validate_narration
 from app.agent.prepare import prepare_proposals
 from app.agent.prompts import (
     build_autonomous_user_message,
@@ -475,65 +478,115 @@ async def check_deaths(state: GameTurnState) -> GameTurnState:
     return {"colony_state": new_colony}
 
 
-async def narrate_turn(state: GameTurnState) -> GameTurnState:
-    """Optional Sonnet narration. Skipped if the run is over turn budget.
+_NARRATION_ATTEMPTS = 2
 
-    Templated fallback is used when (a) we're over the per-turn cost cap
-    or (b) the Sonnet call itself fails. The fallback is intentionally
-    spare — the turn number and a bare colony status line. Not an attempt
-    at literary prose, just a placeholder the UI can render.
+
+async def narrate_turn(state: GameTurnState) -> GameTurnState:
+    """Narrate the day with its own system block, guarded (spec §4.2).
+
+    One retry on any violation (not once the turn's cost cap is reached).
+    Keep the attempt with no hard violation and the fewest soft ones; if
+    none qualifies, or the call errors, use the deterministic fallback.
     """
     colony_state = state["colony_state"]
     cost_so_far = state.get("cost_cents_this_turn", 0.0)
-
-    fallback = f"Turn {colony_state.turn_number} ended. Colony stands."
+    setting = setting_loader.load_setting(colony_state.setting_id)
+    proposals = state.get("proposals") or []
+    picked = next((p for p in proposals if p.id == state.get("player_choice")), None)
+    agents_by_id = {a.id: a for a in colony_state.agents}
+    proposer = (
+        agents_by_id.get(picked.proposed_by_agent_id)
+        if picked is not None and picked.proposed_by_agent_id is not None
+        else None
+    )
+    proposer_name = proposer.name if proposer is not None else None
+    fallback = narration.fallback_line(picked, proposer_name)
+    meta = dict(state.get("turn_meta") or {})
 
     if cost_so_far >= MAX_COST_CENTS_PER_TURN:
-        return {"narration": fallback}
+        meta["narration"] = _narration_meta("cost_cap", [], None)
+        return {"narration": fallback, "turn_meta": meta}
 
-    # One cache breakpoint (preamble). Personas + colony-state caches are
-    # reserved for the debate path; narration is infrequent enough that
-    # partial cache hit on the preamble is the right trade-off.
-    system_blocks = [build_preamble_block()]
-
-    picked_summary = (
-        colony_state.event_log[-1].summary if colony_state.event_log else "(no decision)"
+    event = state.get("current_event") or (
+        colony_state.event_log[-1].event if colony_state.event_log else None
     )
-    event_title = (
-        colony_state.event_log[-1].event.title
-        if colony_state.event_log
-        else (state["current_event"].title if state.get("current_event") else "")
-    )
+    system_blocks = [narration.build_narration_system_block(setting, colony_state.agents)]
     dead_names = [a.name for a in colony_state.agents if not a.is_alive]
-    user_message = (
-        f"<turn>{colony_state.turn_number}</turn>\n"
-        f"<event>{event_title}</event>\n"
-        f"<choice>{picked_summary}</choice>\n"
-        f"<dead>{', '.join(dead_names) if dead_names else '(none)'}</dead>\n\n"
-        "Write a 2-3 sentence narrator-voice recap of this turn. "
-        "No meta-commentary, no bullet points. Grim-not-nihilistic tone."
+    user_message = narration.build_narration_user_message(event, picked, proposer_name, dead_names)
+    allowed = build_allowed_terms(
+        setting,
+        colony_state,
+        [
+            *(state.get("debate_per_agent_text") or {}).values(),
+            *(t for p in proposals for t in (p.name, p.description, *p.effects_preview)),
+        ],
     )
+    roster = frozenset(a.name for a in colony_state.agents)
 
-    try:
-        response = await call_narration(system_blocks, user_message, max_tokens=500)
-    except anthropic.APIError as exc:
-        logger.warning("narrate_turn: narration call failed (%s); using fallback", exc)
-        return {"narration": fallback}
-
-    cost = cost_cents_of(response, settings.LLM_MODEL_NARRATION)
-
-    # Sonnet returns a single text block for prose-only requests. Defensive
-    # extraction — if something unexpected comes back, fall back gracefully.
-    narration_text = fallback
-    content = getattr(response, "content", None) or []
-    for block in content:
-        if getattr(block, "type", None) == "text":
-            narration_text = getattr(block, "text", fallback) or fallback
+    attempts: list[tuple[str, list[Violation]]] = []
+    cost = 0.0
+    message = user_message
+    for attempt in range(_NARRATION_ATTEMPTS):
+        if attempt > 0 and cost_so_far + cost >= MAX_COST_CENTS_PER_TURN:
             break
+        try:
+            response = await call_narration(system_blocks, message, max_tokens=500)
+        except anthropic.APIError as exc:
+            logger.warning("narrate_turn: narration call failed (%s)", exc)
+            break
+        cost += cost_cents_of(response, settings.LLM_MODEL_NARRATION)
+        text = _first_text(response)
+        violations = validate_narration(text, allowed, roster)
+        attempts.append((text, violations))
+        if not violations:
+            break
+        logger.warning(
+            "narration_guard_failed game=%s turn=%s attempt=%d codes=%s",
+            colony_state.game_id,
+            colony_state.turn_number,
+            attempt + 1,
+            [v.code for v in violations],
+        )
+        message = user_message + narration.RETRY_NOTE.format(
+            codes=", ".join(v.code for v in violations)
+        )
 
+    kept = _choose_attempt(attempts)
+    if kept is None:
+        text, source, kept_codes = fallback, "fallback", []
+    else:
+        text = attempts[kept][0]
+        source = "llm" if kept == 0 else "retry"
+        kept_codes = [v.code for v in attempts[kept][1]]
+    meta["narration"] = _narration_meta(source, attempts, kept_codes)
+
+    result: GameTurnState = {"narration": text, "turn_meta": meta}
+    if cost:
+        result["cost_cents_this_turn"] = cost_so_far + cost
+    return result
+
+
+def _first_text(response: Any) -> str:
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", None) == "text":
+            return getattr(block, "text", "") or ""
+    return ""
+
+
+def _choose_attempt(attempts: list[tuple[str, list[Violation]]]) -> int | None:
+    """Index of the attempt with no hard violation and fewest soft ones."""
+    ok = [(len(vs), i) for i, (_, vs) in enumerate(attempts) if not any(v.hard for v in vs)]
+    return min(ok)[1] if ok else None
+
+
+def _narration_meta(
+    source: str, attempts: list[tuple[str, list[Violation]]], kept_codes: list[str] | None
+) -> dict[str, Any]:
     return {
-        "narration": narration_text,
-        "cost_cents_this_turn": cost_so_far + cost,
+        "source": source,
+        "attempts": len(attempts),
+        "first_attempt_violations": [v.code for v in attempts[0][1]] if attempts else [],
+        "kept_violations": kept_codes or [],
     }
 
 

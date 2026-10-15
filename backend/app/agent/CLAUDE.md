@@ -62,6 +62,16 @@ has reached `MAX_COST_CENTS_PER_TURN`. The debate phase applies `propose_action`
 `not_allowed_in_debate`. Test debate bodies must give every proposal a nested
 effect or the turn retries.
 
+## Narration (guarded, own system block)
+
+`narrate_turn` does not use the debate preamble (it taught `<agent>` markup
+that leaked into prose). `narration.build_narration_system_block` is a single
+run-stable block (setting voice + roster) with `cache_control`. Output goes
+through `narration_guard.validate_narration`; one retry with `RETRY_NOTE` on any
+violation (none once the turn cost cap is hit). Keep the attempt with no hard
+violation and fewest soft ones, else `narration.fallback_line`. Outcome lands in
+`turn_meta["narration"]` (`source`: llm/retry/fallback/cost_cap).
+
 ## Cache layout (2 breakpoints + colony state in user message)
 
 Two `cache_control: {"type": "ephemeral"}` blocks per Haiku request, both in
