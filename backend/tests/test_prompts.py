@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.agent import prompts
 from app.agent.prompts import (
     DebateParse,
     build_autonomous_user_message,
@@ -40,7 +41,7 @@ from app.game.schemas import (
     Resource,
     ToolCall,
 )
-from app.game.setting_loader import load_setting
+from app.game.setting_loader import list_available_settings, load_setting
 
 # Matches "turn N" / "Turn N" / "TURN N" in prose (case-insensitive) — the
 # 4th-wall leak signature. Structured state lines like
@@ -507,3 +508,35 @@ def test_cast_filter_includes_only_active_alive_advisors():
     cast = filter_cast(state.agents)
     names = {ag.name for ag in cast}
     assert names == {"A"}, f"expected ACTIVE alive only, got {names}"
+
+
+def test_preamble_has_no_llm_preview_contract() -> None:
+    text = prompts.build_preamble_block()["text"]
+    assert "effects_preview" not in text
+    assert '"fuel"' not in text
+    assert "legitimacy-positive" not in text
+    assert "legitimacy-negative" not in text
+    assert "clamps values at 0 and max" not in text
+    assert "Standalone modify_resource" not in text
+    assert "risk_note" in text
+
+
+def test_no_prompt_text_contains_a_name_pool_name() -> None:
+    names = {
+        n
+        for sid in list_available_settings()
+        for a in load_setting(sid).advisor_archetypes
+        for n in a.name_pool
+    }
+    texts = [v for k, v in vars(prompts).items() if k.isupper() and isinstance(v, str)]
+    texts.append(prompts.build_preamble_block()["text"])
+    for text in texts:
+        for name in names:
+            assert not re.search(rf"\b{re.escape(name)}\b", text), name
+
+
+def test_debate_user_message_drops_preview_instruction() -> None:
+    event = Event(id="e", category="c", title="T", body="B", severity=1, origin=EventOrigin.NATURAL)
+    message = prompts.build_debate_user_message(event)
+    assert "effects_preview" not in message
+    assert "no numbers in name or description" in message

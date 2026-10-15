@@ -462,6 +462,7 @@ async def test_agent_debate_no_retry_when_three_valid(monkeypatch):
     assert len(fake.calls) == 1
     assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
     assert result["cost_cents_this_turn"] == pytest.approx(cost_cents_of(first, MODEL_HAIKU))
+    assert result["turn_meta"]["debate_retried"] is False
 
 
 async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
@@ -475,6 +476,7 @@ async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
     assert len(fake.calls) == 2
     assert len(result["debate_tool_calls"]) == 3
     assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
+    assert result["turn_meta"]["debate_retried"] is True
     expected = 1.0 + cost_cents_of(first, MODEL_HAIKU) + cost_cents_of(second, MODEL_HAIKU)
     assert result["cost_cents_this_turn"] == pytest.approx(expected)
 
@@ -672,37 +674,134 @@ async def test_propose_pick_resolve_pipeline_mutates_resource():
 
 
 async def test_apply_tool_calls_separates_applied_from_rejected():
-    nadia = make_alive_agent(name="Nadia")
-    colony = make_colony_state(agents=[nadia])
-    nadia = colony.agents[0]
-
-    valid = ToolCall(
-        name="modify_resource",
-        caller_id=nadia.id,
-        args={"resource_id": "fuel", "delta": -5, "reason": "patching"},
-    )
-    invalid = ToolCall(
-        name="modify_resource",
-        caller_id=nadia.id,
+    colony = make_colony_state()
+    good = ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[0].id,
         args={
-            "resource_id": "nonexistent",
-            "delta": -5,
-            "reason": "bogus",
+            "name": "Patch",
+            "description": "Patch it.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -5, "reason": "patching"},
+                }
+            ],
+        },
+    )
+    bad = ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[1].id,
+        args={"name": "Nope", "flavor": "MORAL"},
+    )
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [good, bad]})
+    assert [tc.args["name"] for tc in result["applied_tool_calls"]] == ["Patch"]
+    assert [tc.rejection_reason for tc in result["rejected_tool_calls"]] == ["missing_description"]
+
+
+async def test_apply_node_rejects_ambient_debate_calls():
+    colony = make_colony_state()
+    ambient = ToolCall(
+        name="modify_resource",
+        caller_id=colony.agents[0].id,
+        args={"resource_id": "fuel", "delta": -5, "reason": "storm"},
+    )
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [ambient]})
+    assert result["colony_state"].resources["fuel"].value == 70
+    rejected = result["rejected_tool_calls"]
+    assert [(tc.phase, tc.rejection_reason) for tc in rejected] == [
+        ("debate", "not_allowed_in_debate")
+    ]
+
+
+def _patch_call(colony: ColonyState, **extra: Any) -> ToolCall:
+    return ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[0].id,
+        args={
+            "name": "Patch",
+            "description": "Patch it.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -5, "reason": "p"},
+                }
+            ],
+            **extra,
         },
     )
 
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "debate_tool_calls": [valid, invalid],
+
+async def test_apply_node_renders_preview_and_ignores_llm_preview():
+    colony = make_colony_state()
+    call = _patch_call(colony, effects_preview=["+99 legitimacy"])
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [call]})
+    assert result["proposals"][0].effects_preview == ["fuel \u22125"]
+    assert result["colony_state"].turn_proposals[0].effects_preview == ["fuel \u22125"]
+
+
+async def test_apply_node_writes_turn_meta():
+    colony = make_colony_state()
+    result = await apply_tool_calls(
+        {
+            "colony_state": colony,
+            "debate_tool_calls": [_patch_call(colony)],
+            "turn_meta": {"debate_retried": False},
+        }
+    )
+    meta = result["turn_meta"]
+    assert meta["debate_retried"] is False
+    assert meta["proposal_classes"] == ["valid"]
+    assert meta["risk_notes_dropped"] == 0
+    assert meta["pre_pick"]["legitimacy"] == colony.legitimacy
+
+
+async def test_resolve_stamps_resolve_phase():
+    colony = make_colony_state()
+    applied = await apply_tool_calls(
+        {"colony_state": colony, "debate_tool_calls": [_patch_call(colony)]}
+    )
+    before = applied["colony_state"]
+    out = await resolve(
+        {
+            "colony_state": before,
+            "proposals": applied["proposals"],
+            "player_choice": applied["proposals"][0].id,
+            "current_event": _make_event(severity=1),
+        }
+    )
+    new_calls = out["colony_state"].turn_tool_calls[len(before.turn_tool_calls) :]
+    assert new_calls and all(tc.phase == "resolve" for tc in new_calls)
+
+
+async def test_autonomous_stamps_autonomy_phase(monkeypatch):
+    colony = make_colony_state()
+    remember = {
+        "name": "remember",
+        "input": {"fact": "The pump held.", "caller_agent_id": str(colony.agents[0].id)},
     }
-    result = await apply_tool_calls(state)
+    _install_fake(monkeypatch, [_debate_message(colony, [remember])])
+    out = await autonomous_actions(
+        {"colony_state": colony, "narration": "x", "cost_cents_this_turn": 0.0}
+    )
+    assert out["colony_state"].turn_tool_calls[-1].phase == "autonomy"
 
-    assert len(result["applied_tool_calls"]) == 1
-    assert result["applied_tool_calls"][0].args["resource_id"] == "fuel"
-    assert result["applied_tool_calls"][0].rejection_reason is None
 
-    assert len(result["rejected_tool_calls"]) == 1
-    assert result["rejected_tool_calls"][0].rejection_reason == "unknown_resource"
+async def test_retry_ignores_discarded_first_attempt_for_duplicate_names(monkeypatch):
+    """The retry is judged on the pre-debate state, so a discarded first
+    attempt's proposals never trip the duplicate-name check."""
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_tool_uses(colony, n=1), reaction="first")
+    second = _debate_message(colony, _valid_tool_uses(colony), reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
+    assert result["turn_meta"]["debate_retried"] is True
 
 
 async def test_apply_tool_calls_caps_proposals_at_3():

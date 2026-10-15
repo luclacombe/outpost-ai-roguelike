@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -31,6 +32,7 @@ from sqlalchemy import select
 
 from app.agent.anthropic_client import call_fast, call_narration, cost_cents_of
 from app.agent.constants import MAX_COST_CENTS_PER_TURN
+from app.agent.prepare import prepare_proposals
 from app.agent.prompts import (
     build_autonomous_user_message,
     build_colony_state_block,
@@ -44,6 +46,7 @@ from app.config import settings
 from app.database import async_session_factory
 from app.game import consequence, engine, events, setting_loader
 from app.game.models import GameSession, TurnLog
+from app.game.preview import compact_state
 from app.game.schemas import (
     AdvisorStatus,
     Agent,
@@ -53,6 +56,7 @@ from app.game.schemas import (
     SeedPayload,
     ToolCall,
 )
+from app.game.setting_loader import Setting
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
@@ -157,6 +161,7 @@ async def generate_event(state: GameTurnState) -> GameTurnState:
         "player_choice": None,
         "autonomous_tool_calls": [],
         "narration": None,
+        "turn_meta": {},
     }
 
 
@@ -173,15 +178,19 @@ _DEBATE_RETRY_NOTE = (
 )
 
 
-def count_valid_proposals(colony_state: ColonyState, tool_calls: list[ToolCall]) -> int:
-    """Proposals the engine would accept from these debate tool calls.
+def count_valid_proposals(
+    colony_state: ColonyState,
+    tool_calls: list[ToolCall],
+    setting: Setting | None = None,
+    extra_texts: Iterable[str] = (),
+) -> int:
+    """Proposals the preparation step classifies `valid` (spec §4.1).
 
-    Runs the exact path the `apply_tool_calls` node runs
-    (`engine.apply_tool_calls` -> `validator.validate_tool_call`) on a
-    throwaway copy and counts the new `turn_proposals`. Pure; nothing is kept.
+    Runs `prepare_proposals` on a throwaway result: nothing it records is
+    kept, so a discarded first debate leaves no trace in the turn record.
     """
-    applied = engine.apply_tool_calls(colony_state, tool_calls)
-    return len(applied.turn_proposals) - len(colony_state.turn_proposals)
+    setting = setting or setting_loader.load_setting(colony_state.setting_id)
+    return prepare_proposals(colony_state, tool_calls, setting, extra_texts).valid_count
 
 
 async def agent_debate(state: GameTurnState) -> GameTurnState:
@@ -197,6 +206,7 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     colony_state = state["colony_state"]
     event = state["current_event"]
     alive_agents = filter_cast(colony_state.agents)
+    setting = setting_loader.load_setting(colony_state.setting_id)
 
     # Cache layout: preamble + personas in system with cache_control on the
     # LAST block (personas). Colony state moves into the user message — it
@@ -219,7 +229,12 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     turn_cost = state.get("cost_cents_this_turn", 0.0)
     turn_cost += cost_cents_of(response, settings.LLM_MODEL_FAST)
     parsed = parse_debate_response(response, alive_agents)
-    valid = count_valid_proposals(colony_state, parsed.tool_calls)
+    # Always judged on the PRE-debate state: a discarded first attempt never
+    # blocks the duplicate-name check on the retry.
+    valid = count_valid_proposals(
+        colony_state, parsed.tool_calls, setting, parsed.per_agent_text.values()
+    )
+    retried = False
 
     if valid < DEBATE_TARGET_PROPOSALS and turn_cost < MAX_COST_CENTS_PER_TURN:
         retry_response = await call_fast(
@@ -228,9 +243,12 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
             tools=AGENT_TOOL_SCHEMAS,
             max_tokens=2000,
         )
+        retried = True
         turn_cost += cost_cents_of(retry_response, settings.LLM_MODEL_FAST)
         retry_parsed = parse_debate_response(retry_response, alive_agents)
-        retry_valid = count_valid_proposals(colony_state, retry_parsed.tool_calls)
+        retry_valid = count_valid_proposals(
+            colony_state, retry_parsed.tool_calls, setting, retry_parsed.per_agent_text.values()
+        )
         logger.warning(
             "agent_debate: %d/%d valid proposals for game %s turn %s; retried once, "
             "retry had %d; keeping %s",
@@ -248,35 +266,46 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
         "debate_per_agent_text": parsed.per_agent_text,
         "debate_tool_calls": parsed.tool_calls,
         "cost_cents_this_turn": turn_cost,
+        "turn_meta": {**(state.get("turn_meta") or {}), "debate_retried": retried},
     }
 
 
 async def apply_tool_calls(state: GameTurnState) -> GameTurnState:
-    """Fold validated tool calls through the engine; split applied vs rejected.
+    """Prepare the debate's proposals; split applied vs rejected.
 
-    Pure Python. Uses `engine.apply_tool_calls`, which is invariant #11's
-    single mutation pathway: it runs each tool call through the validator
-    and stamps `rejection_reason` on rejects. We diff the pre/post
+    The debate phase applies `propose_action` only (any other tool is logged
+    as rejected, `not_allowed_in_debate`). `app.agent.prepare` strips nested
+    calls that cannot apply, classifies, selects up to three, and renders the
+    engine's `effects_preview` for each. Every state change still goes through
+    `engine.apply_tool_call` (invariant #11). We diff the pre/post
     `turn_tool_calls` list to recover the node-level split.
     """
     colony_state = state["colony_state"]
+    setting = setting_loader.load_setting(colony_state.setting_id)
     pre_tc_len = len(colony_state.turn_tool_calls)
 
-    new_colony_state = engine.apply_tool_calls(colony_state, state["debate_tool_calls"])
+    prepared = prepare_proposals(
+        colony_state,
+        state["debate_tool_calls"],
+        setting,
+        (state.get("debate_per_agent_text") or {}).values(),
+    )
 
-    newly_logged = new_colony_state.turn_tool_calls[pre_tc_len:]
-    applied = [tc for tc in newly_logged if tc.rejection_reason is None]
+    newly_logged = prepared.state.turn_tool_calls[pre_tc_len:]
+    applied = [tc for tc in newly_logged if tc.phase == "debate" and tc.rejection_reason is None]
     rejected = [tc for tc in newly_logged if tc.rejection_reason is not None]
 
-    # Safety cap: UI only surfaces three choices. The engine does not
-    # enforce the cap in Phase 3, so truncate here.
-    proposals = new_colony_state.turn_proposals[:3]
-
     return {
-        "colony_state": new_colony_state,
+        "colony_state": prepared.state,
         "applied_tool_calls": applied,
         "rejected_tool_calls": rejected,
-        "proposals": proposals,
+        "proposals": prepared.proposals,
+        "turn_meta": {
+            **(state.get("turn_meta") or {}),
+            "proposal_classes": list(prepared.classes),
+            "risk_notes_dropped": prepared.risk_notes_dropped,
+            "pre_pick": compact_state(prepared.state),
+        },
     }
 
 
@@ -306,7 +335,7 @@ async def resolve(state: GameTurnState) -> GameTurnState:
     derived = engine.derive_resolution_consequences(colony_state, picked, proposals)
     new_colony = engine.apply_tool_calls(
         colony_state,
-        [*picked.tool_calls_on_pick, *derived],
+        engine.stamp_phase([*picked.tool_calls_on_pick, *derived], "resolve"),
     )
 
     # Append the resolved event to the colony's log.
@@ -422,7 +451,9 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     autonomous_tool_calls = [tc for tc in parsed.tool_calls if tc.name in AUTONOMOUS_TOOL_NAMES]
 
     pre_tc_len = len(colony_state.turn_tool_calls)
-    new_colony = engine.apply_tool_calls(colony_state, autonomous_tool_calls)
+    new_colony = engine.apply_tool_calls(
+        colony_state, engine.stamp_phase(autonomous_tool_calls, "autonomy")
+    )
     newly_logged = new_colony.turn_tool_calls[pre_tc_len:]
     applied_autonomous = [tc for tc in newly_logged if tc.rejection_reason is None]
 

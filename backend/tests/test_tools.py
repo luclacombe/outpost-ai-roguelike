@@ -122,3 +122,10 @@ def test_caller_agent_id_present_in_all_tools() -> None:
         assert "caller_agent_id" not in required, (
             f"{name}: caller_agent_id must NOT be in required (engine calls omit it)"
         )
+
+
+def test_propose_action_schema_offers_risk_note_not_preview() -> None:
+    props = _get("propose_action")["input_schema"]["properties"]
+    assert "effects_preview" not in props
+    assert props["risk_note"]["type"] == "string"
+    assert props["risk_note"]["maxLength"] == 120

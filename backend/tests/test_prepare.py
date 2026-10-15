@@ -6,11 +6,12 @@ import random
 from typing import Any
 from uuid import UUID
 
+from app.agent.nodes import apply_tool_calls, resolve
 from app.agent.prepare import prepare_proposals
 from app.game import engine
 from app.game.generator import generate_run
 from app.game.preview import outcome_from_calls, render_effects
-from app.game.schemas import ColonyState, ToolCall
+from app.game.schemas import ColonyState, Event, EventOrigin, ToolCall
 from app.game.setting_loader import load_setting
 
 USER = UUID("bbbbbbbb-0000-0000-0000-000000000002")
@@ -274,3 +275,44 @@ def test_property_preview_equals_resolve_outcome() -> None:
                 assert all(tc.rejection_reason is None for tc in recorded), recorded
                 rendered = render_effects(setting, outcome_from_calls(recorded, prepared.state))
                 assert rendered == picked.effects_preview, (setting_id, seed, picked.name)
+
+
+async def test_property_preview_equals_real_resolve_node() -> None:
+    """Spec §7: pick every surfaced option and run the real `resolve` node on the
+    state the apply node wrote; resolve-phase deltas must render as the preview."""
+    rng = random.Random(20261016)
+    event = Event(
+        id="evt_prop",
+        category="weather",
+        title="Storm",
+        body="Wind.",
+        severity=1,
+        origin=EventOrigin.NATURAL,
+    )
+    checked = 0
+    for setting_id in ("arctic_station_v1", "desert_outpost_v1", "orbital_colony_v1"):
+        setting = load_setting(setting_id)
+        for seed in range(15):
+            colony = _colony(setting_id, seed).model_copy(
+                update={"legitimacy": rng.randint(0, 100)}
+            )
+            applied = await apply_tool_calls(
+                {"colony_state": colony, "debate_tool_calls": _random_turn(rng, colony)}
+            )
+            before = applied["colony_state"]
+            for picked in applied["proposals"]:
+                out = await resolve(
+                    {
+                        "colony_state": before,
+                        "proposals": applied["proposals"],
+                        "player_choice": picked.id,
+                        "current_event": event,
+                    }
+                )
+                recorded = out["colony_state"].turn_tool_calls[len(before.turn_tool_calls) :]
+                assert all(tc.phase == "resolve" for tc in recorded)
+                assert all(tc.rejection_reason is None for tc in recorded), recorded
+                rendered = render_effects(setting, outcome_from_calls(recorded, before))
+                assert rendered == picked.effects_preview, (setting_id, seed, picked.name)
+                checked += 1
+    assert checked > 50

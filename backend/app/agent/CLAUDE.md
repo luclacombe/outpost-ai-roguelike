@@ -50,14 +50,17 @@ response into `(per_agent_text, tool_calls)`.
 ## Debate retry (< 3 valid proposals)
 
 `agent_debate` counts proposals with `count_valid_proposals`, which runs
-`engine.apply_tool_calls` (the validator path the `apply_tool_calls` node
-uses) on a throwaway state. Under 3, it retries the same batched call ONCE
+`prepare.prepare_proposals` (the same step the `apply_tool_calls` node keeps)
+on the PRE-debate state and counts those classed `valid` (nested effects all
+apply, net change). A discarded first attempt therefore never blocks the
+retry's duplicate-name check. Under 3, it retries the same batched call ONCE
 with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
 tools are unchanged, so the cached prefix still hits. The response with more
 valid proposals wins (ties keep the first; reactions follow the kept
-response). Both calls go into `cost_cents_this_turn`. No retry once the turn
-has reached `MAX_COST_CENTS_PER_TURN`. A missing `tool_calls_on_pick` still
-counts as valid: the validator allows it.
+response); `turn_meta.debate_retried` records it. Both calls go into `cost_cents_this_turn`. No retry once the turn
+has reached `MAX_COST_CENTS_PER_TURN`. The debate phase applies `propose_action` only; other tools are logged
+`not_allowed_in_debate`. Test debate bodies must give every proposal a nested
+effect or the turn retries.
 
 ## Cache layout (2 breakpoints + colony state in user message)
 
