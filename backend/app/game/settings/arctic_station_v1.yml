@@ -22,6 +22,9 @@ narrative_voice: |
   in the way exhausted people are funny. The setting is not romantic; it is a
   workplace that happens to be lethal.
 
+player_title: Director
+lexicon: [Vorgrad]
+
 resources:
   - id: fuel
     name: Fuel
@@ -151,6 +154,7 @@ advisor_archetypes:
 
 event_categories:
   - id: weather_blizzard
+    title: Blizzard from the northeast
     weight: 2.5
     tags: [weather, resource]
     severity: 3
@@ -167,6 +171,7 @@ event_categories:
     can_kill_agent: false
 
   - id: equipment_failure
+    title: Reclamation pump seized
     weight: 2.0
     tags: [equipment, resource]
     severity: 2
@@ -182,6 +187,7 @@ event_categories:
     can_kill_agent: false
 
   - id: radio_contact
+    title: Signal on the emergency band
     weight: 1.5
     tags: [external, information]
     severity: 2
@@ -197,6 +203,7 @@ event_categories:
     can_kill_agent: false
 
   - id: ice_quake
+    title: Tremor under the ice
     weight: 1.5
     tags: [environment, structural]
     severity: 3
@@ -212,6 +219,7 @@ event_categories:
     can_kill_agent: false
 
   - id: frozen_stranger
+    title: Stranger at the outer door
     weight: 1.8
     tags: [external, moral]
     severity: 3
@@ -227,6 +235,7 @@ event_categories:
     can_kill_agent: false
 
   - id: soviet_archive_find
+    title: Sealed box in the sub-basement
     weight: 1.2
     tags: [information, political]
     severity: 2
@@ -243,6 +252,7 @@ event_categories:
     can_kill_agent: false
 
   - id: infection_outbreak
+    title: Fever in three bunks
     weight: 1.8
     tags: [medical, resource]
     severity: 4
@@ -259,6 +269,7 @@ event_categories:
     can_kill_agent: false
 
   - id: fuel_leak
+    title: Slow leak in the tank line
     weight: 2.0
     tags: [equipment, resource]
     severity: 3
@@ -275,6 +286,7 @@ event_categories:
     can_kill_agent: false
 
   - id: foreign_patrol
+    title: Patrol at the perimeter
     weight: 1.3
     tags: [external, political]
     severity: 3
@@ -290,6 +302,7 @@ event_categories:
     can_kill_agent: false
 
   - id: internal_feud
+    title: Two days of silence
     weight: 1.5
     tags: [crew, morale]
     severity: 2
@@ -305,6 +318,7 @@ event_categories:
     can_kill_agent: false
 
   - id: hunting_party_returns
+    title: Supply run comes back short
     weight: 1.2
     tags: [resource, external]
     severity: 2
@@ -321,6 +335,7 @@ event_categories:
     can_kill_agent: false
 
   - id: generator_overload
+    title: Generator running hot
     weight: 1.5
     tags: [equipment, resource]
     severity: 3
@@ -337,6 +352,7 @@ event_categories:
     can_kill_agent: false
 
   - id: forced_escalation_vorgrad
+    title: Coded message for the commissar
     weight: 10.0
     tags: [forced_escalation, political, moral]
     severity: 5

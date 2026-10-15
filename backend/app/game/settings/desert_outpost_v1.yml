@@ -24,6 +24,9 @@ narrative_voice: |
   comes from what is not said. Reference McCarthy's cadence: no quotation marks
   for dialogue when the prose can carry it.
 
+player_title: Warden
+lexicon: [Carmine, Junction, Doc]
+
 resources:
   - id: water
     name: Water
@@ -96,7 +99,7 @@ advisor_archetypes:
       Ex-soldier. Keeps order at Carmine Junction the same way he kept it
       in the field: by establishing what he will and will not tolerate early,
       and enforcing it consistently. Does not enjoy it. Does not stop.
-    verbal_tic: Sometimes uses a last name or rank equivalent; a first name out of his mouth tends to mean something is wrong.
+    verbal_tic: Sometimes addresses people by role (Doc, Trader) rather than first name; a first name means something is wrong.
     portrait_options:
       clothing_color:
         - "4a3c2c"
@@ -152,6 +155,7 @@ advisor_archetypes:
 
 event_categories:
   - id: raider_probe
+    title: Three vehicles on the highway
     weight: 2.5
     tags: [external, security]
     severity: 3
@@ -168,6 +172,7 @@ event_categories:
     can_kill_agent: false
 
   - id: desperate_stranger
+    title: A woman and a child, on foot
     weight: 2.0
     tags: [external, moral]
     severity: 2
@@ -183,6 +188,7 @@ event_categories:
     can_kill_agent: false
 
   - id: well_integrity
+    title: Crack in the well casing
     weight: 2.0
     tags: [resource, structural]
     severity: 4
@@ -199,6 +205,7 @@ event_categories:
     can_kill_agent: false
 
   - id: road_medical_emergency
+    title: Injured man in a truck bed
     weight: 1.8
     tags: [medical, external]
     severity: 3
@@ -216,6 +223,7 @@ event_categories:
     can_kill_agent: false
 
   - id: old_world_salvage
+    title: Warehouse three miles east
     weight: 1.5
     tags: [resource, external]
     severity: 2
@@ -232,6 +240,7 @@ event_categories:
     can_kill_agent: false
 
   - id: water_trade_offer
+    title: Caravan wants water
     weight: 1.3
     tags: [external, resource]
     severity: 2
@@ -248,6 +257,7 @@ event_categories:
     can_kill_agent: false
 
   - id: shelter_overcrowding
+    title: Junction at capacity
     weight: 1.5
     tags: [crew, morale]
     severity: 2
@@ -264,6 +274,7 @@ event_categories:
     can_kill_agent: false
 
   - id: fever_road
+    title: Fever off the road
     weight: 1.8
     tags: [medical, resource]
     severity: 4
@@ -280,6 +291,7 @@ event_categories:
     can_kill_agent: false
 
   - id: moral_test_refugee
+    title: Eight people asking for shelter
     weight: 1.5
     tags: [moral, external]
     severity: 3
@@ -296,6 +308,7 @@ event_categories:
     can_kill_agent: false
 
   - id: mechanic_repair_gamble
+    title: One pump, one chance
     weight: 1.3
     tags: [resource, morale]
     severity: 2
@@ -313,6 +326,7 @@ event_categories:
     can_kill_agent: false
 
   - id: junction_politics
+    title: Residents want rules
     weight: 1.2
     tags: [crew, political]
     severity: 2
@@ -330,6 +344,7 @@ event_categories:
     can_kill_agent: false
 
   - id: night_visitor
+    title: Someone in the storage room
     weight: 1.5
     tags: [security, information]
     severity: 3
@@ -346,6 +361,7 @@ event_categories:
     can_kill_agent: false
 
   - id: forced_escalation_carmine
+    title: The vehicles are back
     weight: 10.0
     tags: [forced_escalation, security, moral]
     severity: 5

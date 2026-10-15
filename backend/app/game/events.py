@@ -221,7 +221,7 @@ def _build_event(category: EventCategory, rng: random.Random, origin: EventOrigi
     same category can fire multiple times across a run without id collisions.
     """
     unique = f"{rng.getrandbits(32):08x}"
-    title = _derive_title(category.prompt_template)
+    title = category.title or _derive_title(category.prompt_template)
     return Event(
         id=f"{category.id}:{unique}",
         category=category.id,
@@ -232,13 +232,25 @@ def _build_event(category: EventCategory, rng: random.Random, origin: EventOrigi
     )
 
 
+_TITLE_MAX = 48
+
+
 def _derive_title(prompt_template: str) -> str:
-    """Extract a terse title from the first sentence of the prompt template."""
-    stripped = prompt_template.strip()
-    # Take up to the first sentence break or 60 chars, whichever comes first.
-    first_sentence = stripped.split(".")[0]
-    title = first_sentence[:60].strip()
-    return title or "Event"
+    """Fallback title for an event without an authored `title`.
+
+    First sentence if it fits in 48 chars; otherwise cut at the last space
+    before char 47 and append "…". Never cuts mid-word.
+    """
+    first_sentence = prompt_template.strip().split(".")[0].strip()
+    if not first_sentence:
+        return "Event"
+    if len(first_sentence) <= _TITLE_MAX:
+        return first_sentence
+    cut = first_sentence[: _TITLE_MAX - 1]
+    space = cut.rfind(" ")
+    if space > 0:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:—-") + "…"
 
 
 _RESPITE_TEMPLATES: tuple[tuple[str, str], ...] = (
