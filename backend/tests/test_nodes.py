@@ -420,6 +420,14 @@ def _debate_message(
 _OFFTURN_EMPTY: dict[str, Any] = {"name": "submit_offturn", "input": {"actions": []}}
 
 
+def _message_from_input(name: str, tool_input: dict[str, Any]) -> Any:
+    from anthropic.types import Message
+
+    return Message.model_validate(
+        fake_haiku_response(tool_uses=[{"name": name, "input": tool_input}])
+    )
+
+
 def _offturn_message(actions: list[dict[str, Any]]) -> Any:
     from anthropic.types import Message
 
@@ -801,6 +809,94 @@ async def test_autonomous_falls_back_to_auto_and_merges_turn_meta(monkeypatch):
     # The debate's recorded choice is not overwritten by the autonomous call.
     assert meta["debate_tool_choice"] == "forced"
     assert [c["purpose"] for c in meta["llm_calls"]] == ["autonomous"]
+
+
+async def test_autonomous_records_tool_choice_in_turn_meta(monkeypatch):
+    colony = make_colony_state()
+    _install_fake(monkeypatch, [_offturn_message([])])
+
+    forced = await autonomous_actions(
+        {"colony_state": colony, "cost_cents_this_turn": 0.0, "turn_meta": {"keep": 1}}
+    )
+    assert forced["turn_meta"]["autonomous_tool_choice"] == "forced"
+    assert forced["turn_meta"]["keep"] == 1
+
+    _install_fake(monkeypatch, [_bad_request("tool_choice is not supported"), _offturn_message([])])
+    auto = await autonomous_actions(
+        {
+            "colony_state": colony,
+            "cost_cents_this_turn": 0.0,
+            "turn_meta": {"debate_tool_choice": "forced"},
+        }
+    )
+    assert auto["turn_meta"]["autonomous_tool_choice"] == "auto"
+    assert auto["turn_meta"]["debate_tool_choice"] == "forced"
+
+
+async def test_forced_rejection_is_remembered_per_model(monkeypatch):
+    from app.agent import nodes
+
+    colony = make_colony_state()
+    fake = _install_fake(
+        monkeypatch,
+        [
+            _bad_request("tool_choice is not supported"),
+            _debate_message(colony, _valid_options(colony)),
+            _debate_message(colony, _valid_options(colony)),
+            _debate_message(colony, _valid_options(colony)),
+        ],
+    )
+
+    first = await agent_debate(_debate_state(colony))
+    assert first["turn_meta"]["debate_tool_choice"] == "auto"
+    assert len(fake.calls) == 2
+
+    # Same model again: exactly one call, no tool_choice, no probe.
+    second = await agent_debate(_debate_state(colony))
+    assert len(fake.calls) == 3
+    assert fake.calls[2]["tool_choice"] is None
+    assert second["turn_meta"]["debate_tool_choice"] == "auto"
+
+    # A different model has not been rejected, so it probes forced again.
+    monkeypatch.setattr(settings, "LLM_MODEL_FAST", "some/other-model")
+    assert nodes.settings.LLM_MODEL_FAST not in nodes._FORCED_REJECTED
+    await nodes._call_structured([], "x", {"name": "submit_debate"}, 100)
+    assert fake.calls[3]["tool_choice"] == {"type": "tool", "name": "submit_debate"}
+
+
+async def test_debate_keeps_reaction_quoting_the_events_own_foreign_word(monkeypatch):
+    colony = make_colony_state()
+    nadia = colony.agents[0].name
+    reactions = [
+        {"advisor": nadia, "line": "The box says СЕКРЕТНО. Leave it."},
+        {"advisor": colony.agents[1].name, "line": "Stray \u983b\u9053 noise."},
+    ]
+    body = {"reactions": reactions, "options": _valid_options(colony)}
+    _install_fake(monkeypatch, [_message_from_input("submit_debate", body)])
+    state = _debate_state(colony)
+    state["current_event"] = state["current_event"].model_copy(
+        update={"body": "A sealed box marked СЕКРЕТНО."}
+    )
+
+    result = await agent_debate(state)
+
+    assert list(result["debate_per_agent_text"].values()) == ["The box says СЕКРЕТНО. Leave it."]
+
+
+async def test_autonomous_keeps_setting_vocabulary_but_drops_stray_script(monkeypatch):
+    colony = make_colony_state()
+    a, b = colony.agents[0], colony.agents[1]
+    actions = [
+        {"advisor": a.name, "kind": "remember", "text": "The files were marked СЕКРЕТНО."},
+        {"advisor": b.name, "kind": "remember", "text": "\u983b\u9053 again."},
+    ]
+    _install_fake(monkeypatch, [_offturn_message(actions)])
+
+    result = await autonomous_actions({"colony_state": colony, "cost_cents_this_turn": 0.0})
+
+    assert [tc.args["fact"] for tc in result["autonomous_tool_calls"]] == [
+        "The files were marked СЕКРЕТНО."
+    ]
 
 
 async def test_llm_calls_recorded_for_debate_autonomous_and_narration(monkeypatch):

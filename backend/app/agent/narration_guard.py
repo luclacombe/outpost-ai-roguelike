@@ -125,6 +125,37 @@ def has_non_latin(text: str) -> bool:
     return any(_is_non_latin_letter(c) for c in text)
 
 
+def non_latin_words(texts: Iterable[str]) -> frozenset[str]:
+    """Case-folded runs of consecutive non-Latin letters (words) in `texts`.
+
+    A run is one Cyrillic or CJK word however much punctuation or Latin text
+    surrounds it, so `«СЕКРЕТНО»,` yields `секретно`. Whitespace-split term sets
+    from `build_allowed_terms` keep such words whole, so feeding them through
+    here recovers the setting's own foreign vocabulary.
+    """
+    out: set[str] = set()
+    for text in texts:
+        run: list[str] = []
+        for char in text:
+            if _is_non_latin_letter(char):
+                run.append(char)
+            elif run:
+                out.add("".join(run).casefold())
+                run = []
+        if run:
+            out.add("".join(run).casefold())
+    return frozenset(out)
+
+
+def has_unknown_non_latin(text: str, allowed_words: frozenset[str]) -> bool:
+    """True when `text` holds a non-Latin word that is not in `allowed_words`.
+
+    `allowed_words` comes from `non_latin_words(allowed_terms)`. An empty set
+    makes this equivalent to `has_non_latin`.
+    """
+    return bool(non_latin_words([text]) - allowed_words)
+
+
 @cache
 def _all_name_pool_names() -> frozenset[str]:
     names: set[str] = set()

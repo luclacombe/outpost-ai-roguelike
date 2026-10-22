@@ -15,7 +15,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from app.agent.narration_guard import has_non_latin
+from app.agent.narration_guard import has_unknown_non_latin, non_latin_words
 from app.agent.prompts import DebateParse
 from app.game.schemas import Agent, ToolCall
 
@@ -109,20 +109,29 @@ def _nested_call(
     return None
 
 
-def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse:
+def parse_submit_debate(
+    response: Any,
+    alive_agents: list[Agent],
+    *,
+    allowed_terms: frozenset[str] = frozenset(),
+) -> DebateParse:
     """Map the first `submit_debate` tool_use block to a `DebateParse`.
 
     Unknown advisor names drop a reaction and leave an option's caller_id None.
-    Reactions and options containing non-Latin letters are dropped with a
-    warning. A response without the tool call parses to an empty `DebateParse`.
+    Reactions and options containing a non-Latin word that is not in
+    `allowed_terms` (the setting's own vocabulary plus this turn's event, from
+    `build_allowed_terms`) are dropped with a warning. A response without the
+    tool call parses to an empty `DebateParse`.
     """
+    allowed_words = non_latin_words(allowed_terms)
     by_name = {a.name.lower(): a for a in alive_agents}
     blocks = [
         b
         for b in _as_list(getattr(response, "content", None))
         if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == DEBATE_TOOL_NAME
     ]
-    payload = blocks[0].input if blocks and isinstance(blocks[0].input, dict) else {}
+    raw = getattr(blocks[0], "input", None) if blocks else None
+    payload = raw if isinstance(raw, dict) else {}
 
     per_agent_text: dict[UUID, str] = {}
     for reaction in _as_list(payload.get("reactions")):
@@ -132,7 +141,7 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
         line = reaction.get("line")
         if agent is None or not line:
             continue
-        if has_non_latin(str(line)):
+        if has_unknown_non_latin(str(line), allowed_words):
             logger.warning("submit_debate: dropped non-Latin reaction from %s", agent.name)
             continue
         per_agent_text[agent.id] = str(line)
@@ -143,7 +152,9 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
             continue
         title = str(option.get("title") or "option")
         description = str(option.get("description") or "")
-        if has_non_latin(title) or has_non_latin(description):
+        if has_unknown_non_latin(title, allowed_words) or has_unknown_non_latin(
+            description, allowed_words
+        ):
             logger.warning("submit_debate: dropped non-Latin option %r", title[:_REASON_MAX])
             continue
         agent = by_name.get(str(option.get("advisor", "")).lower())
@@ -274,13 +285,17 @@ def _offturn_args(
 
 
 def parse_submit_offturn(
-    response: Any, alive_agents: list[Agent], decision_id: str | None
+    response: Any,
+    alive_agents: list[Agent],
+    decision_id: str | None,
+    *,
+    allowed_terms: frozenset[str] = frozenset(),
 ) -> list[ToolCall]:
     """Map the first `submit_offturn` tool_use block to engine `ToolCall`s.
 
     Skipped with a warning: unknown advisor or kind, a missing or unknown target
-    where one is needed, `back_leader` without a decision id, and text with
-    non-Latin letters. A response without the tool call, or with a non-list
+    where one is needed, `back_leader` without a decision id, and text with a
+    non-Latin word outside `allowed_terms` (see `parse_submit_debate`). A response without the tool call, or with a non-list
     `actions`, parses to no calls. Never raises on malformed input.
     """
     by_name = {a.name.lower(): a for a in alive_agents}
@@ -289,7 +304,9 @@ def parse_submit_offturn(
         for b in _as_list(getattr(response, "content", None))
         if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == OFFTURN_TOOL_NAME
     ]
-    payload = blocks[0].input if blocks and isinstance(blocks[0].input, dict) else {}
+    raw = getattr(blocks[0], "input", None) if blocks else None
+    payload = raw if isinstance(raw, dict) else {}
+    allowed_words = non_latin_words(allowed_terms)
 
     calls: list[ToolCall] = []
     for item in _as_list(payload.get("actions")):
@@ -300,7 +317,7 @@ def parse_submit_offturn(
         if agent is None or kind not in _OFFTURN_KINDS:
             logger.warning("submit_offturn: dropped action %r from %r", kind, item.get("advisor"))
             continue
-        if has_non_latin(str(item.get("text") or "")):
+        if has_unknown_non_latin(str(item.get("text") or ""), allowed_words):
             logger.warning("submit_offturn: dropped non-Latin %s from %s", kind, agent.name)
             continue
         args = _offturn_args(kind, item, by_name, decision_id)

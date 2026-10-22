@@ -17,9 +17,11 @@ from app.agent.debate_format import (
     parse_submit_debate,
     parse_submit_offturn,
 )
+from app.agent.narration_guard import build_allowed_terms, non_latin_words
 from app.agent.prepare import prepare_proposals
 from app.agent.prompts import DebateParse
 from app.game.generator import generate_run
+from app.game.schemas import Event, EventOrigin
 from app.game.setting_loader import load_setting
 from tests._factories import _agent
 
@@ -325,3 +327,79 @@ def test_offturn_back_leader_needs_decision_id() -> None:
     ]
     calls = parse_submit_offturn(_offturn_response(actions), ROSTER, None)
     assert [c.name for c in calls] == ["remember"]
+
+
+# --- non-Latin filter vs the setting's own vocabulary ------------------------
+
+_ARCHIVE = next(e for e in ARCTIC.event_categories if e.id == "soviet_archive_find")
+ARCHIVE_EVENT = Event(
+    id="soviet_archive_find",
+    category=_ARCHIVE.id,
+    title=_ARCHIVE.title or "",
+    body=_ARCHIVE.prompt_template,
+    severity=2,
+    origin=EventOrigin.NATURAL,
+)
+_COLONY = generate_run(user_id=USER, setting_id="arctic_station_v1", seed=7)
+ALLOWED = build_allowed_terms(
+    ARCTIC,
+    _COLONY,
+    [ARCTIC.lore, ARCTIC.narrative_voice, ARCHIVE_EVENT.title, ARCHIVE_EVENT.body],
+)
+
+
+def test_allowed_terms_keep_cyrillic_words_whole() -> None:
+    assert "секретно" in non_latin_words(ALLOWED)
+    assert non_latin_words(["Say «СЕКРЕТНО», then \u9891\u9053."]) == {"секретно", "\u9891\u9053"}
+
+
+def test_parse_keeps_reaction_quoting_the_events_own_word() -> None:
+    payload = _payload()
+    payload["reactions"][0]["line"] = "The box says СЕКРЕТНО. Leave it sealed."
+    parsed = parse_submit_debate(_response(payload), ROSTER, allowed_terms=ALLOWED)
+    assert parsed.per_agent_text[VERA.id] == "The box says СЕКРЕТНО. Leave it sealed."
+    # Same text with no allowed terms (the safe default) is dropped.
+    assert VERA.id not in parse_submit_debate(_response(payload), ROSTER).per_agent_text
+
+
+def test_parse_keeps_option_quoting_the_events_own_word() -> None:
+    payload = _payload()
+    payload["options"][0]["title"] = "Burn the СЕКРЕТНО box"
+    parsed = parse_submit_debate(_response(payload), ROSTER, allowed_terms=ALLOWED)
+    assert [c.args["name"] for c in parsed.tool_calls][0] == "Burn the СЕКРЕТНО box"
+
+
+def test_parse_still_drops_a_stray_foreign_word_with_terms_supplied() -> None:
+    payload = _payload()
+    payload["reactions"][0]["line"] = "Vorgrad's \u983b\u9053 is bleeding static"
+    payload["reactions"][1]["line"] = "СЕКРЕТНО and \u983b\u9053 together"
+    parsed = parse_submit_debate(_response(payload), ROSTER, allowed_terms=ALLOWED)
+    assert VERA.id not in parsed.per_agent_text
+    assert OMAR.id not in parsed.per_agent_text
+    assert len(parsed.per_agent_text) == 2
+
+
+def test_parse_drops_option_with_unknown_cyrillic_word() -> None:
+    payload = _payload()
+    payload["options"][1]["title"] = "Поделиться грузом"
+    payload["options"][2]["description"] = "СЕКРЕТНО but also груз"
+    parsed = parse_submit_debate(_response(payload), ROSTER, allowed_terms=ALLOWED)
+    assert [c.args["name"] for c in parsed.tool_calls] == ["Burn the reserve"]
+
+
+def test_offturn_keeps_allowed_foreign_word_and_drops_unknown() -> None:
+    actions = [
+        {"advisor": "Vera", "kind": "remember", "text": "The box was marked СЕКРЕТНО."},
+        {"advisor": "Omar", "kind": "remember", "text": "\u4f60\u597d the colony"},
+    ]
+    calls = parse_submit_offturn(
+        _offturn_response(actions), ROSTER, DECISION, allowed_terms=ALLOWED
+    )
+    assert [c.args["fact"] for c in calls] == ["The box was marked СЕКРЕТНО."]
+
+
+def test_parse_reads_input_defensively() -> None:
+    bare = SimpleNamespace(type="tool_use", name=DEBATE_TOOL_NAME)
+    assert parse_submit_debate(SimpleNamespace(content=[bare]), ROSTER) == DebateParse()
+    bare_off = SimpleNamespace(type="tool_use", name=OFFTURN_TOOL_NAME)
+    assert parse_submit_offturn(SimpleNamespace(content=[bare_off]), ROSTER, DECISION) == []

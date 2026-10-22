@@ -175,8 +175,8 @@ def _translate_update(
     if node_name == "autonomous_actions":
         tool_calls = update.get("autonomous_tool_calls") or []
         for tc in tool_calls:
-            # `caller_agent_id` is already popped into `tc.caller_id` during
-            # prompts.parse_debate_response — `tc.args` should be clean. The
+            # `caller_id` is set by `debate_format.parse_submit_offturn`, so
+            # `tc.args` should carry no `caller_agent_id`. The
             # defensive pop below guards against an alternate path ever
             # leaking it; cost is negligible for the small args dict.
             clean_args = {k: v for k, v in tc.args.items() if k != "caller_agent_id"}

@@ -29,12 +29,22 @@ import tests._settings_isolation  # noqa: F401
 from typing import Any
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from app.agent import nodes
 from app.agent.constants import MODEL_HAIKU, MODEL_SONNET
 from app.dependencies import get_current_user
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def _reset_forced_tool_memory():
+    """`nodes._FORCED_REJECTED` is per-process state; keep tests independent."""
+    nodes._FORCED_REJECTED.clear()
+    yield
+    nodes._FORCED_REJECTED.clear()
 
 
 @pytest_asyncio.fixture
