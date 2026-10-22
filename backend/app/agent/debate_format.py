@@ -1,0 +1,166 @@
+"""`submit_debate`: one forced tool call holding reactions and three options.
+
+Many cheap models fail the older shape (free-text `<agent>` reactions plus three
+parallel `propose_action` calls with nested effects). The flat shape puts every
+reaction and option in one tool input. `parse_submit_debate` rebuilds the
+existing `DebateParse` (`per_agent_text` plus `propose_action` ToolCalls with
+nested `tool_calls_on_pick`), so the engine, validator and `prepare_proposals`
+stay unchanged. The effect `reason` the validator requires is not asked of the
+model; the parser supplies it from the option title.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+from uuid import UUID
+
+from app.agent.narration_guard import has_non_latin
+from app.agent.prompts import DebateParse
+from app.game.schemas import Agent, ToolCall
+
+logger = logging.getLogger(__name__)
+
+DEBATE_TOOL_NAME = "submit_debate"
+_FLAVORS = ["DOMINANT", "MORAL", "WILDCARD"]
+_REASON_MAX = 60
+
+
+def build_debate_tool(alive_agents: list[Agent], resource_ids: list[str]) -> dict[str, Any]:
+    """Tool schema whose enums pin advisor names and resource ids to this colony."""
+    names = [a.name for a in alive_agents]
+    effect: dict[str, Any] = {
+        "type": "object",
+        "required": ["kind", "delta"],
+        "properties": {
+            "kind": {"type": "string", "enum": ["resource", "health", "grievance"]},
+            "resource": {"type": "string", "enum": list(resource_ids)},
+            "target": {"type": "string", "enum": [*names, "player"]},
+            "delta": {"type": "integer"},
+        },
+    }
+    option: dict[str, Any] = {
+        "type": "object",
+        "required": ["flavor", "advisor", "title", "description", "effects"],
+        "properties": {
+            "flavor": {"type": "string", "enum": _FLAVORS},
+            "advisor": {"type": "string", "enum": names},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "risk_note": {"type": "string"},
+            "effects": {"type": "array", "minItems": 1, "maxItems": 5, "items": effect},
+        },
+    }
+    return {
+        "name": DEBATE_TOOL_NAME,
+        "description": (
+            "Submit this turn's debate: one reaction per living advisor and exactly three options."
+        ),
+        "input_schema": {
+            "type": "object",
+            "required": ["reactions", "options"],
+            "properties": {
+                "reactions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["advisor", "line"],
+                        "properties": {
+                            "advisor": {"type": "string", "enum": names},
+                            "line": {"type": "string"},
+                        },
+                    },
+                },
+                "options": {"type": "array", "minItems": 3, "maxItems": 3, "items": option},
+            },
+        },
+    }
+
+
+def _nested_call(
+    effect: dict[str, Any], by_name: dict[str, Agent], reason: str
+) -> dict[str, Any] | None:
+    kind, delta = effect.get("kind"), effect.get("delta")
+    target = str(effect.get("target", ""))
+    if target.lower() == "player":
+        target_id = "player"
+    elif target.lower() in by_name:
+        target_id = str(by_name[target.lower()].id)
+    else:
+        target_id = target
+    if kind == "resource":
+        args = {"resource_id": effect.get("resource"), "delta": delta, "reason": reason}
+        return {"name": "modify_resource", "args": args}
+    if kind == "health":
+        return {
+            "name": "modify_health",
+            "args": {"target_id": target_id, "delta": delta, "reason": reason},
+        }
+    if kind == "grievance":
+        return {
+            "name": "adjust_grievance",
+            "args": {"target_id": target_id, "delta": delta, "reason": reason},
+        }
+    return None
+
+
+def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse:
+    """Map the first `submit_debate` tool_use block to a `DebateParse`.
+
+    Unknown advisor names drop a reaction and leave an option's caller_id None.
+    Reactions and options containing non-Latin letters are dropped with a
+    warning. A response without the tool call parses to an empty `DebateParse`.
+    """
+    by_name = {a.name.lower(): a for a in alive_agents}
+    blocks = [
+        b
+        for b in getattr(response, "content", [])
+        if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == DEBATE_TOOL_NAME
+    ]
+    payload = blocks[0].input if blocks and isinstance(blocks[0].input, dict) else {}
+
+    per_agent_text: dict[UUID, str] = {}
+    for reaction in payload.get("reactions") or []:
+        if not isinstance(reaction, dict):
+            continue
+        agent = by_name.get(str(reaction.get("advisor", "")).lower())
+        line = reaction.get("line")
+        if agent is None or not line:
+            continue
+        if has_non_latin(str(line)):
+            logger.warning("submit_debate: dropped non-Latin reaction from %s", agent.name)
+            continue
+        per_agent_text[agent.id] = str(line)
+
+    tool_calls: list[ToolCall] = []
+    for option in payload.get("options") or []:
+        if not isinstance(option, dict):
+            continue
+        title = str(option.get("title") or "option")
+        description = str(option.get("description") or "")
+        if has_non_latin(title) or has_non_latin(description):
+            logger.warning("submit_debate: dropped non-Latin option %r", title[:_REASON_MAX])
+            continue
+        agent = by_name.get(str(option.get("advisor", "")).lower())
+        reason = title[:_REASON_MAX]
+        nested = [
+            call
+            for effect in option.get("effects") or []
+            if isinstance(effect, dict)
+            for call in [_nested_call(effect, by_name, reason)]
+            if call is not None
+        ]
+        tool_calls.append(
+            ToolCall(
+                name="propose_action",
+                caller_id=agent.id if agent else None,
+                args={
+                    "name": option.get("title"),
+                    "description": option.get("description"),
+                    "flavor": option.get("flavor"),
+                    "risk_note": option.get("risk_note") or "",
+                    "tool_calls_on_pick": nested,
+                },
+            )
+        )
+    return DebateParse(per_agent_text=per_agent_text, tool_calls=tool_calls)

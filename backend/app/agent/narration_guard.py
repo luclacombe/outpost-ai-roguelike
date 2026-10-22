@@ -109,12 +109,20 @@ def _is_sentence_initial(text: str, start: int) -> bool:
     return prefix[-1] == "-" and (len(prefix) == 1 or prefix[-2].isspace())
 
 
+def _is_non_latin_letter(char: str) -> bool:
+    return char.isalpha() and not unicodedata.name(char, "").startswith("LATIN")
+
+
 def _non_latin_share(text: str) -> float:
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return 0.0
-    non_latin = sum(1 for c in letters if not unicodedata.name(c, "").startswith("LATIN"))
-    return non_latin / len(letters)
+    return sum(1 for c in letters if _is_non_latin_letter(c)) / len(letters)
+
+
+def has_non_latin(text: str) -> bool:
+    """True when any letter is outside the Latin script (CJK, Cyrillic, ...)."""
+    return any(_is_non_latin_letter(c) for c in text)
 
 
 @cache

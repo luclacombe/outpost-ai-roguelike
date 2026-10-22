@@ -9,6 +9,7 @@ import pytest
 from app.agent.narration_guard import (
     build_allowed_terms,
     build_strict_terms,
+    has_non_latin,
     sanitize_risk_note,
     validate_narration,
 )
@@ -165,3 +166,10 @@ def test_risk_note_with_inline_setting() -> None:
     assert sanitize_risk_note("The water could freeze.", inline, ALLOWED, ROSTER) is None
     note = "Fuel may run short before the convoy."
     assert sanitize_risk_note(note, inline, ALLOWED, ROSTER) == note
+
+
+def test_has_non_latin() -> None:
+    assert has_non_latin("plain words, café") is False
+    assert has_non_latin("static on the 頻道") is True
+    assert has_non_latin("Поделиться") is True
+    assert has_non_latin("") is False
