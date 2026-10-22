@@ -77,6 +77,11 @@ def build_debate_tool(alive_agents: list[Agent], resource_ids: list[str]) -> dic
     }
 
 
+def _as_list(value: Any) -> list[Any]:
+    """Model output is untrusted: anything that is not a list counts as empty."""
+    return value if isinstance(value, list) else []
+
+
 def _nested_call(
     effect: dict[str, Any], by_name: dict[str, Agent], reason: str
 ) -> dict[str, Any] | None:
@@ -114,13 +119,13 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
     by_name = {a.name.lower(): a for a in alive_agents}
     blocks = [
         b
-        for b in getattr(response, "content", [])
+        for b in _as_list(getattr(response, "content", None))
         if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == DEBATE_TOOL_NAME
     ]
     payload = blocks[0].input if blocks and isinstance(blocks[0].input, dict) else {}
 
     per_agent_text: dict[UUID, str] = {}
-    for reaction in payload.get("reactions") or []:
+    for reaction in _as_list(payload.get("reactions")):
         if not isinstance(reaction, dict):
             continue
         agent = by_name.get(str(reaction.get("advisor", "")).lower())
@@ -133,7 +138,7 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
         per_agent_text[agent.id] = str(line)
 
     tool_calls: list[ToolCall] = []
-    for option in payload.get("options") or []:
+    for option in _as_list(payload.get("options")):
         if not isinstance(option, dict):
             continue
         title = str(option.get("title") or "option")
@@ -145,7 +150,7 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
         reason = title[:_REASON_MAX]
         nested = [
             call
-            for effect in option.get("effects") or []
+            for effect in _as_list(option.get("effects"))
             if isinstance(effect, dict)
             for call in [_nested_call(effect, by_name, reason)]
             if call is not None

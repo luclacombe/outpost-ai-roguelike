@@ -190,3 +190,25 @@ def test_parse_drops_non_latin_reaction_and_option(caplog: pytest.LogCaptureFixt
     assert len(parsed.per_agent_text) == 3
     assert [c.args["name"] for c in parsed.tool_calls] == ["Burn the reserve", "Roll the dice"]
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+def test_parse_survives_malformed_containers() -> None:
+    payload: dict[str, Any] = {
+        "reactions": 5,
+        "options": [
+            {**_option("Vera", "Odd", "DOMINANT", []), "effects": 5},
+            {**_option("Omar", "Odder", "MORAL", []), "effects": True},
+        ],
+    }
+    parsed = parse_submit_debate(_response(payload), ROSTER)
+    assert parsed.per_agent_text == {}
+    assert [c.args["tool_calls_on_pick"] for c in parsed.tool_calls] == [[], []]
+    assert parse_submit_debate(_response({"reactions": True, "options": 3}), ROSTER) == (
+        DebateParse()
+    )
+
+
+def test_parse_survives_non_dict_payload_and_missing_content() -> None:
+    block = SimpleNamespace(type="tool_use", name=DEBATE_TOOL_NAME, input="not a dict")
+    assert parse_submit_debate(SimpleNamespace(content=[block]), ROSTER) == DebateParse()
+    assert parse_submit_debate(SimpleNamespace(content=None), ROSTER) == DebateParse()
