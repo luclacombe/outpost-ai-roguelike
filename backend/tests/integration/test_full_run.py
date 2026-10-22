@@ -88,22 +88,23 @@ async def test_full_run_10_turns_against_real_anthropic(
     cache_read_samples: list[int] = []
     statuses: list[int] = []
 
-    # nodes.py imports cost_cents_of by name at module load, so patch the
-    # consumer-side reference, not the producer module's attribute.
+    # nodes.py imports usage_record by name at module load, so patch the
+    # consumer-side reference. Every LLM call (debate, autonomous, narration)
+    # builds one record, whose `cache_read_tokens` is the cache-hit evidence
+    # (the same field that lands in `turn_meta["llm_calls"]`).
     import app.agent.nodes as nodes
 
-    original_cost = nodes.cost_cents_of
+    original_record = nodes.usage_record
 
-    def _traced_cost(resp: Any, model: str) -> float:
-        usage = getattr(resp, "usage", None)
-        if usage is not None:
-            cache_read_samples.append(getattr(usage, "cache_read_input_tokens", 0) or 0)
-        return original_cost(resp, model)
+    def _traced_record(resp: Any, model: str, purpose: str) -> dict[str, Any]:
+        record = original_record(resp, model, purpose)
+        cache_read_samples.append(record["cache_read_tokens"])
+        return record
 
     app.dependency_overrides[get_current_user] = lambda: _auth_override(full_run_user_id)
 
     try:
-        with patch.object(nodes, "cost_cents_of", _traced_cost):
+        with patch.object(nodes, "usage_record", _traced_record):
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
             ) as client:

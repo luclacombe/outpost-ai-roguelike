@@ -1,7 +1,8 @@
 """Pipeline-level eval for axis-driven proposal generation.
 
-Loads debate-phase seed fixtures, builds the system blocks via
-`app.agent.prompts`, calls the fast model, parses the debate tool calls, runs
+Loads debate-phase seed fixtures, builds the debate request via
+`app.agent.nodes.build_debate_request`, calls the fast model with the forced
+`submit_debate` tool, parses it with `parse_submit_debate`, runs
 them through `prepare_proposals` (engine-rendered effects, the surfaced triple
 the player would see), and scores that via the two judges. Asserts mean scores >= module thresholds.
 
@@ -29,15 +30,9 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.anthropic_client import call_fast
+from app.agent.debate_format import parse_submit_debate
+from app.agent.nodes import DEBATE_MAX_TOKENS, _call_structured, build_debate_request
 from app.agent.prepare import prepare_proposals
-from app.agent.prompts import (
-    build_colony_state_block,
-    build_debate_user_message,
-    build_personas_block,
-    build_preamble_block,
-    parse_debate_response,
-)
 from app.eval.axis_attribution import (
     AXIS_ATTRIBUTION_THRESHOLD,
     score_turn_attribution,
@@ -49,7 +44,6 @@ from app.eval.axis_diversity import (
 )
 from app.game import setting_loader
 from app.game.schemas import ColonyState, Event, ToolCall
-from app.game.tools import AGENT_TOOL_SCHEMAS
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "axis_seeds"
 _BASELINE_PATH = Path(__file__).parent / "fixtures" / "axis_baseline.json"
@@ -133,21 +127,15 @@ def build_judge_inputs(
 async def _run_one_seed(seed: dict) -> _SeedRunResult:
     state = ColonyState.model_validate(seed["colony_state"])
     event = Event.model_validate(seed["event"])
-    alive_agents = [a for a in state.agents if a.is_alive]
-    system_blocks = [
-        build_preamble_block(),
-        build_personas_block(alive_agents),
-    ]
-    colony_text = build_colony_state_block(state)["text"]
-    user_message = f"{colony_text}\n\n{build_debate_user_message(event)}"
-
-    response = await call_fast(
-        system_blocks=system_blocks,
-        user_message=user_message,
-        tools=AGENT_TOOL_SCHEMAS,
-        max_tokens=2000,
+    # The game's own request builder, forced `submit_debate` call (with its
+    # forced -> auto fallback) and parser, so this eval cannot drift from play.
+    request = build_debate_request(state, event)
+    response, _ = await _call_structured(
+        request.system_blocks, request.user_message, request.tool, DEBATE_MAX_TOKENS
     )
-    parsed = parse_debate_response(response, alive_agents)
+    parsed = parse_submit_debate(
+        response, request.alive_agents, allowed_terms=request.allowed_terms
+    )
 
     proposals_for_judge, proposal_dicts = build_judge_inputs(
         state, parsed.tool_calls, parsed.per_agent_text.values()
