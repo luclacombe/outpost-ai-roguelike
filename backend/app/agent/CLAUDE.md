@@ -36,20 +36,30 @@ them through `engine.apply_tool_calls` alongside `picked.tool_calls_on_pick`.
 The previous flavor → legitimacy table (`_FLAVOR_LEGITIMACY_SHIFT`) was
 removed in favour of payload-driven dispatch — see `resolution.py`.
 
-## Debate response parsing
+## Structured calls (debate and off-turn)
 
-`prompts.parse_debate_response(response, alive_agents)` splits an Anthropic
-response into `(per_agent_text, tool_calls)`.
+Debate and autonomous each make ONE forced tool call (`nodes._call_structured`):
+`submit_debate` / `submit_offturn`, schemas and parsers in `debate_format.py`.
+Why: the old format needed free text plus three parallel tool calls, and
+cheap models made one call and stopped (bake-off 2026-10-22).
 
-- `response.content` mixes `text` blocks (XML reactions) with `tool_use` blocks
-  (native Anthropic tool calls). The parser handles both.
-- `<agent name="X">...</agent>` sections map name → agent UUID via
-  `alive_agents`. Dead agents must NOT be passed in — the parser will log WARNING
-  and skip them otherwise.
-- `tool_use.input["caller_agent_id"]` is **popped** into `ToolCall.caller_id` (as
-  a UUID). The field never reaches `ToolCall.args`.
-- Unknown agent names, malformed XML, malformed JSON, invalid UUIDs → logged at
-  WARNING, skipped. The parser never raises on bad model output.
+- **Forced single tool.** Only that tool is sent, with `tool_choice` set to it.
+  If the host rejects `tool_choice` (error text matches `_TOOL_CHOICE_REJECTIONS`),
+  the call is repeated with `auto`; any other error propagates.
+  `turn_meta["debate_tool_choice"]` is `"forced"` or `"auto"`.
+- **Per-game enums.** The schema pins advisor names and resource ids to this
+  colony, so it is stable within a game and differs between games. Build it
+  per call from the alive cast; never cache one across games.
+- **Parsers never raise.** `parse_submit_debate` returns
+  `DebateParse(per_agent_text, tool_calls)` (options become `propose_action`
+  `ToolCall`s with nested `tool_calls_on_pick`; adapter-supplied reasons; no
+  UUIDs in model output). Non-list containers, bad names and a missing tool
+  call degrade to empty or skipped items. `parse_submit_offturn` does the same.
+- **Non-Latin filter.** Reactions, options and off-turn text containing
+  non-Latin letters (`narration_guard.has_non_latin`) are dropped with a warning.
+- **Observability.** `turn_meta["llm_calls"]` has one `usage_record` per call
+  (purpose, model, tokens, `cache_read_tokens`, `cost_cents`, `billed`).
+- `prompts.parse_debate_response` still exists but no node calls it.
 
 ## Debate retry (< 3 valid proposals)
 
@@ -59,11 +69,11 @@ classified `valid` (nothing stripped, a net non-zero applied change: `+5`/`-5`
 or a clamp that cancels counts as none). A missing or all-stripped
 `tool_calls_on_pick` is `no_effect`, not valid. The
 count runs on the PRE-debate state, so a discarded first attempt never blocks
-the retry's duplicate-name check. Under 3, it retries the same batched call
+the retry's duplicate-name check. Under 3, it retries the same forced call
 ONCE with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
 tools are unchanged, so the cached prefix still hits. The response with more
 valid proposals wins (ties keep the first; reactions follow the kept
-response); `turn_meta.debate_retried` records it. Both calls go into
+response); `turn_meta["debate_retried"]` records it (alongside `debate_tool_choice` and `llm_calls`). Both calls go into
 `cost_cents_this_turn`. No retry once the turn has reached
 `MAX_COST_CENTS_PER_TURN`. Test debate bodies must give every proposal a
 nested effect or the turn retries.
@@ -129,18 +139,20 @@ writes a fresh cache entry and nothing ever reads. Keeping the cache_control
 on personas (run-stable) and pushing volatile content into the user message
 is what unlocks cross-turn cache hits.
 
-**Minimum cacheable prefix (Haiku 4.5, Anthropic-specific): 4096 tokens
-cumulative through the last cache_control.** The preamble + personas + tool
-schemas clear this with headroom (~4600 tokens). If you trim the preamble,
-re-measure via `client.messages.count_tokens(...)` and confirm cumulative
-tokens through the last cc are still >4096. Dropping below silently skips
-caching and returns 0 in both `cache_creation_input_tokens` and
-`cache_read_input_tokens`. Caching differs per provider/model: OpenRouter's
-prompt-caching guide says DeepSeek caching is automatic (no `cache_control`
-needed; writes bill at the input rate) and documents no 4096 minimum. Keep
-the stable-prefix-first layout and the `cache_control` markers anyway
-(invariant #5; they are what Anthropic needs). Measure hit rate on the
-provider you actually run.
+**Caching caveat (controller ruling, 2026-10-22).** The cached prefix is now
+about 2.9K tokens (preamble + personas + one small tool). That is below Claude
+Haiku 4.5's 4096-token minimum, so on the Claude path (the `LLM_*` defaults)
+debate and autonomous calls would not cache (0 in both
+`cache_creation_input_tokens` and `cache_read_input_tokens`). Accepted: the game
+runs on OpenRouter models whose caching has no such minimum (DeepSeek and MiMo
+cache prefixes automatically, OpenAI from 1024 tokens). Measure per call with
+`turn_meta["llm_calls"][*].cache_read_tokens`. If a Claude model is chosen
+again, re-measure with `client.messages.count_tokens(...)` or pad the stable
+preamble. Keep the stable-prefix-first layout and `cache_control` markers
+(invariant #5).
+
+Debate and autonomous send different tools, so they no longer share a cached
+prefix with each other (each caches its own prefix across turns).
 
 **Memories live in the rendered colony-state text (user message), not the
 personas block.** Putting per-turn memories inside personas would mutate the
@@ -194,7 +206,10 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 
 ## Cost accounting
 
-- Only `anthropic_client.cost_cents_of(response, model)` computes cost. It
+- Only `anthropic_client.cost_cents_of(response, model)` computes cost. The
+  provider's billed cost (`usage.cost` in USD, read from
+  `response.usage.model_extra`) wins over the price table; `usage_record` is the
+  per-call record (`billed` says which source). Without it, it
   splits `usage.input_tokens` across fresh / cache_read / cache_creation
   buckets at their respective rates. `getattr(u, "cache_*_input_tokens", 0) or 0`
   — those fields are optional on the SDK's `usage` object.
@@ -238,18 +253,10 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
   a subset check against `AGENT_TOOL_SCHEMAS`. If a tool is renamed or removed
   in `app/game/tools.py`, startup fails loudly rather than silently dropping
   the tool from the autonomous phase.
-- **Autonomous sends the FULL tool schema, then filters on the response.**
-  Sending only the autonomous subset to the SDK is tempting (it's what we
-  did originally) but it shrinks the cached prefix below Haiku 4.5's
-  4096-token minimum, silently disabling caching for the entire autonomous
-  phase. Cost impact: ~4¢/run wasted on uncached fresh input. Current
-  pattern: pass `tools=AGENT_TOOL_SCHEMAS`, instruct the model in the
-  preamble to restrict itself to autonomous-appropriate tools, then drop
-  any off-list `ToolCall` from `parse_debate_response` BEFORE handing the
-  list to `engine.apply_tool_calls`. The runtime filter is the safety net;
-  the prompt does the heavy lifting. Side benefit: autonomous shares the
-  exact cached prefix as debate (same tools, same preamble, same personas),
-  so its first call of each turn cache-reads from debate's earlier write.
+- **Autonomous sends only `submit_offturn`.** The old rule (send the full
+  `AGENT_TOOL_SCHEMAS` for Haiku 4.5's cache minimum, filter the response) is
+  gone. The whitelist now lives in the `submit_offturn` kinds and its parser;
+  see the caching caveat above.
 
 ## Graph pattern
 

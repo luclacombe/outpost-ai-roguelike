@@ -18,7 +18,7 @@ Daily browser-based narrative roguelike. Four AI advisors run a fragile colony u
 - Frontend: Next.js 16 App Router + TypeScript strict + Tailwind v4 + shadcn/ui (pixel-art re-themed) + DiceBear
 - Deploy: Railway (backend), Vercel (frontend)
 - Observability: Langfuse (cloud Hobby, 50K obs/mo), LangSmith agentevals for CI
-- LLM: provider set by `LLM_*` settings (`backend/app/config.py`). On OpenRouter since 2026-10-01 (Anthropic org disabled): fast (debate + autonomous) = `deepseek/deepseek-v4-pro-0813` pinned StreamLake→Novita via `LLM_PROVIDER_ORDER`, narration = `deepseek/deepseek-v4.1-flash`, thinking off. Defaults remain Claude Haiku (fast) + Sonnet (narration). Prompt caching mandatory either way
+- LLM: provider set by `LLM_*` settings (`backend/app/config.py`). On OpenRouter since 2026-10-01 (Anthropic org disabled): debate and autonomous run on `LLM_MODEL_FAST` (`deepseek/deepseek-v4-pro-0813` today, pinned StreamLake→Novita via `LLM_PROVIDER_ORDER`), narration on `deepseek/deepseek-v4.1-flash`, thinking off. The flat structured-call format makes cheaper models viable (bake-off 2026-10-22). Defaults remain Claude Haiku (fast) + Sonnet (narration). Prompt caching mandatory either way
 
 ---
 

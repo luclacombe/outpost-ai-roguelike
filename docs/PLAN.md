@@ -2558,6 +2558,9 @@ Any gap → back to fix.
 
 - **Narration leaked XML, "the player" and invented names.** Symptom: narration prose contained `<agent>` markup, "the player", and names not on the roster. Root cause: narration shared the debate preamble (which teaches XML reactions) and received a 60-char event title. Fix: own narration system block (setting voice, roster, rules), full event in the user message, `validate_narration` guard with one retry and a fixed fallback line; outcome recorded in `turn_meta["narration"]`. Files: `backend/app/agent/narration.py`, `backend/app/agent/narration_guard.py`, `backend/app/agent/nodes.py`.
 
+
+- **Cheap models failed the debate.** Symptom: V4.1 Flash, MiMo and others returned empty or partial debates. Root cause: the format needed free text plus three parallel `propose_action` tool calls; many models make one call and stop, or skip the text. Fix: one forced structured tool per call (`submit_debate`, `submit_offturn`) with per-game enums, a `tool_choice` fallback to `auto`, billed cost preferred, and per-call `turn_meta["llm_calls"]`. Trade-off: the cached prefix (~2.9K tokens) is under Claude Haiku 4.5's 4096-token cache minimum, so debate and autonomous would not cache on the Claude path; accepted because the OpenRouter models in use cache without such a minimum. Files: `backend/app/agent/debate_format.py`, `backend/app/agent/nodes.py`, `backend/app/agent/anthropic_client.py`, `backend/app/agent/prompts.py`, `backend/app/agent/CLAUDE.md`, `CLAUDE.md`, `backend/.env.example`.
+
 ---
 
 ## Scope Check (from writing-plans skill)
