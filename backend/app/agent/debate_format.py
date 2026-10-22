@@ -216,20 +216,23 @@ def build_offturn_tool(alive_agents: list[Agent]) -> dict[str, Any]:
             "text": {
                 "type": "string",
                 "description": (
-                    "The memory fact for remember, the private message for speak_to_agent, "
-                    "or the reason for adjust_own_grievance."
+                    "Required for remember (the memory), speak_to_agent (the private "
+                    "message) and adjust_own_grievance (the reason). Those actions are "
+                    "rejected without it."
                 ),
             },
             "target": {
                 "type": "string",
                 "enum": names,
-                "description": "The other advisor, for speak_to_agent and adjust_relationship.",
+                "description": (
+                    "Required for speak_to_agent and adjust_relationship: the other advisor."
+                ),
             },
             "delta": {
                 "type": "integer",
                 "description": (
-                    "The grievance or relationship change, from -3 to 3, or the legitimacy "
-                    "bonus from 1 to 5 for back_leader."
+                    "Required for adjust_own_grievance and adjust_relationship: an integer "
+                    "from -3 to 3. For back_leader, the legitimacy bonus from 1 to 5."
                 ),
             },
         },
@@ -266,7 +269,7 @@ def _offturn_args(
     if kind == "remember":
         return {"fact": text[:_FACT_MAX]}
     if kind == "adjust_own_grievance":
-        return {"delta": delta, "reason": text[:_FACT_MAX] or "off-turn"}
+        return {"delta": delta, "reason": text[:_FACT_MAX]}
     if kind == "initiate_coup":
         return {}
     if kind == "back_leader":

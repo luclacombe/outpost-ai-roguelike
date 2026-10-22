@@ -20,10 +20,11 @@ from app.agent.debate_format import (
 from app.agent.narration_guard import build_allowed_terms, non_latin_words
 from app.agent.prepare import prepare_proposals
 from app.agent.prompts import DebateParse
+from app.game.engine import apply_tool_call
 from app.game.generator import generate_run
 from app.game.schemas import Event, EventOrigin
 from app.game.setting_loader import load_setting
-from tests._factories import _agent
+from tests._factories import _agent, _colony
 
 ARCTIC = load_setting("arctic_station_v1")
 USER = UUID("bbbbbbbb-0000-0000-0000-000000000002")
@@ -287,7 +288,7 @@ def test_offturn_maps_each_kind() -> None:
     ]
     assert calls[0].args == {"fact": "x" * 200}
     assert calls[1].args == {"delta": 2, "reason": "Ignored"}
-    assert calls[2].args == {"delta": -1, "reason": "off-turn"}
+    assert calls[2].args == {"delta": -1, "reason": ""}
     assert calls[3].args == {"target_id": str(VERA.id), "message": "y" * 300}
     assert calls[4].args == {"target_id": str(OMAR.id), "delta": -2}
     assert calls[5].args == {"decision_id": DECISION, "legitimacy_bonus": 5}
@@ -403,3 +404,20 @@ def test_parse_reads_input_defensively() -> None:
     assert parse_submit_debate(SimpleNamespace(content=[bare]), ROSTER) == DebateParse()
     bare_off = SimpleNamespace(type="tool_use", name=OFFTURN_TOOL_NAME)
     assert parse_submit_offturn(SimpleNamespace(content=[bare_off]), ROSTER, DECISION) == []
+
+
+def test_offturn_grievance_without_text_reaches_validator() -> None:
+    actions = [{"advisor": "Lina", "kind": "adjust_own_grievance", "delta": 2}]
+    calls = parse_submit_offturn(_offturn_response(actions), ROSTER, DECISION)
+    assert len(calls) == 1
+    assert calls[0].args == {"delta": 2, "reason": ""}
+    state = _colony(agents=[LINA])
+    out = apply_tool_call(state, calls[0])
+    assert out.turn_tool_calls[-1].rejection_reason == "missing_reason"
+
+
+def test_offturn_schema_states_required_fields() -> None:
+    tool = build_offturn_tool(ROSTER)
+    props = tool["input_schema"]["properties"]["actions"]["items"]["properties"]
+    for field in ("text", "target", "delta"):
+        assert props[field]["description"].startswith("Required for "), field
