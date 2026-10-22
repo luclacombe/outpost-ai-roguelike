@@ -336,6 +336,25 @@ def test_cost_falls_back_to_price_table_without_billed_cost():
     assert cost_cents_of(_response(usage), "xiaomi/mimo-v2.6-flash") == pytest.approx(14.0)
 
 
+@pytest.mark.parametrize(
+    "bad_cost", [float("nan"), float("inf"), -0.01, None, True, "0.01"], ids=repr
+)
+def test_unusable_billed_cost_falls_back_to_price_table(bad_cost):
+    usage = _usage(input_tokens=1_000_000, output_tokens=0, extra={"cost": bad_cost})
+    response = _response(usage)
+    assert cost_cents_of(response, "xiaomi/mimo-v2.6-flash") == pytest.approx(14.0)
+    rec = usage_record(response, "xiaomi/mimo-v2.6-flash", "debate")
+    assert rec["billed"] is False
+    assert rec["cost_cents"] == pytest.approx(14.0)
+
+
+def test_zero_billed_cost_is_accepted():
+    usage = _usage(input_tokens=1_000_000, output_tokens=0, extra={"cost": 0})
+    rec = usage_record(_response(usage), "xiaomi/mimo-v2.6-flash", "debate")
+    assert rec["billed"] is True
+    assert rec["cost_cents"] == 0.0
+
+
 def test_usage_record_fields():
     usage = _usage(input_tokens=100, output_tokens=50, cache_read=4000, extra={"cost": 0.001})
     rec = usage_record(_response(usage), "openai/gpt-6-luna", "debate")

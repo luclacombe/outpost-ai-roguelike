@@ -12,6 +12,7 @@ Direct `AsyncAnthropic` only. Do NOT wrap via LangChain's `ChatAnthropic` —
 we need raw control over `cache_control`, tool schemas, and `usage` fields.
 """
 
+import math
 from typing import Any
 
 from anthropic import AsyncAnthropic, Omit
@@ -203,6 +204,10 @@ def _billed_cost_cents(response: Any) -> float | None:
         return None
     cost = extra.get("cost")
     if isinstance(cost, bool) or not isinstance(cost, int | float):
+        return None
+    # A NaN, infinite or negative figure would corrupt the budget rails (and a
+    # NaN makes `round()` raise at `advance_turn`), so use the price table.
+    if not math.isfinite(cost) or cost < 0:
         return None
     return float(cost) * 100
 
