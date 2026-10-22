@@ -14,6 +14,7 @@ Postgres is unreachable, matching the pattern in test_game_router.py.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 from uuid import UUID, uuid4
@@ -750,7 +751,8 @@ async def test_debate_retry_reasons_list_options_before_reactions(monkeypatch):
 async def test_debate_keeps_first_on_tie(monkeypatch):
     colony = make_colony_state()
     first = _debate_message(colony, _valid_options(colony), reaction="first", reactions=2)
-    second = _debate_message(colony, _valid_options(colony), reaction="second", reactions=2)
+    retry_options = [_option(i, colony.agents[i], title=f"Retry plan {i}") for i in range(3)]
+    second = _debate_message(colony, retry_options, reaction="second", reactions=2)
     fake = _install_fake(monkeypatch, [first, second])
 
     result = await agent_debate(_debate_state(colony))
@@ -758,6 +760,11 @@ async def test_debate_keeps_first_on_tie(monkeypatch):
     assert len(fake.calls) == 2
     assert len(result["debate_per_agent_text"]) == 2
     assert result["debate_per_agent_text"][colony.agents[0].id] == "first"
+    assert [tc.args["name"] for tc in result["debate_tool_calls"]] == [
+        "Plan 0",
+        "Plan 1",
+        "Plan 2",
+    ]
     assert result["turn_meta"]["debate_retried"] is True
 
 
@@ -782,6 +789,22 @@ async def test_debate_retry_note_names_incomplete_effects(monkeypatch):
     assert fake.calls[1]["tools"] == fake.calls[0]["tools"]
     assert result["turn_meta"]["debate_retry_reasons"] == ["options"]
     assert len(result["debate_tool_calls"]) == 3
+
+
+async def test_debate_logs_incomplete_effects_of_the_retry_response(monkeypatch, caplog):
+    colony = make_colony_state()
+    bad = [
+        _option(i, colony.agents[i], effects=[{"kind": "resource", "resource_id": "fuel"}])
+        for i in range(3)
+    ]
+    _install_fake(monkeypatch, [_debate_message(colony, bad), _debate_message(colony, bad)])
+
+    with caplog.at_level(logging.WARNING, logger="app.agent.debate_format"):
+        await agent_debate(_debate_state(colony))
+
+    logged = [r.getMessage() for r in caplog.records if r.name == "app.agent.debate_format"]
+    assert len(logged) == 6  # three incomplete effects per attempt, retry included
+    assert all("resource_id" in m for m in logged)
 
 
 async def test_debate_no_retry_when_complete(monkeypatch):

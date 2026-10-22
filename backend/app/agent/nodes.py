@@ -406,6 +406,9 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
             colony_state, retry_parsed.tool_calls, setting, retry_parsed.per_agent_text.values()
         )
         retry_reactions = len(retry_parsed.per_agent_text)
+        # Called for its warnings only: the turns that reach players broken are
+        # the ones where the retry also fails, and the logs show the keys sent.
+        incomplete_effects(retry_response)
         keep_retry = (retry_valid, retry_reactions) > (valid, reactions)
         logger.warning(
             "agent_debate: %d/%d valid proposals and %d/%d reactions for game %s turn %s; "
