@@ -173,3 +173,36 @@ def test_has_non_latin() -> None:
     assert has_non_latin("static on the 頻道") is True
     assert has_non_latin("Поделиться") is True
     assert has_non_latin("") is False
+
+
+def test_invented_cyrillic_word_is_script() -> None:
+    text = "You backed Astrid. The pump held in Коридор Б until dawn, and Nadia slept."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert [v.code for v in found] == ["script"]
+    assert found[0].hard
+
+
+def test_setting_foreign_word_is_allowed() -> None:
+    text = "You backed Astrid. The crate was stamped СЕКРЕТНО, and Nadia left it shut."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert "script" not in [v.code for v in found]
+
+
+def test_markdown_emphasis_is_markup() -> None:
+    lore = [ARCTIC.lore, "медсестра"]
+    star = "You backed Astrid. The *медсестра* kept the ledger, and Nadia slept."
+    bold = "You backed Astrid. **Note** the pump held until dawn."
+    tick = "You backed Astrid. The `pump` held until dawn."
+    for text in (star, bold, tick):
+        found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=lore)
+        markup = [v for v in found if v.code == "markup"]
+        assert len(markup) == 1 and markup[0].hard, text
+        assert not any(v.code == "script" for v in found), text
+    plain = "You backed Astrid. The pump held until dawn, and Nadia slept."
+    assert validate_narration(plain, ALLOWED, ROSTER, foreign_ok=lore) == []
+
+
+def test_script_reported_once() -> None:
+    text = "Насос выдержал до рассвета. Никто не спал."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert [v.code for v in found].count("script") == 1

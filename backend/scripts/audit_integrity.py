@@ -225,12 +225,18 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
             extra += [str(p.get("name", "")), str(p.get("description", ""))]
             extra += [str(line) for line in p.get("effects_preview") or []]
         roster = frozenset(a.name for a in pre.agents)
+        foreign_ok = (setting.lore, setting.narrative_voice)
         found = validate_narration(
-            row.narration, build_allowed_terms(setting, state, extra), roster
+            row.narration,
+            build_allowed_terms(setting, state, extra),
+            roster,
+            foreign_ok=foreign_ok,
         )
         t.stored_hard += any(v.hard for v in found)
         t.stored_unknown += any(v.kind == "unknown_name" for v in found)
-        strict = validate_narration(row.narration, build_strict_terms(setting, pre), roster)
+        strict = validate_narration(
+            row.narration, build_strict_terms(setting, pre), roster, foreign_ok=foreign_ok
+        )
         t.strict_unknown += any(v.kind == "unknown_name" for v in strict)
         if setting.id in COLD_BASELINE:
             t.cold_words[setting.id] += len(_COLD.findall(row.narration))

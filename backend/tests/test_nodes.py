@@ -1804,6 +1804,32 @@ async def test_narrate_turn_soft_violations_keep_fewer():
 
 
 @respx.mock
+async def test_narration_retries_on_invented_foreign_word():
+    colony = make_colony_state()
+    bad = "The wall held in Коридор Б until dawn. Nadia counted the rations twice."
+    good = "The wall held until dawn. Nadia counted the rations twice."
+    route = respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(bad), _sonnet(good)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert route.call_count == 2
+    assert result["narration"] == good
+    meta = result["turn_meta"]["narration"]
+    assert meta["source"] == "retry"
+    assert meta["first_attempt_violations"] == ["script"]
+
+
+@respx.mock
+async def test_narration_keeps_the_settings_own_foreign_word():
+    colony = make_colony_state()
+    assert colony.setting_id == "arctic_station_v1"
+    text = "The crate was stamped СЕКРЕТНО. Nadia left it shut and counted the rations."
+    route = respx.post(_ANTHROPIC_URL).mock(return_value=_sonnet(text))
+    result = await narrate_turn(_narrate_state(colony))
+    assert route.call_count == 1
+    assert result["narration"] == text
+    assert result["turn_meta"]["narration"]["source"] == "llm"
+
+
+@respx.mock
 async def test_narrate_hard_violation_twice_falls_back():
     colony = make_colony_state()
     russian = "Стена выдержала. Никто не спал."

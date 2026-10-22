@@ -704,7 +704,9 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
         records.append(usage_record(response, settings.LLM_MODEL_NARRATION, "narration"))
         cost += records[-1]["cost_cents"]
         text = _first_text(response)
-        violations = validate_narration(text, allowed, roster)
+        violations = validate_narration(
+            text, allowed, roster, foreign_ok=(setting.lore, setting.narrative_voice)
+        )
         attempts.append((text, violations))
         if not violations:
             break

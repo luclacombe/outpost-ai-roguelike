@@ -24,6 +24,7 @@ MAX_SENTENCES = 4
 MAX_NON_LATIN_SHARE = 0.2
 
 _MARKUP = re.compile(r"<[A-Za-z/][^>]*>")
+_MD_MARKUP = re.compile(r"\*[^*\n]+\*|`[^`\n]+`")
 _FOURTH_WALL = re.compile(r"\bthe player\b", re.IGNORECASE)
 _ECHO_PREFIXES = ("now write", "write a", "context:", "characters:", "recap", "keep tone")
 # Spec §4.2: word-boundary anchors so "iPhone" and "McKay" yield no name token.
@@ -190,14 +191,23 @@ def _term_tokens(texts: Iterable[str]) -> frozenset[str]:
 
 
 def validate_narration(
-    text: str, allowed_terms: frozenset[str], roster_names: frozenset[str]
+    text: str,
+    allowed_terms: frozenset[str],
+    roster_names: frozenset[str],
+    *,
+    foreign_ok: Iterable[str] = (),
 ) -> list[Violation]:
-    """Every rule violated by `text`, in a stable order (spec §4.2 table)."""
+    """Every rule violated by `text`, in a stable order (spec §4.2 table).
+
+    `foreign_ok` is extra text (the setting's lore and narrative voice) whose
+    non-Latin words narration may quote; any other non-Latin word is a `script`
+    violation however small a share of the line it is.
+    """
     norm = _normalize(text)
     if not norm.strip():
         return [Violation("empty")]
     found: list[Violation] = []
-    if _MARKUP.search(norm):
+    if _MARKUP.search(norm) or _MD_MARKUP.search(norm):
         found.append(Violation("markup"))
     if _FOURTH_WALL.search(norm):
         found.append(Violation("fourth_wall"))
@@ -206,7 +216,9 @@ def validate_narration(
         if low.startswith(_ECHO_PREFIXES) or "narrator-voice" in low:
             found.append(Violation("prompt_echo"))
             break
-    if _non_latin_share(norm) > MAX_NON_LATIN_SHARE:
+    if _non_latin_share(norm) > MAX_NON_LATIN_SHARE or has_unknown_non_latin(
+        norm, non_latin_words([*allowed_terms, *foreign_ok])
+    ):
         found.append(Violation("script"))
     sentences = [s for s in _SENTENCE_SPLIT.split(norm.strip()) if s]
     if len(sentences) > MAX_SENTENCES or len(norm) > MAX_CHARS:

@@ -132,7 +132,11 @@ run-stable block with `cache_control`: the setting's `narrative_voice` verbatim,
 the roster, and a rules line ("Latin script only: write every name in Latin
 letters. No timestamps, turn numbers or other scaffolding."). The user message
 carries the full event, not the 60-char title. Output goes through
-`narration_guard.validate_narration`, which splits hard from soft violations;
+`narration_guard.validate_narration`, which splits hard from soft violations
+(`script` also covers any non-Latin word outside the setting's own vocabulary,
+checked against `foreign_ok=(lore, narrative_voice)` plus the allowed terms, so
+arctic's СЕКРЕТНО passes and an invented "Коридор Б" does not; `markup` also
+covers `*emphasis*` and backtick spans);
 one retry with `RETRY_NOTE` on any violation (skipped once the turn cost cap is
 reached). Keep the attempt with no hard
 violation and fewest soft ones, else `narration.fallback_line` (`You backed
