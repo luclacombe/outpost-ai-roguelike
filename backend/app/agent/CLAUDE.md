@@ -72,7 +72,7 @@ cheap models made one call and stopped (bake-off 2026-10-22).
   (purpose, model, tokens, `cache_read_tokens`, `cost_cents`, `billed`).
 - `prompts.parse_debate_response` still exists but no node calls it.
 
-## Debate retry (< 3 valid proposals)
+## Debate retry (< 3 valid proposals or a missing reaction)
 
 `agent_debate` counts proposals with `count_valid_proposals`, which runs
 `prepare.prepare_proposals` on a throwaway result and counts proposals
@@ -80,16 +80,24 @@ classified `valid` (nothing stripped, a net non-zero applied change: `+5`/`-5`
 or a clamp that cancels counts as none). A missing or all-stripped
 `tool_calls_on_pick` is `no_effect`, not valid. The
 count runs on the PRE-debate state, so a discarded first attempt never blocks
-the retry's duplicate-name check. Under 3, it retries the same call ONCE
-(forced again, or `auto` when the first call fell back to `auto`) with
-`_DEBATE_RETRY_NOTE` appended to the user message; system blocks and tools are
-unchanged, so the cached prefix still hits. The response with more
-valid proposals wins (ties keep the first; reactions follow the kept
-response); `turn_meta["debate_retried"]` records it (alongside
-`debate_tool_choice` and `llm_calls`). Both calls go into
+the retry's duplicate-name check. It retries the same call ONCE (forced again,
+or `auto` when the first call fell back to `auto`) when valid proposals are
+under 3 OR fewer advisors reacted than are alive. The note is
+`nodes._debate_retry_note(valid, reactions, alive, incomplete)`, appended to
+the user message: it states the counts, and when
+`debate_format.incomplete_effects` found effects missing `resource` (resource
+kind) or `target` (health/grievance kind) it adds a sentence naming that field.
+System blocks and tools are unchanged, so the cached prefix still hits.
+`incomplete_effects` also logs each such effect's key names, so a sweep shows
+whether the model left the field out or used another key (no key aliases are
+accepted). The response with more valid proposals wins, then more reactions
+(ties keep the first; reactions follow the kept response);
+`turn_meta["debate_retried"]` records it, `turn_meta["debate_retry_reasons"]`
+lists `"options"` then `"reactions"` for what was short (`[]` without a retry),
+alongside `debate_tool_choice` and `llm_calls`. Both calls go into
 `cost_cents_this_turn`. No retry once the turn has reached
 `MAX_COST_CENTS_PER_TURN`. Test debate bodies must give every proposal a
-nested effect or the turn retries.
+nested effect and every living advisor a reaction, or the turn retries.
 
 ## Debate phase applies proposals only
 

@@ -14,6 +14,7 @@ from app.agent.debate_format import (
     OFFTURN_TOOL_NAME,
     build_debate_tool,
     build_offturn_tool,
+    incomplete_effects,
     parse_submit_debate,
     parse_submit_offturn,
 )
@@ -94,7 +95,58 @@ def test_schema_enums_hold_roster_and_resources() -> None:
     assert effect_props["resource"]["enum"] == ["fuel", "food"]
     assert effect_props["target"]["enum"] == [*NAMES, "player"]
     assert effect_props["kind"]["enum"] == ["resource", "health", "grievance"]
-    assert effect_props["delta"] == {"type": "integer"}
+    assert effect_props["delta"]["type"] == "integer"
+
+
+def test_debate_tool_effect_fields_describe_requirements() -> None:
+    tool = build_debate_tool(ROSTER, ["fuel", "food"])
+    option = tool["input_schema"]["properties"]["options"]["items"]
+    props = option["properties"]["effects"]["items"]["properties"]
+    assert props["kind"]["description"] == (
+        "resource changes a colony resource; health and grievance change a person."
+    )
+    assert props["resource"]["description"].startswith("Required when kind is resource")
+    assert props["target"]["description"].startswith("Required when kind is health or grievance")
+    assert props["delta"]["description"] == "Signed integer change."
+
+
+def _effects_response(effects: Any) -> SimpleNamespace:
+    return _response({"reactions": [], "options": [_option("Vera", "Plan", "DOMINANT", effects)]})
+
+
+def test_incomplete_effects_counts_missing_fields(caplog: pytest.LogCaptureFixture) -> None:
+    effects = [
+        {"kind": "resource", "delta": -5},
+        {"kind": "resource", "resource": "", "delta": -5},
+        {"kind": "resource", "resource_id": "fuel", "delta": -5},
+        {"kind": "health", "delta": 2},
+        {"kind": "grievance", "target": "", "delta": 2},
+        {"kind": "resource", "resource": "fuel", "delta": -5},
+        {"kind": "health", "target": "Lina", "delta": 3},
+        {"kind": "grievance", "target": "Vera", "delta": 4},
+    ]
+    with caplog.at_level(logging.WARNING, logger="app.agent.debate_format"):
+        assert incomplete_effects(_effects_response(effects)) == 5
+    logged = [r.getMessage() for r in caplog.records]
+    assert len(logged) == 5
+    assert any("delta" in m and "resource_id" in m for m in logged)
+    assert not any("fuel" in m for m in logged)
+
+
+def test_incomplete_effects_complete_payload_is_zero() -> None:
+    assert incomplete_effects(_response(_payload())) == 0
+
+
+def test_incomplete_effects_never_raises_on_malformed_output() -> None:
+    assert incomplete_effects(SimpleNamespace(content=[])) == 0
+    assert incomplete_effects(SimpleNamespace()) == 0
+    assert incomplete_effects(_response({"options": "nope"})) == 0
+    assert incomplete_effects(_response({"options": ["x", {"effects": "y"}]})) == 0
+    assert incomplete_effects(_effects_response(["x", 3, None])) == 0
+    assert incomplete_effects(_effects_response([{"kind": ["resource"]}])) == 0
+    assert incomplete_effects(_effects_response([{"kind": "other"}])) == 0
+    block = SimpleNamespace(type="tool_use", name=DEBATE_TOOL_NAME, input="text")
+    assert incomplete_effects(SimpleNamespace(content=[block])) == 0
 
 
 def test_parse_maps_reactions_and_options() -> None:

@@ -38,6 +38,7 @@ from app.agent.constants import MAX_COST_CENTS_PER_TURN
 from app.agent.debate_format import (
     build_debate_tool,
     build_offturn_tool,
+    incomplete_effects,
     parse_submit_debate,
     parse_submit_offturn,
 )
@@ -181,14 +182,29 @@ async def generate_event(state: GameTurnState) -> GameTurnState:
 # Proposals the player must see each turn (one per flavor).
 DEBATE_TARGET_PROPOSALS = 3
 
-# Appended to the user message on the single debate retry. User-side only,
-# so the cached system prefix (preamble + personas) and tools stay identical.
-_DEBATE_RETRY_NOTE = (
-    "\n\n<retry_note>Your previous reply had {valid} valid option(s). Call "
-    "submit_debate once with exactly 3 options (one DOMINANT, one MORAL, one "
-    "WILDCARD), each with a non-empty title, description and at least one "
-    "effect.</retry_note>"
-)
+
+def _debate_retry_note(valid: int, reactions: int, alive: int, incomplete: int) -> str:
+    """Appended to the user message on the single debate retry.
+
+    User-side only, so the cached system prefix (preamble + personas) and tools
+    stay identical. Says what the first reply lacked; the effect sentence is
+    added only when effects were missing a required field.
+    """
+    note = (
+        f"\n\n<retry_note>Your previous reply had {valid} of 3 usable options and "
+        f"{reactions} of {alive} advisor reactions. Call submit_debate once with one "
+        "reaction from every living advisor and exactly 3 options (one DOMINANT, one "
+        "MORAL, one WILDCARD), each with a non-empty title, description and at least "
+        "one effect."
+    )
+    if incomplete > 0:
+        note += (
+            f" {incomplete} effect(s) lacked a required field: every resource effect "
+            'needs "resource" (a resource id from the colony state) and every health or '
+            'grievance effect needs "target".'
+        )
+    return note + "</retry_note>"
+
 
 # Substrings (lowercased) that mark a provider's refusal of a forced
 # `tool_choice`: a 400 from a host that does not support it, or an OpenRouter
@@ -335,10 +351,12 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
 
     Invariant #6: one batched LLM call per attempt regardless of alive count,
     never one call per agent.
-    If that call yields fewer than 3 engine-valid proposals, the same request
-    is retried ONCE with a short corrective note in the user message
-    (system blocks untouched, so the cache still hits). The response with
-    more valid proposals wins (ties keep the first); both calls are costed.
+    If that call yields fewer than 3 engine-valid proposals, or fewer reactions
+    than living advisors, the same request is retried ONCE with a corrective
+    note in the user message (system blocks untouched, so the cache still
+    hits). The note says what was short and how many effects lacked a required
+    field. The response with more valid proposals wins, then more reactions
+    (ties keep the first); both calls are costed.
     No retry once the turn's cost has reached MAX_COST_CENTS_PER_TURN.
     """
     colony_state = state["colony_state"]
@@ -359,12 +377,21 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     valid = count_valid_proposals(
         colony_state, parsed.tool_calls, setting, parsed.per_agent_text.values()
     )
+    reactions = len(parsed.per_agent_text)
     retried = False
+    retry_reasons: list[str] = []
+    short_options = valid < DEBATE_TARGET_PROPOSALS
+    short_reactions = reactions < len(alive_agents)
 
-    if valid < DEBATE_TARGET_PROPOSALS and turn_cost < MAX_COST_CENTS_PER_TURN:
+    if (short_options or short_reactions) and turn_cost < MAX_COST_CENTS_PER_TURN:
+        if short_options:
+            retry_reasons.append("options")
+        if short_reactions:
+            retry_reasons.append("reactions")
+        note = _debate_retry_note(valid, reactions, len(alive_agents), incomplete_effects(response))
         retry_response, retry_choice = await _call_structured(
             system_blocks,
-            user_message + _DEBATE_RETRY_NOTE.format(valid=valid),
+            user_message + note,
             tool,
             DEBATE_MAX_TOKENS,
             force=tool_choice == "forced",
@@ -378,17 +405,23 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
         retry_valid = count_valid_proposals(
             colony_state, retry_parsed.tool_calls, setting, retry_parsed.per_agent_text.values()
         )
+        retry_reactions = len(retry_parsed.per_agent_text)
+        keep_retry = (retry_valid, retry_reactions) > (valid, reactions)
         logger.warning(
-            "agent_debate: %d/%d valid proposals for game %s turn %s; retried once, "
-            "retry had %d; keeping %s",
+            "agent_debate: %d/%d valid proposals and %d/%d reactions for game %s turn %s; "
+            "retried once (%s), retry had %d valid and %d reactions; keeping %s",
             valid,
             DEBATE_TARGET_PROPOSALS,
+            reactions,
+            len(alive_agents),
             colony_state.game_id,
             colony_state.turn_number,
+            "+".join(retry_reasons),
             retry_valid,
-            "retry" if retry_valid > valid else "first",
+            retry_reactions,
+            "retry" if keep_retry else "first",
         )
-        if retry_valid > valid:
+        if keep_retry:
             parsed = retry_parsed
 
     return {
@@ -398,6 +431,7 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
         "turn_meta": {
             **_with_llm_calls(state.get("turn_meta"), *records),
             "debate_retried": retried,
+            "debate_retry_reasons": retry_reasons,
             "debate_tool_choice": tool_choice,
         },
     }

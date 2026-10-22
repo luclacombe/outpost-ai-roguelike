@@ -33,10 +33,27 @@ def build_debate_tool(alive_agents: list[Agent], resource_ids: list[str]) -> dic
         "type": "object",
         "required": ["kind", "delta"],
         "properties": {
-            "kind": {"type": "string", "enum": ["resource", "health", "grievance"]},
-            "resource": {"type": "string", "enum": list(resource_ids)},
-            "target": {"type": "string", "enum": [*names, "player"]},
-            "delta": {"type": "integer"},
+            "kind": {
+                "type": "string",
+                "enum": ["resource", "health", "grievance"],
+                "description": (
+                    "resource changes a colony resource; health and grievance change a person."
+                ),
+            },
+            "resource": {
+                "type": "string",
+                "enum": list(resource_ids),
+                "description": "Required when kind is resource: one of the colony's resource ids.",
+            },
+            "target": {
+                "type": "string",
+                "enum": [*names, "player"],
+                "description": (
+                    "Required when kind is health or grievance: an advisor name, "
+                    "or player for health."
+                ),
+            },
+            "delta": {"type": "integer", "description": "Signed integer change."},
         },
     }
     option: dict[str, Any] = {
@@ -109,6 +126,53 @@ def _nested_call(
     return None
 
 
+def _debate_payload(response: Any) -> dict[str, Any]:
+    """Input of the first `submit_debate` tool_use block, or {} when absent or malformed."""
+    blocks = [
+        b
+        for b in _as_list(getattr(response, "content", None))
+        if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == DEBATE_TOOL_NAME
+    ]
+    raw = getattr(blocks[0], "input", None) if blocks else None
+    return raw if isinstance(raw, dict) else {}
+
+
+def incomplete_effects(response: Any) -> int:
+    """Count effects in the first `submit_debate` input that lack a required field.
+
+    A `resource` effect needs a non-empty `resource`; a `health` or `grievance`
+    effect needs a non-empty `target`. Diagnostic only: nothing is dropped or
+    repaired here (the engine validator decides). Each incomplete effect logs
+    one warning with its sorted key names (never values), so a sweep shows
+    whether the model omitted the field or used another key. Never raises.
+    """
+    count = 0
+    for option in _as_list(_debate_payload(response).get("options")):
+        if not isinstance(option, dict):
+            continue
+        for effect in _as_list(option.get("effects")):
+            if not isinstance(effect, dict):
+                continue
+            kind = effect.get("kind")
+            needed = (
+                "resource"
+                if kind == "resource"
+                else "target"
+                if kind in ("health", "grievance")
+                else None
+            )
+            if needed is None or effect.get(needed):
+                continue
+            count += 1
+            logger.warning(
+                "submit_debate: %s effect lacks %r; keys sent: %s",
+                kind,
+                needed,
+                sorted(str(k) for k in effect),
+            )
+    return count
+
+
 def parse_submit_debate(
     response: Any,
     alive_agents: list[Agent],
@@ -125,13 +189,7 @@ def parse_submit_debate(
     """
     allowed_words = non_latin_words(allowed_terms)
     by_name = {a.name.lower(): a for a in alive_agents}
-    blocks = [
-        b
-        for b in _as_list(getattr(response, "content", None))
-        if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == DEBATE_TOOL_NAME
-    ]
-    raw = getattr(blocks[0], "input", None) if blocks else None
-    payload = raw if isinstance(raw, dict) else {}
+    payload = _debate_payload(response)
 
     per_agent_text: dict[UUID, str] = {}
     for reaction in _as_list(payload.get("reactions")):

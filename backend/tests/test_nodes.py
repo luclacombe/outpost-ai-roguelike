@@ -395,25 +395,45 @@ def _option(i: int, advisor: Agent, **overrides: Any) -> dict[str, Any]:
 
 
 def _debate_input(
-    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
+    colony: ColonyState,
+    options: list[dict[str, Any]],
+    reaction: str = "ok.",
+    reactions: int | None = None,
 ) -> dict[str, Any]:
-    reactions = [{"advisor": colony.agents[0].name, "line": reaction}]
-    return {"reactions": reactions, "options": options}
+    """`submit_debate` input; `reactions` is how many advisors react (default all).
+
+    The first advisor says `reaction`, the rest say "ok.".
+    """
+    count = len(colony.agents) if reactions is None else reactions
+    lines = [
+        {"advisor": a.name, "line": reaction if i == 0 else "ok."}
+        for i, a in enumerate(colony.agents[:count])
+    ]
+    return {"reactions": lines, "options": options}
 
 
 def _debate_tool_use(
-    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
+    colony: ColonyState,
+    options: list[dict[str, Any]],
+    reaction: str = "ok.",
+    reactions: int | None = None,
 ) -> dict[str, Any]:
-    return {"name": "submit_debate", "input": _debate_input(colony, options, reaction)}
+    return {
+        "name": "submit_debate",
+        "input": _debate_input(colony, options, reaction, reactions),
+    }
 
 
 def _debate_message(
-    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
+    colony: ColonyState,
+    options: list[dict[str, Any]],
+    reaction: str = "ok.",
+    reactions: int | None = None,
 ) -> Any:
     from anthropic.types import Message
 
     return Message.model_validate(
-        fake_haiku_response(tool_uses=[_debate_tool_use(colony, options, reaction)])
+        fake_haiku_response(tool_uses=[_debate_tool_use(colony, options, reaction, reactions)])
     )
 
 
@@ -690,11 +710,99 @@ async def test_debate_retry_still_fires_on_fewer_than_three_valid(monkeypatch):
 
     assert len(fake.calls) == 2
     assert all(c["tool_choice"] == {"type": "tool", "name": "submit_debate"} for c in fake.calls)
-    assert "Call submit_debate once with exactly 3 options" in fake.calls[1]["user"]
-    assert "2 valid option(s)" in fake.calls[1]["user"]
+    assert (
+        "Call submit_debate once with one reaction from every living advisor"
+        in (fake.calls[1]["user"])
+    )
+    assert "2 of 3 usable options and 4 of 4 advisor reactions" in fake.calls[1]["user"]
     assert len(result["debate_tool_calls"]) == 3
     assert result["turn_meta"]["debate_retried"] is True
     assert result["turn_meta"]["debate_tool_choice"] == "forced"
+
+
+async def test_debate_retries_when_reactions_missing(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_options(colony), reaction="first", reactions=0)
+    second = _debate_message(colony, _valid_options(colony), reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert "0 of 4 advisor reactions" in fake.calls[1]["user"]
+    assert len(result["debate_per_agent_text"]) == 4
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
+    assert result["turn_meta"]["debate_retried"] is True
+    assert result["turn_meta"]["debate_retry_reasons"] == ["reactions"]
+
+
+async def test_debate_retry_reasons_list_options_before_reactions(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_options(colony, n=1), reactions=2)
+    second = _debate_message(colony, _valid_options(colony))
+    _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert result["turn_meta"]["debate_retry_reasons"] == ["options", "reactions"]
+
+
+async def test_debate_keeps_first_on_tie(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_options(colony), reaction="first", reactions=2)
+    second = _debate_message(colony, _valid_options(colony), reaction="second", reactions=2)
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert len(result["debate_per_agent_text"]) == 2
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "first"
+    assert result["turn_meta"]["debate_retried"] is True
+
+
+async def test_debate_retry_note_names_incomplete_effects(monkeypatch):
+    colony = make_colony_state()
+    bad = [
+        _option(i, colony.agents[i], effects=[{"kind": "resource", "delta": -5}]) for i in range(3)
+    ]
+    first = _debate_message(colony, bad)
+    second = _debate_message(colony, _valid_options(colony))
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    user = fake.calls[1]["user"]
+    assert "0 of 3 usable options" in user
+    assert "3 effect(s) lacked a required field" in user
+    assert 'every resource effect needs "resource"' in user
+    assert "retry_note" in user and "lacked" not in fake.calls[0]["user"]
+    assert fake.calls[1]["system"] == fake.calls[0]["system"]
+    assert fake.calls[1]["tools"] == fake.calls[0]["tools"]
+    assert result["turn_meta"]["debate_retry_reasons"] == ["options"]
+    assert len(result["debate_tool_calls"]) == 3
+
+
+async def test_debate_no_retry_when_complete(monkeypatch):
+    colony = make_colony_state()
+    fake = _install_fake(monkeypatch, [_debate_message(colony, _valid_options(colony))])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 1
+    assert "lacked" not in fake.calls[0]["user"]
+    assert result["turn_meta"]["debate_retried"] is False
+    assert result["turn_meta"]["debate_retry_reasons"] == []
+
+
+def test_debate_retry_note_omits_the_effect_sentence_when_none_incomplete():
+    from app.agent.nodes import _debate_retry_note
+
+    note = _debate_retry_note(2, 3, 4, 0)
+    assert "2 of 3 usable options and 3 of 4 advisor reactions" in note
+    assert "lacked" not in note
+    assert note.startswith("\n\n<retry_note>") and note.endswith("</retry_note>")
 
 
 async def test_debate_retry_reuses_the_auto_fallback_decision(monkeypatch):
@@ -872,7 +980,10 @@ async def test_debate_keeps_reaction_quoting_the_events_own_foreign_word(monkeyp
         {"advisor": colony.agents[1].name, "line": "Stray \u983b\u9053 noise."},
     ]
     body = {"reactions": reactions, "options": _valid_options(colony)}
-    _install_fake(monkeypatch, [_message_from_input("submit_debate", body)])
+    # Two of four advisors react, so the debate retries once; the retry repeats
+    # the reply and the tie keeps the first.
+    message = _message_from_input("submit_debate", body)
+    _install_fake(monkeypatch, [message, message])
     state = _debate_state(colony)
     state["current_event"] = state["current_event"].model_copy(
         update={"body": "A sealed box marked СЕКРЕТНО."}
