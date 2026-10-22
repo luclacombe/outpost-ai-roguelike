@@ -9,7 +9,14 @@ from uuid import UUID
 
 import pytest
 
-from app.agent.debate_format import DEBATE_TOOL_NAME, build_debate_tool, parse_submit_debate
+from app.agent.debate_format import (
+    DEBATE_TOOL_NAME,
+    OFFTURN_TOOL_NAME,
+    build_debate_tool,
+    build_offturn_tool,
+    parse_submit_debate,
+    parse_submit_offturn,
+)
 from app.agent.prepare import prepare_proposals
 from app.agent.prompts import DebateParse
 from app.game.generator import generate_run
@@ -212,3 +219,109 @@ def test_parse_survives_non_dict_payload_and_missing_content() -> None:
     block = SimpleNamespace(type="tool_use", name=DEBATE_TOOL_NAME, input="not a dict")
     assert parse_submit_debate(SimpleNamespace(content=[block]), ROSTER) == DebateParse()
     assert parse_submit_debate(SimpleNamespace(content=None), ROSTER) == DebateParse()
+
+
+# --- submit_offturn ---------------------------------------------------------
+
+DECISION = "11111111-2222-3333-4444-555555555555"
+
+
+def _offturn_response(actions: Any) -> SimpleNamespace:
+    block = SimpleNamespace(type="tool_use", name=OFFTURN_TOOL_NAME, input={"actions": actions})
+    return SimpleNamespace(content=[block])
+
+
+def test_offturn_schema_enums() -> None:
+    tool = build_offturn_tool(ROSTER)
+    assert tool["name"] == "submit_offturn"
+    actions = tool["input_schema"]["properties"]["actions"]
+    assert actions["maxItems"] == 8
+    item = actions["items"]
+    assert item["required"] == ["advisor", "kind"]
+    props = item["properties"]
+    assert props["advisor"]["enum"] == NAMES
+    assert props["target"]["enum"] == NAMES
+    assert props["kind"]["enum"] == [
+        "remember",
+        "adjust_own_grievance",
+        "speak_to_agent",
+        "adjust_relationship",
+        "back_leader",
+        "initiate_coup",
+    ]
+    assert props["text"]["type"] == "string"
+    assert props["delta"]["type"] == "integer"
+
+
+def test_offturn_schema_carries_field_descriptions() -> None:
+    tool = build_offturn_tool(ROSTER)
+    assert tool["description"]
+    props = tool["input_schema"]["properties"]["actions"]["items"]["properties"]
+    for field in ("advisor", "kind", "text", "target", "delta"):
+        assert props[field]["description"], field
+
+
+def test_offturn_maps_each_kind() -> None:
+    actions = [
+        {"advisor": "Vera", "kind": "remember", "text": "x" * 250},
+        {"advisor": "Omar", "kind": "adjust_own_grievance", "delta": 2, "text": "Ignored"},
+        {"advisor": "Lina", "kind": "adjust_own_grievance", "delta": -1},
+        {"advisor": "Kai", "kind": "speak_to_agent", "target": "vera", "text": "y" * 400},
+        {"advisor": "Vera", "kind": "adjust_relationship", "target": "Omar", "delta": -2},
+        {"advisor": "Omar", "kind": "back_leader", "delta": 9},
+        {"advisor": "Lina", "kind": "back_leader"},
+        {"advisor": "Kai", "kind": "initiate_coup"},
+    ]
+    calls = parse_submit_offturn(_offturn_response(actions), ROSTER, DECISION)
+    assert [(c.name, c.caller_id) for c in calls] == [
+        ("remember", VERA.id),
+        ("adjust_own_grievance", OMAR.id),
+        ("adjust_own_grievance", LINA.id),
+        ("speak_to_agent", KAI.id),
+        ("adjust_relationship", VERA.id),
+        ("back_leader", OMAR.id),
+        ("back_leader", LINA.id),
+        ("initiate_coup", KAI.id),
+    ]
+    assert calls[0].args == {"fact": "x" * 200}
+    assert calls[1].args == {"delta": 2, "reason": "Ignored"}
+    assert calls[2].args == {"delta": -1, "reason": "off-turn"}
+    assert calls[3].args == {"target_id": str(VERA.id), "message": "y" * 300}
+    assert calls[4].args == {"target_id": str(OMAR.id), "delta": -2}
+    assert calls[5].args == {"decision_id": DECISION, "legitimacy_bonus": 5}
+    assert calls[6].args == {"decision_id": DECISION, "legitimacy_bonus": 1}
+    assert calls[7].args == {}
+
+
+def test_offturn_empty_list_gives_no_calls() -> None:
+    assert parse_submit_offturn(_offturn_response([]), ROSTER, DECISION) == []
+    assert parse_submit_offturn(SimpleNamespace(content=[]), ROSTER, DECISION) == []
+    assert parse_submit_offturn(_offturn_response("nope"), ROSTER, DECISION) == []
+    assert parse_submit_offturn(_offturn_response(["bad", 3, None]), ROSTER, DECISION) == []
+
+
+def test_offturn_skips_unknown_target_and_non_latin_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    actions = [
+        {"advisor": "Ghost", "kind": "remember", "text": "unknown advisor"},
+        {"advisor": "Vera", "kind": "speak_to_agent", "target": "Nobody", "text": "hi"},
+        {"advisor": "Vera", "kind": "speak_to_agent", "text": "no target"},
+        {"advisor": "Vera", "kind": "adjust_relationship", "target": "Nobody", "delta": 1},
+        {"advisor": "Omar", "kind": "remember", "text": "\u4f60\u597d the colony"},
+        {"advisor": "Omar", "kind": "teleport"},
+        {"advisor": "Kai", "kind": "remember", "text": "kept"},
+    ]
+    with caplog.at_level(logging.WARNING, logger="app.agent.debate_format"):
+        calls = parse_submit_offturn(_offturn_response(actions), ROSTER, DECISION)
+    assert [(c.name, c.args) for c in calls] == [("remember", {"fact": "kept"})]
+    assert "submit_offturn" in caplog.text
+
+
+def test_offturn_back_leader_needs_decision_id() -> None:
+    actions = [
+        {"advisor": "Omar", "kind": "back_leader", "delta": 2},
+        {"advisor": "Kai", "kind": "remember", "text": "kept"},
+    ]
+    calls = parse_submit_offturn(_offturn_response(actions), ROSTER, None)
+    assert [c.name for c in calls] == ["remember"]

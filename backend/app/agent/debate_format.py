@@ -169,3 +169,145 @@ def parse_submit_debate(response: Any, alive_agents: list[Agent]) -> DebateParse
             )
         )
     return DebateParse(per_agent_text=per_agent_text, tool_calls=tool_calls)
+
+
+OFFTURN_TOOL_NAME = "submit_offturn"
+_OFFTURN_KINDS = [
+    "remember",
+    "adjust_own_grievance",
+    "speak_to_agent",
+    "adjust_relationship",
+    "back_leader",
+    "initiate_coup",
+]
+_OFFTURN_MAX_ACTIONS = 8
+_FACT_MAX = 200
+_MESSAGE_MAX = 300
+
+
+def build_offturn_tool(alive_agents: list[Agent]) -> dict[str, Any]:
+    """Tool schema for the autonomous phase: zero or more advisor actions in one call."""
+    names = [a.name for a in alive_agents]
+    action: dict[str, Any] = {
+        "type": "object",
+        "required": ["advisor", "kind"],
+        "properties": {
+            "advisor": {
+                "type": "string",
+                "enum": names,
+                "description": "The advisor taking the action.",
+            },
+            "kind": {
+                "type": "string",
+                "enum": list(_OFFTURN_KINDS),
+                "description": "Which off-turn action.",
+            },
+            "text": {
+                "type": "string",
+                "description": (
+                    "The memory fact for remember, the private message for speak_to_agent, "
+                    "or the reason for adjust_own_grievance."
+                ),
+            },
+            "target": {
+                "type": "string",
+                "enum": names,
+                "description": "The other advisor, for speak_to_agent and adjust_relationship.",
+            },
+            "delta": {
+                "type": "integer",
+                "description": (
+                    "The grievance or relationship change, from -3 to 3, or the legitimacy "
+                    "bonus from 1 to 5 for back_leader."
+                ),
+            },
+        },
+    }
+    return {
+        "name": OFFTURN_TOOL_NAME,
+        "description": (
+            "Submit this off-turn's advisor actions, one action per entry. "
+            "An empty list is fine when nobody acts."
+        ),
+        "input_schema": {
+            "type": "object",
+            "required": ["actions"],
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "maxItems": _OFFTURN_MAX_ACTIONS,
+                    "items": action,
+                },
+            },
+        },
+    }
+
+
+def _offturn_args(
+    kind: str,
+    item: dict[str, Any],
+    by_name: dict[str, Agent],
+    decision_id: str | None,
+) -> dict[str, Any] | None:
+    """Engine tool args for one action, or None when the action must be skipped."""
+    text = str(item.get("text") or "")
+    delta = item.get("delta")
+    if kind == "remember":
+        return {"fact": text[:_FACT_MAX]}
+    if kind == "adjust_own_grievance":
+        return {"delta": delta, "reason": text[:_FACT_MAX] or "off-turn"}
+    if kind == "initiate_coup":
+        return {}
+    if kind == "back_leader":
+        if decision_id is None:
+            return None
+        bonus = delta if isinstance(delta, int) and not isinstance(delta, bool) else 1
+        return {"decision_id": decision_id, "legitimacy_bonus": min(max(bonus or 1, 1), 5)}
+    if kind in ("speak_to_agent", "adjust_relationship"):
+        target = by_name.get(str(item.get("target", "")).lower())
+        if target is None:
+            return None
+        if kind == "speak_to_agent":
+            return {"target_id": str(target.id), "message": text[:_MESSAGE_MAX]}
+        return {"target_id": str(target.id), "delta": delta}
+    return None
+
+
+def parse_submit_offturn(
+    response: Any, alive_agents: list[Agent], decision_id: str | None
+) -> list[ToolCall]:
+    """Map the first `submit_offturn` tool_use block to engine `ToolCall`s.
+
+    Skipped with a warning: unknown advisor or kind, a missing or unknown target
+    where one is needed, `back_leader` without a decision id, and text with
+    non-Latin letters. A response without the tool call, or with a non-list
+    `actions`, parses to no calls. Never raises on malformed input.
+    """
+    by_name = {a.name.lower(): a for a in alive_agents}
+    blocks = [
+        b
+        for b in _as_list(getattr(response, "content", None))
+        if getattr(b, "type", "") == "tool_use" and getattr(b, "name", "") == OFFTURN_TOOL_NAME
+    ]
+    payload = blocks[0].input if blocks and isinstance(blocks[0].input, dict) else {}
+
+    calls: list[ToolCall] = []
+    for item in _as_list(payload.get("actions")):
+        if not isinstance(item, dict):
+            continue
+        agent = by_name.get(str(item.get("advisor", "")).lower())
+        kind = str(item.get("kind", ""))
+        if agent is None or kind not in _OFFTURN_KINDS:
+            logger.warning("submit_offturn: dropped action %r from %r", kind, item.get("advisor"))
+            continue
+        if has_non_latin(str(item.get("text") or "")):
+            logger.warning("submit_offturn: dropped non-Latin %s from %s", kind, agent.name)
+            continue
+        args = _offturn_args(kind, item, by_name, decision_id)
+        if args is None:
+            logger.warning(
+                "submit_offturn: skipped %s from %s (missing target/decision)", kind, agent.name
+            )
+            continue
+        calls.append(ToolCall(name=kind, caller_id=agent.id, args=args))
+    return calls
