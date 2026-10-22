@@ -88,7 +88,11 @@ def build_judge_inputs(
     Runs the calls through `prepare_proposals` exactly as the `apply_tool_calls`
     node does, so the judges get the surfaced triple (same normalized names,
     same selection) with the engine-rendered `effects_preview`. Any
-    `effects_preview` the LLM put in its raw args is ignored.
+    `effects_preview` the LLM put in its raw args is ignored. Lines are passed
+    through uncut: the judges see exactly what the player sees.
+
+    The harness does not run production's single debate retry, so seeds scored
+    0 for a short triple overstate production's short-triple rate.
     """
     setting = setting_loader.load_setting(state.setting_id)
     prepared = prepare_proposals(state, debate_tool_calls, setting, extra_texts)
@@ -110,7 +114,7 @@ def build_judge_inputs(
                 },
                 name=p.name[:80],
                 description=p.description[:200],
-                effects_preview=list(p.effects_preview)[:5],
+                effects_preview=list(p.effects_preview),
                 flavor=p.flavor.value,
             )
         )
@@ -319,6 +323,41 @@ def test_judge_inputs_use_engine_rendered_effects_not_llm_preview():
     assert all(p.effects_preview for p in for_judge)
 
 
+def test_judge_inputs_keep_every_rendered_line_uncut():
+    seed = _load_seeds(iterating_only=True)[0]
+    state = ColonyState.model_validate(seed["colony_state"])
+    setting = setting_loader.load_setting(state.setting_id)
+    agents = [a for a in state.agents if a.is_alive]
+    nested = [
+        {"name": "modify_resource", "args": {"resource_id": r.id, "delta": -1, "reason": "r"}}
+        for r in setting.resources
+    ] + [
+        {
+            "name": "adjust_grievance",
+            "args": {"target_id": str(agents[1].id), "delta": 1, "reason": "r"},
+        }
+    ]
+    assert len(setting.resources) >= 5
+    call = ToolCall(
+        name="propose_action",
+        caller_id=agents[0].id,
+        args={
+            "name": "Everything at once",
+            "description": "d",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": nested,
+        },
+    )
+    prepared = prepare_proposals(state, [call], setting)
+    (rendered,) = prepared.proposals
+    for_judge, dicts = build_judge_inputs(state, [call])
+
+    assert len(rendered.effects_preview) > 5
+    assert any("grievance" in line for line in rendered.effects_preview)
+    assert for_judge[0].effects_preview == rendered.effects_preview
+    assert dicts[0]["effects_preview"] == rendered.effects_preview
+
+
 def test_judge_inputs_fewer_than_three_surfaced_when_proposals_missing():
     seed = _load_seeds(iterating_only=True)[0]
     state = ColonyState.model_validate(seed["colony_state"])
@@ -328,5 +367,8 @@ def test_judge_inputs_fewer_than_three_surfaced_when_proposals_missing():
         caller_id=agent.id,
         args={"name": "n", "description": "d", "flavor": "DOMINANT", "tool_calls_on_pick": []},
     )
-    for_judge, _ = build_judge_inputs(state, [bad])
-    assert len(for_judge) != 3
+    for_judge, dicts = build_judge_inputs(state, [bad])
+    # A fully-stripped option is still surfaced (as no_effect), never dropped.
+    assert len(for_judge) == 1
+    assert for_judge[0].effects_preview == ["no immediate effect"]
+    assert dicts[0]["effects_preview"] == ["no immediate effect"]
