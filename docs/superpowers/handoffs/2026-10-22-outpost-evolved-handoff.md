@@ -140,7 +140,7 @@ Written at the end of a long session so the next session loses nothing. Read thi
 
 ## 5. In flight at handoff: the full-game test
 
-**Done later on 2026-10-22.** V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`) chosen for debate, off-turn and narration, after one ruling on the breakage criterion. Report: `/Users/luclacombe/Documents/Outpost/docs/playtest/2026-10-22-fullgame-eval/report.md` (local). Design doc W1b and §14 updated, `.env` pin restored. Steps 1 to 5 of §6 are complete; the defects F1 to F4 in the report come before finishing the branch.
+**Done later on 2026-10-22.** V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`) chosen for debate, off-turn and narration, after one ruling on the breakage criterion. Report: `/Users/luclacombe/Documents/Outpost/docs/playtest/2026-10-22-fullgame-eval/report.md` (local). Design doc W1b and §14 updated, `.env` pin restored. Steps 1 to 5 of §6 are complete. **2026-10-23:** F2 to F4 fixed and confirmed by an 18-game sweep; F1 halved (2.6% of shown options still have no effect), with the remaining fix a schema reshape (report §8). Then finish the branch.
 
 - **Goal:** decide the debate and narration model on whole games, not single turns.
 - **Setup:** four sets of 18 games each (3 settings × 3 policies × 2 seeds, all sets on the same seeds), run in parallel from this worktree's `backend/` against local Postgres.
