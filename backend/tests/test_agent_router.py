@@ -154,51 +154,41 @@ async def _delete_auth_user(user_id: UUID) -> None:
 
 
 def _debate_haiku_body(agents) -> dict:
-    """Three-proposal debate response shaped to survive parse_debate_response."""
-    xml = "".join(f'<agent name="{a.name}">Reacts.</agent>' for a in agents)
-    tool_uses = [
+    """Three-option `submit_debate` response (setting-agnostic health effect)."""
+    options = [
         {
-            "id": f"toolu_{i}",
-            "name": "propose_action",
-            "input": {
-                "caller_agent_id": str(agents[i % len(agents)].id),
-                "name": f"Plan {i}",
-                "description": f"Option {i}.",
-                "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
-                # Setting-agnostic nested effect (the setting is picked per
-                # user): without it the proposal classes as no_effect and the
-                # debate retries.
-                "tool_calls_on_pick": [
-                    {
-                        "name": "modify_health",
-                        "args": {"target_id": "player", "delta": -1, "reason": "strain"},
-                    }
-                ],
-            },
+            "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
+            "advisor": agents[i % len(agents)].name,
+            "title": f"Plan {i}",
+            "description": f"Option {i}.",
+            # Setting-agnostic effect (the setting is picked per user):
+            # without one the proposal classes as no_effect and the debate
+            # retries.
+            "effects": [{"kind": "health", "target": "player", "delta": -1}],
         }
         for i in range(3)
     ]
-    return fake_haiku_response(text_xml=xml, tool_uses=tool_uses)
+    reactions = [{"advisor": a.name, "line": "Reacts."} for a in agents]
+    return fake_haiku_response(
+        tool_uses=[{"name": "submit_debate", "input": {"reactions": reactions, "options": options}}]
+    )
+
+
+_EMPTY_OFFTURN = {"name": "submit_offturn", "input": {"actions": []}}
 
 
 def _autonomous_haiku_body_with_tool(agents) -> dict:
-    """Autonomous response with one `remember` call so we can assert the
+    """Autonomous response with one `remember` action so we can assert the
     `autonomous_action` SSE event's shape (and the caller_agent_id strip).
 
-    Schema is strict: `fact` is the required string; `text` would be
-    rejected by the validator and the SSE event would never fire.
+    The parser maps `text` to the engine's `fact` arg and sets the caller.
     """
-    tool_uses = [
-        {
-            "id": "toolu_autonomous_0",
-            "name": "remember",
-            "input": {
-                "caller_agent_id": str(agents[0].id),
-                "fact": "This should be remembered.",
-            },
-        }
+    actions = [
+        {"advisor": agents[0].name, "kind": "remember", "text": "This should be remembered."}
     ]
-    return fake_haiku_response(text_xml="", tool_uses=tool_uses)
+    return fake_haiku_response(
+        tool_uses=[{"name": "submit_offturn", "input": {"actions": actions}}]
+    )
 
 
 def _dsn() -> str:
@@ -604,7 +594,7 @@ async def test_decide_emits_turn_advanced_and_next_proposals(
     # 4 calls: debate(turn1), autonomous(turn1), narration(turn1), debate(turn2).
     responses = [
         Response(200, json=_debate_haiku_body(colony.agents)),
-        Response(200, json=fake_haiku_response(text_xml="")),
+        Response(200, json=fake_haiku_response(tool_uses=[_EMPTY_OFFTURN])),
         Response(200, json=fake_sonnet_response("End of turn 1.")),
         Response(200, json=_debate_haiku_body(colony.agents)),
     ]
@@ -672,7 +662,7 @@ async def test_turn_after_decide_emits_cached_agent_spoke(persisted_game, graph_
     # then the /turn-2 short-circuit makes no Anthropic calls.
     responses = [
         Response(200, json=_debate_haiku_body(colony.agents)),
-        Response(200, json=fake_haiku_response(text_xml="")),
+        Response(200, json=fake_haiku_response(tool_uses=[_EMPTY_OFFTURN])),
         Response(200, json=fake_sonnet_response("End of turn 1.")),
         Response(200, json=_debate_haiku_body(colony.agents)),
     ]
@@ -729,7 +719,7 @@ async def test_decide_emits_run_over_on_final_turn(persisted_game, graph_postgre
     # advance_turn the graph ends, no next-turn debate.
     responses = [
         Response(200, json=_debate_haiku_body(colony.agents)),
-        Response(200, json=fake_haiku_response(text_xml="")),
+        Response(200, json=fake_haiku_response(tool_uses=[_EMPTY_OFFTURN])),
         Response(200, json=fake_sonnet_response("Final turn.")),
     ]
     respx.post(_ANTHROPIC_URL).mock(side_effect=responses)

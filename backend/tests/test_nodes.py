@@ -27,7 +27,6 @@ from sqlalchemy import text
 from app.agent.anthropic_client import cost_cents_of
 from app.agent.constants import MAX_COST_CENTS_PER_TURN, MODEL_HAIKU
 from app.agent.nodes import (
-    AUTONOMOUS_TOOL_NAMES,
     advance_turn,
     agent_debate,
     apply_tool_calls,
@@ -37,6 +36,7 @@ from app.agent.nodes import (
     narrate_turn,
     resolve,
 )
+from app.config import settings
 from app.database import async_session_factory
 from app.game.schemas import (
     Agent,
@@ -53,7 +53,6 @@ from app.game.schemas import (
     SeedPayload,
     ToolCall,
 )
-from app.game.tools import AGENT_TOOL_SCHEMAS
 from tests.conftest import fake_haiku_response, fake_sonnet_response
 
 # The AsyncAnthropic SDK hits this URL; verified via the probe recommended
@@ -257,11 +256,10 @@ async def test_agent_debate_makes_exactly_one_anthropic_call():
         origin=EventOrigin.NATURAL,
     )
 
-    alive = [a for a in colony.agents if a.is_alive]
-    xml = "".join(f'<agent name="{a.name}">She nods.</agent>' for a in alive)
     route = respx.post(_ANTHROPIC_URL).mock(
         return_value=Response(
-            200, json=fake_haiku_response(text_xml=xml, tool_uses=_valid_tool_uses(colony))
+            200,
+            json=fake_haiku_response(tool_uses=[_debate_tool_use(colony, _valid_options(colony))]),
         )
     )
 
@@ -297,8 +295,7 @@ async def test_agent_debate_accumulates_cost_cents():
         return_value=Response(
             200,
             json=fake_haiku_response(
-                text_xml='<agent name="Nadia">ok.</agent>',
-                tool_uses=_valid_tool_uses(colony),
+                tool_uses=[_debate_tool_use(colony, _valid_options(colony))],
                 usage_overrides=usage_fields,
             ),
         )
@@ -343,8 +340,7 @@ async def test_agent_debate_cache_control_layout():
         return_value=Response(
             200,
             json=fake_haiku_response(
-                text_xml='<agent name="Nadia">ok.</agent>',
-                tool_uses=_valid_tool_uses(colony),
+                tool_uses=[_debate_tool_use(colony, _valid_options(colony))],
             ),
         )
     )
@@ -385,51 +381,89 @@ async def test_agent_debate_cache_control_layout():
 _FLAVORS = ("DOMINANT", "MORAL", "WILDCARD")
 
 
-def _proposal_tool_use(i: int, caller: Agent, **overrides: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "name": f"Plan {i}",
-        "description": f"Option {i}.",
+def _option(i: int, advisor: Agent, **overrides: Any) -> dict[str, Any]:
+    """One `submit_debate` option (the flat shape: no nested tool calls)."""
+    option: dict[str, Any] = {
         "flavor": _FLAVORS[i % 3],
-        "effects_preview": ["-5 fuel"],
-        "tool_calls_on_pick": [
-            {
-                "name": "modify_resource",
-                "args": {"resource_id": "fuel", "delta": -5, "reason": "burn"},
-            }
-        ],
-        "caller_agent_id": str(caller.id),
+        "advisor": advisor.name,
+        "title": f"Plan {i}",
+        "description": f"Option {i}.",
+        "effects": [{"kind": "resource", "resource": "fuel", "delta": -5}],
     }
-    payload.update(overrides)
-    return {"name": "propose_action", "input": payload}
+    option.update(overrides)
+    return option
+
+
+def _debate_input(
+    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
+) -> dict[str, Any]:
+    reactions = [{"advisor": colony.agents[0].name, "line": reaction}]
+    return {"reactions": reactions, "options": options}
+
+
+def _debate_tool_use(
+    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
+) -> dict[str, Any]:
+    return {"name": "submit_debate", "input": _debate_input(colony, options, reaction)}
 
 
 def _debate_message(
-    colony: ColonyState, tool_uses: list[dict[str, Any]], reaction: str = "ok."
+    colony: ColonyState, options: list[dict[str, Any]], reaction: str = "ok."
 ) -> Any:
     from anthropic.types import Message
 
-    xml = f'<agent name="{colony.agents[0].name}">{reaction}</agent>'
-    return Message.model_validate(fake_haiku_response(text_xml=xml, tool_uses=tool_uses))
+    return Message.model_validate(
+        fake_haiku_response(tool_uses=[_debate_tool_use(colony, options, reaction)])
+    )
 
 
-def _valid_tool_uses(colony: ColonyState, n: int = 3) -> list[dict[str, Any]]:
-    return [_proposal_tool_use(i, colony.agents[i % len(colony.agents)]) for i in range(n)]
+_OFFTURN_EMPTY: dict[str, Any] = {"name": "submit_offturn", "input": {"actions": []}}
+
+
+def _offturn_message(actions: list[dict[str, Any]]) -> Any:
+    from anthropic.types import Message
+
+    return Message.model_validate(
+        fake_haiku_response(tool_uses=[{"name": "submit_offturn", "input": {"actions": actions}}])
+    )
+
+
+def _valid_options(colony: ColonyState, n: int = 3) -> list[dict[str, Any]]:
+    return [_option(i, colony.agents[i % len(colony.agents)]) for i in range(n)]
 
 
 class _FakeCallFast:
-    """Stands in for `nodes.call_fast`; returns queued responses in order."""
+    """Stands in for `nodes.call_fast`; plays queued items in order.
+
+    An item that is an Exception instance is raised (and still recorded), so
+    a test can queue a provider rejection before the real response.
+    """
 
     def __init__(self, responses: list[Any]) -> None:
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
     async def __call__(
-        self, system_blocks: list, user_message: str, tools: Any = None, max_tokens: int = 2000
+        self,
+        system_blocks: list,
+        user_message: str,
+        tools: Any = None,
+        max_tokens: int = 2000,
+        tool_choice: Any = None,
     ) -> Any:
         self.calls.append(
-            {"system": system_blocks, "user": user_message, "tools": tools, "max": max_tokens}
+            {
+                "system": system_blocks,
+                "user": user_message,
+                "tools": tools,
+                "max": max_tokens,
+                "tool_choice": tool_choice,
+            }
         )
-        return self._responses.pop(0)
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 def _debate_state(colony: ColonyState, cost: float = 0.0) -> dict[str, Any]:
@@ -454,7 +488,7 @@ def _install_fake(monkeypatch: pytest.MonkeyPatch, responses: list[Any]) -> _Fak
 
 async def test_agent_debate_no_retry_when_three_valid(monkeypatch):
     colony = make_colony_state()
-    first = _debate_message(colony, _valid_tool_uses(colony))
+    first = _debate_message(colony, _valid_options(colony))
     fake = _install_fake(monkeypatch, [first])
 
     result = await agent_debate(_debate_state(colony))
@@ -468,7 +502,7 @@ async def test_agent_debate_no_retry_when_three_valid(monkeypatch):
 async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
     colony = make_colony_state()
     first = _debate_message(colony, [], reaction="first")
-    second = _debate_message(colony, _valid_tool_uses(colony), reaction="second")
+    second = _debate_message(colony, _valid_options(colony), reaction="second")
     fake = _install_fake(monkeypatch, [first, second])
 
     result = await agent_debate(_debate_state(colony, cost=1.0))
@@ -483,7 +517,7 @@ async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
 
 async def test_agent_debate_keeps_first_when_retry_is_not_better(monkeypatch):
     colony = make_colony_state()
-    first = _debate_message(colony, _valid_tool_uses(colony, n=1), reaction="first")
+    first = _debate_message(colony, _valid_options(colony, n=1), reaction="first")
     second = _debate_message(colony, [], reaction="second")
     fake = _install_fake(monkeypatch, [first, second])
 
@@ -508,21 +542,20 @@ async def test_agent_debate_no_retry_when_turn_budget_spent(monkeypatch):
 
 
 async def test_agent_debate_counts_only_validator_accepted_proposals(monkeypatch):
-    """Empty name, empty input and a disallowed nested tool are all rejected
-    by the validator, so 3 propose_action blocks with 1 valid still retry."""
+    """Empty title, empty option and an option with no effects are all rejected
+    by the validator, so 4 options with 1 valid still retry."""
     colony = make_colony_state()
     nadia = colony.agents[0]
-    bad_nested = [{"name": "initiate_coup", "args": {}}]
     first = _debate_message(
         colony,
         [
-            _proposal_tool_use(0, nadia),
-            _proposal_tool_use(1, nadia, name=""),
-            {"name": "propose_action", "input": {}},
-            _proposal_tool_use(2, nadia, tool_calls_on_pick=bad_nested),
+            _option(0, nadia),
+            _option(1, nadia, title=""),
+            {},
+            _option(2, nadia, effects=[]),
         ],
     )
-    second = _debate_message(colony, _valid_tool_uses(colony))
+    second = _debate_message(colony, _valid_options(colony))
     fake = _install_fake(monkeypatch, [first, second])
 
     result = await agent_debate(_debate_state(colony))
@@ -537,7 +570,7 @@ async def test_agent_debate_retry_keeps_cached_prefix(monkeypatch):
     colony = make_colony_state()
     fake = _install_fake(
         monkeypatch,
-        [_debate_message(colony, []), _debate_message(colony, _valid_tool_uses(colony))],
+        [_debate_message(colony, []), _debate_message(colony, _valid_options(colony))],
     )
 
     await agent_debate(_debate_state(colony))
@@ -546,7 +579,268 @@ async def test_agent_debate_retry_keeps_cached_prefix(monkeypatch):
     assert retry["system"] == first["system"]
     assert retry["tools"] == first["tools"]
     assert retry["user"].startswith(first["user"])
-    assert "propose_action" in retry["user"][len(first["user"]) :]
+    assert "submit_debate" in retry["user"][len(first["user"]) :]
+
+
+def _host_error(cls: type[Exception], status: int, message: str) -> Exception:
+    import httpx
+
+    response = httpx.Response(
+        status, request=httpx.Request("POST", "https://openrouter.ai/api/v1/messages")
+    )
+    return cls(message, response=response, body=None)  # type: ignore[call-arg]
+
+
+def _bad_request(message: str) -> Exception:
+    import anthropic
+
+    return _host_error(anthropic.BadRequestError, 400, message)
+
+
+def _not_found(message: str) -> Exception:
+    import anthropic
+
+    return _host_error(anthropic.NotFoundError, 404, message)
+
+
+async def test_debate_forces_submit_debate(monkeypatch):
+    colony = make_colony_state()
+    fake = _install_fake(monkeypatch, [_debate_message(colony, _valid_options(colony))])
+
+    result = await agent_debate(_debate_state(colony))
+
+    (call,) = fake.calls
+    assert [t["name"] for t in call["tools"]] == ["submit_debate"]
+    assert call["tool_choice"] == {"type": "tool", "name": "submit_debate"}
+    assert call["max"] == 2000
+    assert result["turn_meta"]["debate_tool_choice"] == "forced"
+
+
+async def test_debate_tool_names_this_colonys_advisors_and_resources(monkeypatch):
+    colony = make_colony_state()
+    fake = _install_fake(monkeypatch, [_debate_message(colony, _valid_options(colony))])
+
+    await agent_debate(_debate_state(colony))
+
+    schema = fake.calls[0]["tools"][0]["input_schema"]
+    option = schema["properties"]["options"]["items"]["properties"]
+    assert option["advisor"]["enum"] == [a.name for a in colony.agents]
+    effect = option["effects"]["items"]["properties"]
+    assert effect["resource"]["enum"] == list(colony.resources)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _bad_request("tool_choice is not supported"),
+        _bad_request("Tool choice 'tool' unsupported by this model"),
+        _not_found("No endpoints found that support tool use"),
+        _bad_request("tool compat check failed"),
+    ],
+)
+async def test_debate_falls_back_to_auto_when_host_rejects_forced_tool(monkeypatch, error):
+    colony = make_colony_state()
+    fake = _install_fake(monkeypatch, [error, _debate_message(colony, _valid_options(colony))])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert fake.calls[0]["tool_choice"] == {"type": "tool", "name": "submit_debate"}
+    assert fake.calls[1]["tool_choice"] is None
+    assert [t["name"] for t in fake.calls[1]["tools"]] == ["submit_debate"]
+    assert result["turn_meta"]["debate_tool_choice"] == "auto"
+    assert result["turn_meta"]["debate_retried"] is False
+    assert len(result["debate_tool_calls"]) == 3
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _bad_request("context length exceeded"),
+        _not_found("model not found"),
+    ],
+)
+async def test_debate_other_errors_propagate(monkeypatch, error):
+    import anthropic
+
+    colony = make_colony_state()
+    fake = _install_fake(monkeypatch, [error, _debate_message(colony, _valid_options(colony))])
+
+    with pytest.raises(anthropic.APIStatusError):
+        await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 1
+
+
+async def test_debate_retry_still_fires_on_fewer_than_three_valid(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_options(colony, n=2), reaction="first")
+    second = _debate_message(colony, _valid_options(colony, n=3), reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert all(c["tool_choice"] == {"type": "tool", "name": "submit_debate"} for c in fake.calls)
+    assert "Call submit_debate once with exactly 3 options" in fake.calls[1]["user"]
+    assert "2 valid option(s)" in fake.calls[1]["user"]
+    assert len(result["debate_tool_calls"]) == 3
+    assert result["turn_meta"]["debate_retried"] is True
+    assert result["turn_meta"]["debate_tool_choice"] == "forced"
+
+
+async def test_debate_retry_reuses_the_auto_fallback_decision(monkeypatch):
+    """Once the host rejected a forced tool, the retry does not probe again."""
+    colony = make_colony_state()
+    fake = _install_fake(
+        monkeypatch,
+        [
+            _bad_request("tool_choice is not supported"),
+            _debate_message(colony, _valid_options(colony, n=1)),
+            _debate_message(colony, _valid_options(colony, n=3)),
+        ],
+    )
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert [c["tool_choice"] for c in fake.calls] == [
+        {"type": "tool", "name": "submit_debate"},
+        None,
+        None,
+    ]
+    assert result["turn_meta"]["debate_tool_choice"] == "auto"
+    assert result["turn_meta"]["debate_retried"] is True
+
+
+async def test_debate_records_a_usage_record_per_attempt(monkeypatch):
+    colony = make_colony_state()
+    first = _debate_message(colony, [])
+    second = _debate_message(colony, _valid_options(colony))
+    _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(
+        {**_debate_state(colony), "turn_meta": {"keep": 1, "llm_calls": [{"purpose": "x"}]}}
+    )
+
+    meta = result["turn_meta"]
+    assert meta["keep"] == 1
+    assert [c["purpose"] for c in meta["llm_calls"]] == ["x", "debate", "debate"]
+    assert meta["llm_calls"][1]["output_tokens"] == first.usage.output_tokens
+    assert meta["llm_calls"][1]["model"] == MODEL_HAIKU
+
+
+async def test_autonomous_applies_parsed_offturn_actions(monkeypatch):
+    colony = make_colony_state()
+    nadia, marko = colony.agents[0], colony.agents[1]
+    actions = [
+        {"advisor": nadia.name, "kind": "remember", "text": "The pump held."},
+        {"advisor": marko.name, "kind": "remember", "text": "Nadia counted twice."},
+    ]
+    fake = _install_fake(monkeypatch, [_offturn_message(actions)])
+
+    result = await autonomous_actions(
+        {"colony_state": colony, "narration": "x", "cost_cents_this_turn": 0.0}
+    )
+
+    (call,) = fake.calls
+    assert [t["name"] for t in call["tools"]] == ["submit_offturn"]
+    assert call["tool_choice"] == {"type": "tool", "name": "submit_offturn"}
+    assert call["max"] == 1500
+    new = {a.id: a for a in result["colony_state"].agents}
+    assert any("The pump held." in m for m in new[nadia.id].memory)
+    assert any("Nadia counted twice." in m for m in new[marko.id].memory)
+    assert [tc.name for tc in result["autonomous_tool_calls"]] == ["remember", "remember"]
+    assert {tc.phase for tc in result["autonomous_tool_calls"]} == {"autonomy"}
+
+
+async def test_autonomous_back_leader_uses_the_last_resolved_decision(monkeypatch):
+    colony = make_colony_state()
+    resolved = ResolvedEvent(
+        turn_number=1,
+        event=_make_event(),
+        chosen_proposal_id="p_chosen",
+        summary="Hold the line.",
+    )
+    colony = colony.model_copy(update={"event_log": [resolved]})
+    actions = [{"advisor": colony.agents[0].name, "kind": "back_leader", "delta": 2}]
+    _install_fake(monkeypatch, [_offturn_message(actions)])
+
+    result = await autonomous_actions({"colony_state": colony, "cost_cents_this_turn": 0.0})
+
+    (tc,) = [t for t in result["colony_state"].turn_tool_calls if t.name == "back_leader"]
+    assert tc.args["decision_id"] == "p_chosen"
+
+
+async def test_autonomous_back_leader_skipped_without_a_resolved_decision(monkeypatch):
+    colony = make_colony_state()
+    actions = [{"advisor": colony.agents[0].name, "kind": "back_leader", "delta": 2}]
+    _install_fake(monkeypatch, [_offturn_message(actions)])
+
+    result = await autonomous_actions({"colony_state": colony, "cost_cents_this_turn": 0.0})
+
+    assert result["autonomous_tool_calls"] == []
+
+
+async def test_autonomous_falls_back_to_auto_and_merges_turn_meta(monkeypatch):
+    colony = make_colony_state()
+    fake = _install_fake(
+        monkeypatch, [_bad_request("tool_choice is not supported"), _offturn_message([])]
+    )
+
+    result = await autonomous_actions(
+        {
+            "colony_state": colony,
+            "cost_cents_this_turn": 0.0,
+            "turn_meta": {"debate_retried": False, "debate_tool_choice": "forced"},
+        }
+    )
+
+    assert fake.calls[1]["tool_choice"] is None
+    meta = result["turn_meta"]
+    assert meta["debate_retried"] is False
+    # The debate's recorded choice is not overwritten by the autonomous call.
+    assert meta["debate_tool_choice"] == "forced"
+    assert [c["purpose"] for c in meta["llm_calls"]] == ["autonomous"]
+
+
+async def test_llm_calls_recorded_for_debate_autonomous_and_narration(monkeypatch):
+    from anthropic.types import Message
+
+    from app.agent import nodes
+
+    colony = make_colony_state()
+    debate = _debate_message(colony, _valid_options(colony))
+    offturn = _offturn_message(
+        [{"advisor": colony.agents[0].name, "kind": "remember", "text": "x"}]
+    )
+    _install_fake(monkeypatch, [debate, offturn])
+
+    async def fake_narration(system_blocks: list, message: str, max_tokens: int = 1000) -> Any:
+        return Message.model_validate(fake_sonnet_response("The wall held."))
+
+    monkeypatch.setattr(nodes, "call_narration", fake_narration)
+
+    state: dict[str, Any] = {**_debate_state(colony), "turn_meta": {}}
+    state.update(await agent_debate(state))
+    state.update(await apply_tool_calls(state))
+    state["player_choice"] = state["proposals"][0].id
+    state.update(await resolve(state))
+    state.update(await autonomous_actions(state))
+    state.update(await narrate_turn(state))
+
+    meta = state["turn_meta"]
+    assert [c["purpose"] for c in meta["llm_calls"]] == ["debate", "autonomous", "narration"]
+    assert [c["model"] for c in meta["llm_calls"]] == [
+        settings.LLM_MODEL_FAST,
+        settings.LLM_MODEL_FAST,
+        settings.LLM_MODEL_NARRATION,
+    ]
+    assert meta["debate_tool_choice"] == "forced"
+    assert meta["debate_retried"] is False
+    assert meta["narration"]["source"] == "llm"
+    assert sum(c["cost_cents"] for c in meta["llm_calls"]) == pytest.approx(
+        state["cost_cents_this_turn"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -588,8 +882,8 @@ async def test_apply_tool_calls_populates_proposals_from_propose_action():
 
 @respx.mock
 async def test_propose_pick_resolve_pipeline_mutates_resource():
-    """End-to-end (mocked Haiku): debate emits a propose_action whose
-    tool_calls_on_pick carries a modify_resource; player picks it; resource
+    """End-to-end (mocked Haiku): debate emits a submit_debate option whose
+    resource effect becomes a nested modify_resource; player picks it; resource
     moves. Guards the headline 'frozen dashboard' regression from the
     2026-04-30 playtest.
     """
@@ -607,34 +901,19 @@ async def test_propose_pick_resolve_pipeline_mutates_resource():
         origin=EventOrigin.NATURAL,
     )
 
-    # Mock Haiku to emit a single propose_action with nested tool_calls_on_pick.
+    # Mock Haiku to emit a submit_debate with one option carrying a resource effect.
+    burn = _option(
+        0,
+        nadia,
+        title="Burn fuel for warmth",
+        description="Run the heater hard.",
+        effects=[{"kind": "resource", "resource": "fuel", "delta": -10}],
+    )
     respx.post(_ANTHROPIC_URL).mock(
         return_value=Response(
             200,
             json=fake_haiku_response(
-                text_xml=f'<agent name="{nadia.name}">Burn it now.</agent>',
-                tool_uses=[
-                    {
-                        "name": "propose_action",
-                        "input": {
-                            "name": "Burn fuel for warmth",
-                            "description": "Run the heater hard.",
-                            "flavor": "DOMINANT",
-                            "effects_preview": ["-10 fuel"],
-                            "tool_calls_on_pick": [
-                                {
-                                    "name": "modify_resource",
-                                    "args": {
-                                        "resource_id": "fuel",
-                                        "delta": -10,
-                                        "reason": "heater run",
-                                    },
-                                }
-                            ],
-                            "caller_agent_id": str(nadia.id),
-                        },
-                    }
-                ],
+                tool_uses=[_debate_tool_use(colony, [burn], reaction="Burn it now.")]
             ),
         )
     )
@@ -778,11 +1057,8 @@ async def test_resolve_stamps_resolve_phase():
 
 async def test_autonomous_stamps_autonomy_phase(monkeypatch):
     colony = make_colony_state()
-    remember = {
-        "name": "remember",
-        "input": {"fact": "The pump held.", "caller_agent_id": str(colony.agents[0].id)},
-    }
-    _install_fake(monkeypatch, [_debate_message(colony, [remember])])
+    remember = {"advisor": colony.agents[0].name, "kind": "remember", "text": "The pump held."}
+    _install_fake(monkeypatch, [_offturn_message([remember])])
     out = await autonomous_actions(
         {"colony_state": colony, "narration": "x", "cost_cents_this_turn": 0.0}
     )
@@ -795,8 +1071,8 @@ async def test_retry_ignores_discarded_first_attempt_for_duplicate_names(monkeyp
     judged on a state that had absorbed the first attempt, every retry
     proposal would read as a duplicate and the weaker first attempt would win."""
     colony = make_colony_state()
-    first = _debate_message(colony, _valid_tool_uses(colony, n=2), reaction="first")
-    second = _debate_message(colony, _valid_tool_uses(colony, n=3), reaction="second")
+    first = _debate_message(colony, _valid_options(colony, n=2), reaction="first")
+    second = _debate_message(colony, _valid_options(colony, n=3), reaction="second")
     fake = _install_fake(monkeypatch, [first, second])
 
     result = await agent_debate(_debate_state(colony))
@@ -1013,7 +1289,7 @@ async def test_resolve_does_not_schedule_seed_on_low_severity():
 async def test_autonomous_actions_makes_one_anthropic_call():
     colony = make_colony_state()  # 4 alive
     route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+        return_value=Response(200, json=fake_haiku_response(tool_uses=[_OFFTURN_EMPTY]))
     )
 
     state: dict[str, Any] = {
@@ -1054,15 +1330,13 @@ async def test_autonomous_actions_skips_llm_when_no_alive_agents():
 
 
 @respx.mock
-async def test_autonomous_actions_sends_full_tool_list_for_caching():
-    """Autonomous now ships the FULL tool list to keep the cached prefix
-    above Haiku 4.5's 4096-token minimum (a smaller subset dropped below
-    threshold and silently disabled caching). Off-list tools the model
-    might emit are dropped runtime-side; see the next test.
-    """
+async def test_autonomous_actions_forces_submit_offturn():
+    """The autonomous call ships only `submit_offturn` and forces it. The
+    engine tools no longer reach the model, so the whitelist filter below is
+    a second line of defence rather than the only one."""
     colony = make_colony_state()
     route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+        return_value=Response(200, json=fake_haiku_response(tool_uses=[_OFFTURN_EMPTY]))
     )
 
     state: dict[str, Any] = {
@@ -1072,83 +1346,56 @@ async def test_autonomous_actions_sends_full_tool_list_for_caching():
     await autonomous_actions(state)
 
     sent_body = json.loads(route.calls.last.request.content.decode("utf-8"))
-    sent_tool_names = {t["name"] for t in sent_body["tools"]}
-    # Full list — prefix-size matches debate's, so caching shares an entry.
-    assert sent_tool_names == {t["name"] for t in AGENT_TOOL_SCHEMAS}
-    # Sanity: AUTONOMOUS_TOOL_NAMES is still a strict subset (it's the
-    # runtime filter, not the schema payload).
-    assert sent_tool_names >= AUTONOMOUS_TOOL_NAMES
+    assert [t["name"] for t in sent_body["tools"]] == ["submit_offturn"]
+    assert sent_body["tool_choice"] == {"type": "tool", "name": "submit_offturn"}
 
 
-@respx.mock
-async def test_autonomous_actions_drops_debate_only_tool_calls():
-    """Runtime safety net: even if the model emits a propose_action or
-    modify_resource off-turn (now possible because we send the full tool
-    list), the node must drop it before reaching the engine.
-
-    Build a fake response with mixed tool calls and assert the resulting
-    colony_state shows only the autonomous-whitelist effects.
-    """
+async def test_autonomous_actions_ignores_engine_tools_the_model_names(monkeypatch):
+    """A model that puts debate-only tool names in `kind` gets them dropped by
+    the parser; only the introspective action reaches the engine."""
     nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
     colony = make_colony_state(agents=[nadia])
-    nadia_id = str(nadia.id)
+    actions = [
+        {"advisor": "Nadia", "kind": "modify_resource", "delta": -10, "text": "off-turn raid"},
+        {"advisor": "Nadia", "kind": "propose_action", "text": "Burn the records"},
+        {"advisor": "Nadia", "kind": "remember", "text": "Player overruled me on the samples."},
+    ]
+    _install_fake(monkeypatch, [_offturn_message(actions)])
 
-    # Two debate-only tool calls (must be dropped) + one introspective
-    # call (must apply).
-    debate_only_modify = {
-        "id": "tu_drop_1",
-        "name": "modify_resource",
-        "input": {
-            "resource_id": "fuel",
-            "delta": -10,
-            "reason": "off-turn raid",
-            "caller_agent_id": nadia_id,
-        },
-    }
-    debate_only_propose = {
-        "id": "tu_drop_2",
-        "name": "propose_action",
-        "input": {
-            "name": "Burn the records",
-            "description": "Off-turn proposal that should never reach the engine.",
-            "flavor": "WILDCARD",
-            "caller_agent_id": nadia_id,
-        },
-    }
-    introspective_remember = {
-        "id": "tu_keep",
-        "name": "remember",
-        "input": {
-            "fact": "Player overruled me on the samples.",
-            "caller_agent_id": nadia_id,
-        },
-    }
+    result = await autonomous_actions({"colony_state": colony, "cost_cents_this_turn": 0.0})
 
-    respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(
-            200,
-            json=fake_haiku_response(
-                text_xml="",
-                tool_uses=[debate_only_modify, debate_only_propose, introspective_remember],
-            ),
-        )
-    )
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": 0.0,
-    }
-    result = await autonomous_actions(state)
-
-    # The dropped calls never reach the engine — they don't appear in
-    # turn_tool_calls (rejected or applied) on the new colony state.
     new_colony: ColonyState = result["colony_state"]
     logged_names = {tc.name for tc in new_colony.turn_tool_calls}
-    assert "modify_resource" not in logged_names
-    assert "propose_action" not in logged_names
-    # And the introspective call DID apply: Nadia's memory grew by one.
+    assert logged_names == {"remember"}
     nadia_post = next(a for a in new_colony.agents if a.id == nadia.id)
     assert any("Player overruled me" in m for m in nadia_post.memory)
+
+
+async def test_autonomous_actions_filter_drops_off_whitelist_calls(monkeypatch):
+    """Runtime safety net: if the parser ever returned a debate-only call, the
+    AUTONOMOUS_TOOL_NAMES filter must stop it before the engine."""
+    from app.agent import nodes
+
+    nadia = make_alive_agent(name="Nadia", quadrant=Quadrant.ACCOUNTANT)
+    colony = make_colony_state(agents=[nadia])
+    nadia_id = colony.agents[0].id
+    leaked = [
+        ToolCall(
+            name="modify_resource",
+            caller_id=nadia_id,
+            args={"resource_id": "fuel", "delta": -10, "reason": "off-turn raid"},
+        ),
+        ToolCall(name="propose_action", caller_id=nadia_id, args={"name": "Burn the records"}),
+        ToolCall(name="remember", caller_id=nadia_id, args={"fact": "Kept this one."}),
+    ]
+    _install_fake(monkeypatch, [_offturn_message([])])
+    monkeypatch.setattr(nodes, "parse_submit_offturn", lambda *_a, **_k: leaked)
+
+    result = await autonomous_actions({"colony_state": colony, "cost_cents_this_turn": 0.0})
+
+    new_colony: ColonyState = result["colony_state"]
+    assert {tc.name for tc in new_colony.turn_tool_calls} == {"remember"}
+    assert colony.resources["fuel"].value == new_colony.resources["fuel"].value
 
 
 @respx.mock
@@ -1184,7 +1431,7 @@ async def test_autonomous_actions_summary_strips_turn_counter_prose():
     colony = colony.model_copy(update={"event_log": [resolved]})
 
     route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_haiku_response(text_xml=""))
+        return_value=Response(200, json=fake_haiku_response(tool_uses=[_OFFTURN_EMPTY]))
     )
 
     state: dict[str, Any] = {
@@ -1284,6 +1531,8 @@ async def test_narrate_turn_first_pass_success():
         "kept_violations": [],
     }
     assert result["cost_cents_this_turn"] > 1.0
+    assert [c["purpose"] for c in result["turn_meta"]["llm_calls"]] == ["narration"]
+    assert result["turn_meta"]["llm_calls"][0]["model"] == settings.LLM_MODEL_NARRATION
 
 
 @respx.mock
@@ -1310,6 +1559,7 @@ async def test_narrate_turn_retry_then_success():
     meta = result["turn_meta"]["narration"]
     assert meta["source"] == "retry" and meta["attempts"] == 2
     assert "markup" in meta["first_attempt_violations"]
+    assert [c["purpose"] for c in result["turn_meta"]["llm_calls"]] == ["narration", "narration"]
 
 
 @respx.mock

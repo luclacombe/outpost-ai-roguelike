@@ -104,8 +104,12 @@ async def call_fast(
     user_message: str,
     tools: list | None = None,
     max_tokens: int = 2000,
+    tool_choice: dict[str, Any] | None = None,
 ) -> Any:
     """Invoke the fast model (`settings.LLM_MODEL_FAST`).
+
+    `tool_choice` (e.g. `{"type": "tool", "name": "submit_debate"}`) is sent
+    only when given, so default requests stay byte-identical.
 
     `system_blocks` is a list of content blocks (not a plain string) so the
     caller can attach `cache_control: {"type": "ephemeral"}` to personality
@@ -120,6 +124,8 @@ async def call_fast(
     }
     if tools is not None:
         kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
     return await client.messages.create(**kwargs)
 
 

@@ -424,18 +424,21 @@ async def test_openrouter_debate_response_parses_and_costs(monkeypatch):
         "role": "assistant",
         "model": "deepseek/deepseek-v4.1-flash-20260910",
         "content": [
-            {"type": "text", "text": f'<agent name="{nadia.name}">Burn it.</agent>'},
             {
                 "type": "tool_use",
                 "id": "toolu_or_" + uuid4().hex[:8],
-                "name": "propose_action",
+                "name": "submit_debate",
                 "input": {
-                    "name": "Burn fuel",
-                    "description": "Run the heater hard.",
-                    "flavor": "DOMINANT",
-                    "effects_preview": ["-10 fuel"],
-                    "tool_calls_on_pick": [],
-                    "caller_agent_id": str(nadia.id),
+                    "reactions": [{"advisor": nadia.name, "line": "Burn it."}],
+                    "options": [
+                        {
+                            "flavor": "DOMINANT",
+                            "advisor": nadia.name,
+                            "title": "Burn fuel",
+                            "description": "Run the heater hard.",
+                            "effects": [{"kind": "resource", "resource": "fuel", "delta": -10}],
+                        }
+                    ],
                 },
             },
         ],
@@ -458,19 +461,44 @@ async def test_openrouter_debate_response_parses_and_costs(monkeypatch):
         assert sent["model"] == MODEL_DEEPSEEK_V4_1_FLASH
         assert sent["thinking"] == {"type": "disabled"}
         assert sent["system"][-1]["cache_control"] == {"type": "ephemeral"}
+        assert sent["tool_choice"] == {"type": "tool", "name": "submit_debate"}
 
     # Parse path.
     assert result["debate_per_agent_text"][nadia.id] == "Burn it."
     [tc] = result["debate_tool_calls"]
     assert tc.name == "propose_action"
     assert tc.caller_id == nadia.id
-    assert "caller_agent_id" not in tc.args
+    assert tc.args["name"] == "Burn fuel"
+    assert [c["name"] for c in tc.args["tool_calls_on_pick"]] == ["modify_resource"]
 
     # Cost path: DeepSeek V4.1 Flash rates (cents / MTok): 2.7 in, 2.7 cache
     # write, 2.7 cache read, 60 out. Both calls are billed.
     expected = (1_000 * 2.7 + 200 * 2.7 + 4_000 * 2.7 + 500 * 60) / 1_000_000
     assert result["cost_cents_this_turn"] == pytest.approx(2 * expected)
     assert expected > 0
+
+
+@respx.mock
+async def test_call_fast_tool_choice_coexists_with_provider_pinning(monkeypatch):
+    s = _openrouter_settings(
+        monkeypatch,
+        LLM_PROVIDER_ORDER="StreamLake,Novita",
+        LLM_MODEL_FAST=MODEL_DEEPSEEK_V4_PRO,
+    )
+    monkeypatch.setattr(anthropic_client, "settings", s)
+    monkeypatch.setattr(anthropic_client, "client", build_client(s))
+    route = respx.post(_OPENROUTER_URL).mock(
+        return_value=Response(200, json=_text_response(model=MODEL_DEEPSEEK_V4_PRO))
+    )
+    choice = {"type": "tool", "name": "submit_debate"}
+
+    await call_fast([{"type": "text", "text": "sys"}], "hi", tools=[], tool_choice=choice)
+    await call_fast([{"type": "text", "text": "sys"}], "hi", tools=[])
+
+    forced, plain = (json.loads(c.request.content) for c in route.calls)
+    assert forced["tool_choice"] == choice
+    assert forced["provider"] == {"order": ["StreamLake", "Novita"], "allow_fallbacks": False}
+    assert "tool_choice" not in plain
 
 
 def test_cost_cents_of_unknown_model_still_raises():

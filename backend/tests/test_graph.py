@@ -170,36 +170,29 @@ async def persisted_colony() -> AsyncIterator[Any]:
 
 
 def _debate_haiku_body(agents) -> dict:
-    """Craft a Haiku response that produces exactly 3 propose_action calls."""
-    xml = "".join(f'<agent name="{a.name}">Reacts.</agent>' for a in agents)
-    tool_uses = [
+    """Three-option `submit_debate` response (setting-agnostic health effect)."""
+    options = [
         {
-            "id": f"toolu_{i}",
-            "name": "propose_action",
-            "input": {
-                "caller_agent_id": str(agents[i % len(agents)].id),
-                "name": f"Plan {i}",
-                "description": f"Option {i}.",
-                "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
-                # Setting-agnostic nested effect (the setting is picked per
-                # user): without it the proposal classes as no_effect and the
-                # debate retries.
-                "tool_calls_on_pick": [
-                    {
-                        "name": "modify_health",
-                        "args": {"target_id": "player", "delta": -1, "reason": "strain"},
-                    }
-                ],
-            },
+            "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
+            "advisor": agents[i % len(agents)].name,
+            "title": f"Plan {i}",
+            "description": f"Option {i}.",
+            # Setting-agnostic effect (the setting is picked per user):
+            # without one the proposal classes as no_effect and the debate
+            # retries.
+            "effects": [{"kind": "health", "target": "player", "delta": -1}],
         }
         for i in range(3)
     ]
-    return fake_haiku_response(text_xml=xml, tool_uses=tool_uses)
+    reactions = [{"advisor": a.name, "line": "Reacts."} for a in agents]
+    return fake_haiku_response(
+        tool_uses=[{"name": "submit_debate", "input": {"reactions": reactions, "options": options}}]
+    )
 
 
 def _autonomous_haiku_body() -> dict:
-    """Autonomous call returns no tool_uses — keeps the post-pause path simple."""
-    return fake_haiku_response(text_xml="")
+    """Autonomous call submits no actions — keeps the post-pause path simple."""
+    return fake_haiku_response(tool_uses=[{"name": "submit_offturn", "input": {"actions": []}}])
 
 
 def _dsn() -> str:

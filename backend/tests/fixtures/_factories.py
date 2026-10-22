@@ -7,6 +7,7 @@ duplicating call-routing logic.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from httpx import Response
@@ -14,71 +15,68 @@ from httpx import Response
 from tests.conftest import fake_haiku_response, fake_sonnet_response
 
 
+def _tool_choice(payload: str) -> str:
+    """The request's `tool_choice` re-serialised, or "" when absent or unparsable."""
+    try:
+        return json.dumps(json.loads(payload).get("tool_choice") or "")
+    except ValueError:
+        return ""
+
+
 def make_haiku_debate_side_effect():
     """Return a respx side_effect callable that emits debate / autonomous /
     Sonnet bodies based on the request body shape.
 
-    The debate body carries three `propose_action` tool_uses (DOMINANT,
-    MORAL, WILDCARD) plus one XML reaction line per advisor. Each proposal
-    carries a structured `tool_calls_on_pick` so picking the proposal
-    actually moves a resource — without this, simulate_game runs would
-    have a frozen dashboard regardless of policy. Autonomous calls return
-    an empty body (zero tool_uses) and Sonnet narration returns a short-
-    prose body.
+    The debate body is one `submit_debate` tool_use: three options (DOMINANT,
+    MORAL, WILDCARD) plus one reaction per advisor. Each option carries a
+    resource effect so picking it actually moves a resource — without this,
+    simulate_game runs would have a frozen dashboard regardless of policy.
+    Autonomous calls return a `submit_offturn` with no actions and Sonnet
+    narration returns a short-prose body.
 
     Resource ids are scoped to the arctic setting (fuel, food); tests
     using other settings should pass their own factory or extend this
     one. Deltas are modest so a 3-turn run never underflows.
 
-    Identical to `_haiku_debate_factory` in test_eval_pipeline.py but
-    importable so other test modules don't duplicate it.
+    Importable so test modules don't duplicate it.
     """
 
-    # One nested call per flavor. Picked by SimulatedPlayer policy:
+    # One effect per flavor. Picked by SimulatedPlayer policy:
     #   "pragmatic" → DOMINANT (fuel -5)
     #   "moral"     → MORAL    (food +3)
     #   "random"    → any of the three
-    _nested_per_flavor = {
-        "DOMINANT": {
-            "name": "modify_resource",
-            "args": {"resource_id": "fuel", "delta": -5, "reason": "burn fuel"},
-        },
-        "MORAL": {
-            "name": "modify_resource",
-            "args": {"resource_id": "food", "delta": 3, "reason": "share fairly"},
-        },
-        "WILDCARD": {
-            "name": "modify_resource",
-            "args": {"resource_id": "fuel", "delta": -8, "reason": "risky play"},
-        },
+    _effect_per_flavor = {
+        "DOMINANT": {"kind": "resource", "resource": "fuel", "delta": -5},
+        "MORAL": {"kind": "resource", "resource": "food", "delta": 3},
+        "WILDCARD": {"kind": "resource", "resource": "fuel", "delta": -8},
     }
 
     def _make_debate_body() -> dict[str, Any]:
-        xml = (
-            '<agent name="Advisor1">Steady on.</agent>'
-            '<agent name="Advisor2">We must act.</agent>'
-            '<agent name="Advisor3">Risky.</agent>'
-            '<agent name="Advisor4">I object.</agent>'
-        )
         flavors = ["DOMINANT", "MORAL", "WILDCARD"]
-        tool_uses = [
+        options = [
             {
-                "id": f"toolu_d_{i}",
-                "name": "propose_action",
-                "input": {
-                    "name": f"Plan {i}",
-                    "description": f"Option {i}.",
-                    "flavor": flavors[i],
-                    "effects_preview": [],
-                    "tool_calls_on_pick": [_nested_per_flavor[flavors[i]]],
-                },
+                "flavor": flavors[i],
+                "advisor": f"Advisor{i + 1}",
+                "title": f"Plan {i}",
+                "description": f"Option {i}.",
+                "effects": [_effect_per_flavor[flavors[i]]],
             }
             for i in range(3)
         ]
-        return fake_haiku_response(text_xml=xml, tool_uses=tool_uses)
+        reactions = [
+            {"advisor": "Advisor1", "line": "Steady on."},
+            {"advisor": "Advisor2", "line": "We must act."},
+            {"advisor": "Advisor3", "line": "Risky."},
+            {"advisor": "Advisor4", "line": "I object."},
+        ]
+        return fake_haiku_response(
+            tool_uses=[
+                {"name": "submit_debate", "input": {"reactions": reactions, "options": options}}
+            ]
+        )
 
     def _make_autonomous_body() -> dict[str, Any]:
-        return fake_haiku_response(text_xml="")
+        return fake_haiku_response(tool_uses=[{"name": "submit_offturn", "input": {"actions": []}}])
 
     def _side_effect(request) -> Response:
         try:
@@ -90,8 +88,8 @@ def make_haiku_debate_side_effect():
         if '"claude-sonnet' in payload:
             return Response(200, json=fake_sonnet_response("The colony endures."))
 
-        is_debate = "<event id=" in payload
-        if is_debate:
+        # The debate and autonomous calls each force their own tool.
+        if '"name": "submit_debate"' in _tool_choice(payload):
             return Response(200, json=_make_debate_body())
         return Response(200, json=_make_autonomous_body())
 

@@ -11,6 +11,7 @@ Invariants enforced here:
   * #6 — one batched LLM call per debate. `agent_debate` makes one
     `call_fast` regardless of how many advisors are alive, plus at most one
     retry (same system blocks + tools) when it yields < 3 valid proposals.
+    Each attempt is a forced `submit_debate` tool call (`_call_structured`).
   * #11 — state mutations go through `engine.apply_tool_calls`. Nodes
     never poke fields on `ColonyState` directly for gameplay effects.
     `resolve` derives consequence tool calls (modify_legitimacy,
@@ -32,8 +33,14 @@ import anthropic
 from sqlalchemy import select
 
 from app.agent import narration
-from app.agent.anthropic_client import call_fast, call_narration, cost_cents_of
+from app.agent.anthropic_client import call_fast, call_narration, usage_record
 from app.agent.constants import MAX_COST_CENTS_PER_TURN
+from app.agent.debate_format import (
+    build_debate_tool,
+    build_offturn_tool,
+    parse_submit_debate,
+    parse_submit_offturn,
+)
 from app.agent.narration_guard import Violation, build_allowed_terms, validate_narration
 from app.agent.prepare import prepare_proposals
 from app.agent.prompts import (
@@ -42,7 +49,6 @@ from app.agent.prompts import (
     build_debate_user_message,
     build_personas_block,
     build_preamble_block,
-    parse_debate_response,
 )
 from app.agent.state import GameTurnState
 from app.config import settings
@@ -64,13 +70,14 @@ from app.game.tools import AGENT_TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
-# Whitelist of tools the autonomous (post-pause, introspective) phase offers
-# to the model. `propose_action` (the only top-level debate tool) and the
-# state tools nested in its `tool_calls_on_pick` (`modify_resource`,
-# `modify_health`, `adjust_grievance`) are deliberately excluded: they belong
-# to the pre-pause debate where the player has visibility and control. Keeping
-# this list in one place makes the scope of off-turn agent behaviour auditable
-# from the filter alone.
+# Whitelist of engine tools the autonomous (post-pause, introspective) phase
+# may apply. The model only sees `submit_offturn`, whose `kind` enum maps onto
+# these; `propose_action` (the only top-level debate tool) and the state tools
+# nested in its `tool_calls_on_pick` (`modify_resource`, `modify_health`,
+# `adjust_grievance`) are deliberately excluded: they belong to the pre-pause
+# debate where the player has visibility and control. The filter in
+# `autonomous_actions` enforces this list even if the parser ever returned
+# something else, so the scope of off-turn agent behaviour is auditable here.
 AUTONOMOUS_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "adjust_own_grievance",
@@ -176,11 +183,67 @@ DEBATE_TARGET_PROPOSALS = 3
 # Appended to the user message on the single debate retry. User-side only,
 # so the cached system prefix (preamble + personas) and tools stay identical.
 _DEBATE_RETRY_NOTE = (
-    "\n\n<retry_note>Your previous reply had {valid} valid propose_action "
-    "call(s). Call propose_action exactly 3 times (one DOMINANT, one MORAL, "
-    "one WILDCARD), each with a non-empty name, description and "
-    "tool_calls_on_pick.</retry_note>"
+    "\n\n<retry_note>Your previous reply had {valid} valid option(s). Call "
+    "submit_debate once with exactly 3 options (one DOMINANT, one MORAL, one "
+    "WILDCARD), each with a non-empty title, description and at least one "
+    "effect.</retry_note>"
 )
+
+# Substrings (lowercased) that mark a provider's refusal of a forced
+# `tool_choice`: a 400 from a host that does not support it, or an OpenRouter
+# 404 "No endpoints found" when no pinned provider can honour it. Anything
+# else (context length, auth, rate limit) must surface, not be retried.
+_TOOL_CHOICE_REJECTIONS = ("tool_choice", "tool choice", "tool compat", "no endpoints")
+
+
+async def _call_structured(
+    system_blocks: list,
+    user_message: str,
+    tool: dict[str, Any],
+    max_tokens: int,
+    *,
+    force: bool = True,
+) -> tuple[Any, str]:
+    """One `call_fast` that makes the model answer through `tool`.
+
+    Forces the tool with `tool_choice` so the reply is always a tool call.
+    Some hosts reject a forced choice; then it calls once more without
+    `tool_choice` (the model may skip the tool, which the parsers treat as an
+    empty answer). Returns `(response, "forced" | "auto")`. `force=False`
+    skips the forced attempt, so a retry does not re-probe a host that already
+    said no. Errors that are not a `tool_choice` rejection propagate.
+    """
+    tools = [tool]
+    if force:
+        try:
+            response = await call_fast(
+                system_blocks,
+                user_message,
+                tools=tools,
+                max_tokens=max_tokens,
+                tool_choice={"type": "tool", "name": tool["name"]},
+            )
+            return response, "forced"
+        except (anthropic.BadRequestError, anthropic.NotFoundError) as exc:
+            if not any(marker in str(exc).lower() for marker in _TOOL_CHOICE_REJECTIONS):
+                raise
+            logger.warning(
+                "%s: host rejected forced tool_choice (%s); using auto", tool["name"], exc
+            )
+    response = await call_fast(system_blocks, user_message, tools=tools, max_tokens=max_tokens)
+    return response, "auto"
+
+
+def _with_llm_calls(meta: dict[str, Any] | None, *records: dict[str, Any]) -> dict[str, Any]:
+    """Copy of `meta` with `records` appended to `llm_calls`.
+
+    `turn_meta` has no reducer (each node's return replaces it), so every node
+    rebuilds it from the state's copy; the list is copied too so a checkpointed
+    earlier value is never mutated.
+    """
+    merged = dict(meta or {})
+    merged["llm_calls"] = [*(merged.get("llm_calls") or []), *records]
+    return merged
 
 
 def count_valid_proposals(
@@ -225,15 +288,11 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     colony_state_text = build_colony_state_block(colony_state)["text"]
     user_message = f"{colony_state_text}\n\n{build_debate_user_message(event)}"
 
-    response = await call_fast(
-        system_blocks,
-        user_message,
-        tools=AGENT_TOOL_SCHEMAS,
-        max_tokens=2000,
-    )
-    turn_cost = state.get("cost_cents_this_turn", 0.0)
-    turn_cost += cost_cents_of(response, settings.LLM_MODEL_FAST)
-    parsed = parse_debate_response(response, alive_agents)
+    tool = build_debate_tool(alive_agents, list(colony_state.resources))
+    response, tool_choice = await _call_structured(system_blocks, user_message, tool, 2000)
+    records = [usage_record(response, settings.LLM_MODEL_FAST, "debate")]
+    turn_cost = state.get("cost_cents_this_turn", 0.0) + records[-1]["cost_cents"]
+    parsed = parse_submit_debate(response, alive_agents)
     # Always judged on the PRE-debate state: a discarded first attempt never
     # blocks the duplicate-name check on the retry.
     valid = count_valid_proposals(
@@ -242,15 +301,19 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
     retried = False
 
     if valid < DEBATE_TARGET_PROPOSALS and turn_cost < MAX_COST_CENTS_PER_TURN:
-        retry_response = await call_fast(
+        retry_response, retry_choice = await _call_structured(
             system_blocks,
             user_message + _DEBATE_RETRY_NOTE.format(valid=valid),
-            tools=AGENT_TOOL_SCHEMAS,
-            max_tokens=2000,
+            tool,
+            2000,
+            force=tool_choice == "forced",
         )
         retried = True
-        turn_cost += cost_cents_of(retry_response, settings.LLM_MODEL_FAST)
-        retry_parsed = parse_debate_response(retry_response, alive_agents)
+        if retry_choice == "auto":
+            tool_choice = "auto"
+        records.append(usage_record(retry_response, settings.LLM_MODEL_FAST, "debate"))
+        turn_cost += records[-1]["cost_cents"]
+        retry_parsed = parse_submit_debate(retry_response, alive_agents)
         retry_valid = count_valid_proposals(
             colony_state, retry_parsed.tool_calls, setting, retry_parsed.per_agent_text.values()
         )
@@ -271,7 +334,11 @@ async def agent_debate(state: GameTurnState) -> GameTurnState:
         "debate_per_agent_text": parsed.per_agent_text,
         "debate_tool_calls": parsed.tool_calls,
         "cost_cents_this_turn": turn_cost,
-        "turn_meta": {**(state.get("turn_meta") or {}), "debate_retried": retried},
+        "turn_meta": {
+            **_with_llm_calls(state.get("turn_meta"), *records),
+            "debate_retried": retried,
+            "debate_tool_choice": tool_choice,
+        },
     }
 
 
@@ -391,11 +458,11 @@ async def resolve(state: GameTurnState) -> GameTurnState:
 
 
 async def autonomous_actions(state: GameTurnState) -> GameTurnState:
-    """Off-turn introspective Haiku call — one batched request.
+    """Off-turn introspective call — one batched `submit_offturn` request.
 
-    Skipped entirely when no advisors are alive. Uses the 6-tool
-    autonomous whitelist (AUTONOMOUS_TOOL_NAMES) so the model cannot
-    propose new actions or move resources behind the player's back.
+    Skipped entirely when no advisors are alive. The tool's `kind` enum and the
+    6-tool whitelist (AUTONOMOUS_TOOL_NAMES) mean the model cannot propose new
+    actions or move resources behind the player's back.
     """
     colony_state = state["colony_state"]
     alive_agents = filter_cast(colony_state.agents)
@@ -433,28 +500,20 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     colony_state_text = build_colony_state_block(colony_state)["text"]
     user_message = f"{colony_state_text}\n\n{build_autonomous_user_message(summary)}"
 
-    # Pass the FULL tool list — passing a smaller subset drops the cached
-    # prefix below Haiku 4.5's 4096-token cache minimum and silently
-    # disables caching for this node, costing ~9¢ per 10-turn run. The
-    # preamble's "OFF-TURN (AUTONOMOUS) PHASE" section instructs the model
-    # to restrict itself to introspective tools; the filter on parsed
-    # tool calls below is the runtime safety net that drops anything
-    # off-list before the engine sees it.
-    response = await call_fast(
-        system_blocks,
-        user_message,
-        tools=AGENT_TOOL_SCHEMAS,
-        max_tokens=1500,
-    )
-    cost = cost_cents_of(response, settings.LLM_MODEL_FAST)
-    parsed = parse_debate_response(response, alive_agents)
+    # One forced `submit_offturn` call (see `_call_structured`). Only that tool
+    # is sent: the cached prefix no longer matches the debate's, but the flat
+    # tool is what makes cheap models answer reliably. `back_leader` needs the
+    # decision `resolve` just logged; with an empty log the parser skips it.
+    tool = build_offturn_tool(alive_agents)
+    response, _ = await _call_structured(system_blocks, user_message, tool, 1500)
+    record = usage_record(response, settings.LLM_MODEL_FAST, "autonomous")
+    decision_id = colony_state.event_log[-1].chosen_proposal_id if colony_state.event_log else None
+    parsed_calls = parse_submit_offturn(response, alive_agents, decision_id)
 
-    # Drop any tool call the model emitted that isn't on the autonomous
-    # whitelist (propose_action, or any tool that only belongs nested in
-    # `tool_calls_on_pick`: modify_resource, modify_health, adjust_grievance).
-    # Drops happen silently before the engine; they never appear in
-    # turn_tool_calls.
-    autonomous_tool_calls = [tc for tc in parsed.tool_calls if tc.name in AUTONOMOUS_TOOL_NAMES]
+    # Safety net: drop any call that is not on the autonomous whitelist before
+    # the engine sees it (the parser only emits whitelisted kinds today).
+    # Drops happen silently; they never appear in turn_tool_calls.
+    autonomous_tool_calls = [tc for tc in parsed_calls if tc.name in AUTONOMOUS_TOOL_NAMES]
 
     pre_tc_len = len(colony_state.turn_tool_calls)
     new_colony = engine.apply_tool_calls(
@@ -466,7 +525,8 @@ async def autonomous_actions(state: GameTurnState) -> GameTurnState:
     return {
         "colony_state": new_colony,
         "autonomous_tool_calls": applied_autonomous,
-        "cost_cents_this_turn": state.get("cost_cents_this_turn", 0.0) + cost,
+        "cost_cents_this_turn": state.get("cost_cents_this_turn", 0.0) + record["cost_cents"],
+        "turn_meta": _with_llm_calls(state.get("turn_meta"), record),
     }
 
 
@@ -527,6 +587,7 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
     roster = frozenset(a.name for a in colony_state.agents)
 
     attempts: list[tuple[str, list[Violation]]] = []
+    records: list[dict[str, Any]] = []
     cost = 0.0
     message = user_message
     for attempt in range(_NARRATION_ATTEMPTS):
@@ -537,7 +598,8 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
         except anthropic.APIError as exc:
             logger.warning("narrate_turn: narration call failed (%s)", exc)
             break
-        cost += cost_cents_of(response, settings.LLM_MODEL_NARRATION)
+        records.append(usage_record(response, settings.LLM_MODEL_NARRATION, "narration"))
+        cost += records[-1]["cost_cents"]
         text = _first_text(response)
         violations = validate_narration(text, allowed, roster)
         attempts.append((text, violations))
@@ -561,6 +623,7 @@ async def narrate_turn(state: GameTurnState) -> GameTurnState:
         text = attempts[kept][0]
         source = "llm" if kept == 0 else "retry"
         kept_codes = [v.code for v in attempts[kept][1]]
+    meta = _with_llm_calls(meta, *records)
     meta["narration"] = _narration_meta(source, attempts, kept_codes)
 
     result: GameTurnState = {"narration": text, "turn_meta": meta}
