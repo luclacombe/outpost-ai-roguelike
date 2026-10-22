@@ -1,8 +1,9 @@
 """Pipeline-level eval for axis-driven proposal generation.
 
 Loads debate-phase seed fixtures, builds the system blocks via
-`app.agent.prompts`, calls Haiku, parses proposals, scores via the
-two new judges. Asserts mean scores >= module thresholds.
+`app.agent.prompts`, calls the fast model, parses the debate tool calls, runs
+them through `prepare_proposals` (engine-rendered effects, the surfaced triple
+the player would see), and scores that via the two judges. Asserts mean scores >= module thresholds.
 
 Marked `eval` — gated by `OUTPOST_EVAL_REAL_LLM=1` upstream (see
 `tests/eval/conftest.py`). Without the flag, the test SKIPs.
@@ -22,12 +23,14 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from app.agent.anthropic_client import call_fast
+from app.agent.prepare import prepare_proposals
 from app.agent.prompts import (
     build_colony_state_block,
     build_debate_user_message,
@@ -44,7 +47,8 @@ from app.eval.axis_diversity import (
     ProposalForJudge,
     score_axis_diversity,
 )
-from app.game.schemas import ColonyState, Event
+from app.game import setting_loader
+from app.game.schemas import ColonyState, Event, ToolCall
 from app.game.tools import AGENT_TOOL_SCHEMAS
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "axis_seeds"
@@ -74,6 +78,54 @@ def _load_seeds(*, iterating_only: bool) -> list[dict]:
     return seeds
 
 
+def build_judge_inputs(
+    state: ColonyState,
+    debate_tool_calls: list[ToolCall],
+    extra_texts: Iterable[str] = (),
+) -> tuple[list[ProposalForJudge], list[dict]]:
+    """Parsed debate tool calls + seed state -> what the axis judges see.
+
+    Runs the calls through `prepare_proposals` exactly as the `apply_tool_calls`
+    node does, so the judges get the surfaced triple (same normalized names,
+    same selection) with the engine-rendered `effects_preview`. Any
+    `effects_preview` the LLM put in its raw args is ignored.
+    """
+    setting = setting_loader.load_setting(state.setting_id)
+    prepared = prepare_proposals(state, debate_tool_calls, setting, extra_texts)
+    agents = {a.id: a for a in state.agents}
+
+    for_judge: list[ProposalForJudge] = []
+    dicts: list[dict] = []
+    for p in prepared.proposals:
+        agent = agents.get(p.proposed_by_agent_id) if p.proposed_by_agent_id else None
+        if agent is None:
+            continue
+        for_judge.append(
+            ProposalForJudge(
+                advisor_id=agent.id,
+                advisor_axes={
+                    "ethics": agent.ethics,
+                    "temperament": agent.temperament,
+                    "loyalty": agent.loyalty,
+                },
+                name=p.name[:80],
+                description=p.description[:200],
+                effects_preview=list(p.effects_preview)[:5],
+                flavor=p.flavor.value,
+            )
+        )
+        dicts.append(
+            {
+                "advisor_id": str(agent.id),
+                "name": p.name,
+                "description": p.description,
+                "flavor": p.flavor.value,
+                "effects_preview": list(p.effects_preview),
+            }
+        )
+    return for_judge, dicts
+
+
 async def _run_one_seed(seed: dict) -> _SeedRunResult:
     state = ColonyState.model_validate(seed["colony_state"])
     event = Event.model_validate(seed["event"])
@@ -93,39 +145,9 @@ async def _run_one_seed(seed: dict) -> _SeedRunResult:
     )
     parsed = parse_debate_response(response, alive_agents)
 
-    proposals_for_judge = []
-    proposal_dicts = []
-    for tc in parsed.tool_calls:
-        if tc.name != "propose_action":
-            continue
-        if tc.caller_id is None:
-            continue
-        agent = next((a for a in alive_agents if a.id == tc.caller_id), None)
-        if agent is None:
-            continue
-        proposals_for_judge.append(
-            ProposalForJudge(
-                advisor_id=tc.caller_id,
-                advisor_axes={
-                    "ethics": agent.ethics,
-                    "temperament": agent.temperament,
-                    "loyalty": agent.loyalty,
-                },
-                name=str(tc.args.get("name", ""))[:80],
-                description=str(tc.args.get("description", ""))[:200],
-                effects_preview=list(tc.args.get("effects_preview", []))[:5],
-                flavor=str(tc.args.get("flavor", "DOMINANT")),
-            )
-        )
-        proposal_dicts.append(
-            {
-                "advisor_id": str(tc.caller_id),
-                "name": tc.args.get("name"),
-                "description": tc.args.get("description"),
-                "flavor": tc.args.get("flavor"),
-                "effects_preview": tc.args.get("effects_preview"),
-            }
-        )
+    proposals_for_judge, proposal_dicts = build_judge_inputs(
+        state, parsed.tool_calls, parsed.per_agent_text.values()
+    )
 
     if len(proposals_for_judge) != 3:
         return _SeedRunResult(
@@ -242,3 +264,69 @@ async def test_capture_baseline():
     print(f"\nbaseline written to {_BASELINE_PATH}")
     print(f"mean axis_diversity = {mean_diversity:.3f}")
     print(f"mean axis_attribution = {mean_attribution:.3f}")
+
+
+# ---------------------------------------------------------------------------
+# Unit test (default suite): seed -> judge-input path, no network.
+# ---------------------------------------------------------------------------
+
+
+def test_judge_inputs_use_engine_rendered_effects_not_llm_preview():
+    seed = _load_seeds(iterating_only=True)[0]
+    state = ColonyState.model_validate(seed["colony_state"])
+    setting = setting_loader.load_setting(state.setting_id)
+    agents = [a for a in state.agents if a.is_alive]
+    res = next(r for r in setting.resources if state.resources[r.id].value >= 20)
+
+    def call(agent, name, flavor, nested, **extra):
+        return ToolCall(
+            name="propose_action",
+            caller_id=agent.id,
+            args={
+                "name": name,
+                "description": f"{name} now.",
+                "flavor": flavor,
+                "tool_calls_on_pick": nested,
+                **extra,
+            },
+        )
+
+    def spend(delta):
+        return [
+            {
+                "name": "modify_resource",
+                "args": {"resource_id": res.id, "delta": delta, "reason": "r"},
+            }
+        ]
+
+    calls = [
+        call(agents[0], "Spend it", "DOMINANT", spend(-5), effects_preview=["+99 legitimacy"]),
+        call(agents[1], "Share it", "MORAL", spend(-3)),
+        call(agents[2], "Gamble it", "WILDCARD", spend(-2), effects_preview=["bogus"]),
+    ]
+    for_judge, dicts = build_judge_inputs(state, calls)
+
+    assert len(for_judge) == 3
+    first = for_judge[0]
+    assert first.effects_preview == [f"{res.name.lower()} −5"]
+    assert first.advisor_id == agents[0].id
+    assert first.advisor_axes["ethics"] == agents[0].ethics
+    assert first.flavor == "DOMINANT"
+    assert dicts[0]["effects_preview"] == [f"{res.name.lower()} −5"]
+    assert all(
+        "+99" not in line and line != "bogus" for p in for_judge for line in p.effects_preview
+    )
+    assert all(p.effects_preview for p in for_judge)
+
+
+def test_judge_inputs_fewer_than_three_surfaced_when_proposals_missing():
+    seed = _load_seeds(iterating_only=True)[0]
+    state = ColonyState.model_validate(seed["colony_state"])
+    agent = next(a for a in state.agents if a.is_alive)
+    bad = ToolCall(
+        name="propose_action",
+        caller_id=agent.id,
+        args={"name": "n", "description": "d", "flavor": "DOMINANT", "tool_calls_on_pick": []},
+    )
+    for_judge, _ = build_judge_inputs(state, [bad])
+    assert len(for_judge) != 3
