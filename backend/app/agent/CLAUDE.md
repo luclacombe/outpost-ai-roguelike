@@ -45,8 +45,14 @@ cheap models made one call and stopped (bake-off 2026-10-22).
 
 - **Forced single tool.** Only that tool is sent, with `tool_choice` set to it.
   If the host rejects `tool_choice` (error text matches `_TOOL_CHOICE_REJECTIONS`),
-  the call is repeated with `auto`; any other error propagates.
-  `turn_meta["debate_tool_choice"]` is `"forced"` or `"auto"`.
+  the call is repeated with `auto` and the model id goes into
+  `nodes._FORCED_REJECTED`, so later calls for it skip the probe (the set is
+  per process; `tests/conftest.py` clears it between tests). Any other error
+  propagates. `turn_meta["debate_tool_choice"]` and
+  `turn_meta["autonomous_tool_choice"]` are `"forced"` or `"auto"`.
+- **One request builder.** `nodes.build_debate_request` assembles the debate
+  system blocks, user message, tool and allowed terms; `agent_debate` and
+  `tests/eval/test_axis_proposals.py` both use it, so they cannot drift.
 - **Per-game enums.** The schema pins advisor names and resource ids to this
   colony, so it is stable within a game and differs between games. Build it
   per call from the alive cast; never cache one across games.
@@ -55,8 +61,13 @@ cheap models made one call and stopped (bake-off 2026-10-22).
   `ToolCall`s with nested `tool_calls_on_pick`; adapter-supplied reasons; no
   UUIDs in model output). Non-list containers, bad names and a missing tool
   call degrade to empty or skipped items. `parse_submit_offturn` does the same.
-- **Non-Latin filter.** Reactions, options and off-turn text containing
-  non-Latin letters (`narration_guard.has_non_latin`) are dropped with a warning.
+- **Non-Latin filter.** Reactions, options and off-turn text are dropped with
+  a warning only when they hold a non-Latin word that is not in the allowed
+  terms (`nodes._allowed_terms`: `build_allowed_terms` plus the setting's lore
+  and narrative voice and this turn's event title and body), passed to the
+  parsers as `allowed_terms=`. So arctic's own "СЕКРЕТНО" is kept and a stray
+  CJK word is not (`narration_guard.non_latin_words`, `has_unknown_non_latin`).
+  The parsers' default is no allowed terms, which drops all non-Latin letters.
 - **Observability.** `turn_meta["llm_calls"]` has one `usage_record` per call
   (purpose, model, tokens, `cache_read_tokens`, `cost_cents`, `billed`).
 - `prompts.parse_debate_response` still exists but no node calls it.
@@ -69,11 +80,13 @@ classified `valid` (nothing stripped, a net non-zero applied change: `+5`/`-5`
 or a clamp that cancels counts as none). A missing or all-stripped
 `tool_calls_on_pick` is `no_effect`, not valid. The
 count runs on the PRE-debate state, so a discarded first attempt never blocks
-the retry's duplicate-name check. Under 3, it retries the same forced call
-ONCE with `_DEBATE_RETRY_NOTE` appended to the user message; system blocks and
-tools are unchanged, so the cached prefix still hits. The response with more
+the retry's duplicate-name check. Under 3, it retries the same call ONCE
+(forced again, or `auto` when the first call fell back to `auto`) with
+`_DEBATE_RETRY_NOTE` appended to the user message; system blocks and tools are
+unchanged, so the cached prefix still hits. The response with more
 valid proposals wins (ties keep the first; reactions follow the kept
-response); `turn_meta["debate_retried"]` records it (alongside `debate_tool_choice` and `llm_calls`). Both calls go into
+response); `turn_meta["debate_retried"]` records it (alongside
+`debate_tool_choice` and `llm_calls`). Both calls go into
 `cost_cents_this_turn`. No retry once the turn has reached
 `MAX_COST_CENTS_PER_TURN`. Test debate bodies must give every proposal a
 nested effect or the turn retries.
@@ -164,12 +177,13 @@ changes on advisor status transitions** (one cache miss when entering or
 leaving DETAINED, permanent for DISMISSED). This is an intentional cost
 of the acceptance gate "detained advisor doesn't author next turn"; do
 not reintroduce a DETAINED-stays-in-cast optimization without a hard
-look at whether the gate has changed. Status transitions are rare events
-authored by LLM-emitted `set_advisor_status` in `tool_calls_on_pick`.
+look at whether the gate has changed. Status transitions are rare: the flat
+`submit_debate` schema has no status effect, so the LLM cannot author one
+today (see `backend/app/game/CLAUDE.md`).
 
-Expected hit rate after turn 2: 85–90% on input tokens. Verified by
-`tests/integration/test_full_run.py`'s wrapped `cost_cents_of` that records
-`cache_read_input_tokens` per call.
+Measure the hit rate from `turn_meta["llm_calls"][*].cache_read_tokens`;
+`tests/integration/test_full_run.py` checks that some later call reads from
+the cache (it traces `nodes.usage_record`).
 
 ## Provider config
 
@@ -232,11 +246,13 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
 
 ## Anthropic SDK quirks (apply to every provider via the SDK)
 
-- **Patch target for tests:** `cost_cents_of` is imported by name into
-  `nodes.py` at module load. Monkeypatching
-  `app.agent.anthropic_client.cost_cents_of` does NOT affect the reference
-  inside nodes.py. Patch `app.agent.nodes.cost_cents_of` (the consumer).
-  See `tests/integration/test_full_run.py` for the pattern.
+- **Patch target for tests:** `call_fast`, `call_narration` and `usage_record`
+  are imported by name into `nodes.py` at module load. Monkeypatching
+  `app.agent.anthropic_client.<name>` does NOT affect the reference inside
+  nodes.py. Patch `app.agent.nodes.<name>` (the consumer). `nodes.py` no
+  longer imports `cost_cents_of`; it reaches it through `usage_record`. See
+  `tests/integration/test_full_run.py` (`usage_record`) and
+  `tests/test_nodes.py` (`call_fast`).
 - **Optional usage fields:** `cache_read_input_tokens` and
   `cache_creation_input_tokens` may be absent when caching is off. Use
   `getattr(..., 0) or 0` — this also handles the "present but None" case.
@@ -254,9 +270,10 @@ Expected hit rate after turn 2: 85–90% on input tokens. Verified by
   in `app/game/tools.py`, startup fails loudly rather than silently dropping
   the tool from the autonomous phase.
 - **Autonomous sends only `submit_offturn`.** The old rule (send the full
-  `AGENT_TOOL_SCHEMAS` for Haiku 4.5's cache minimum, filter the response) is
-  gone. The whitelist now lives in the `submit_offturn` kinds and its parser;
-  see the caching caveat above.
+  `AGENT_TOOL_SCHEMAS` for Haiku 4.5's cache minimum) is gone: the model sees
+  only the `submit_offturn` kinds. The `AUTONOMOUS_TOOL_NAMES` runtime filter
+  in `autonomous_actions` remains as a second line of defence, and the import
+  subset check above still guards it. See the caching caveat above.
 
 ## Graph pattern
 

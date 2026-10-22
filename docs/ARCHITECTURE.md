@@ -385,6 +385,8 @@ Validation results are scored to Langfuse for the tool-call-validity eval metric
 
 ### 3.6 XML debate format (detailed)
 
+> Superseded by the flat structured format (one forced `submit_debate` tool call); see `backend/app/agent/CLAUDE.md`.
+
 This is the crucial cost optimization. Rather than four parallel LLM calls, one call structured as:
 
 ```xml
