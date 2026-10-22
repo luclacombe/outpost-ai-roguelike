@@ -128,7 +128,8 @@ Decided:
   - every LLM call: purpose, prompt version (content hash), model, raw output, token buckets, cost, latency, attempt number;
   - every Jev request: question ids, the state slice sent (or its hash plus a stored copy), answers, probabilities, confidence, token count, latency, model version;
   - a structured `cause` on every tool call: the engine rule id, the judgment ids it consumed, the proposal and LLM call it came from;
-  - version tags per turn: git sha, ruleset generation id, prompt hashes, model ids, Jev model id, setting id and seed.
+  - version tags per turn: git sha, ruleset generation id, prompt hashes, model ids, Jev model id, setting id and seed;
+  - cost as a fractional amount. Today each turn's cost is rounded to whole cents before it is added to the game total (`nodes.advance_turn`), so at about 0.15¢ a turn the stored total, the post-mortem and the audit's cost gate all read 0¢ (found 2026-10-22). The per-turn cost cap uses the unrounded value and still works.
 - **Model calls are traced with OpenTelemetry.** Today Langfuse is attached through LangChain callbacks, which see LangGraph steps but not the raw `client.messages.create` calls in `app/agent/anthropic_client.py`, so prompts, outputs, tokens and cost never reach Langfuse. Use the Anthropic OTel instrumentation that Langfuse documents for its v4 SDK. The eval judges' calls get traced too.
 - **Jev calls get a custom span**, emitted by the Jev wrapper (§8).
 - **Two tiers.** Player runs go to Langfuse (with a configurable sample rate if quota requires). Sweeps and evolution write turn records only; a script pushes selected runs to Langfuse on demand.
@@ -160,10 +161,12 @@ Decided, in order:
      - **Setup:** 20 models on 12 real turns, in both the current and the flat format.
      - **Blind quality scoring:** four Opus evaluators, with a duplicate control as a consistency check.
      - **Rules fixed in advance:** at least 11 of 12 first-attempt passes, quality at least 90% of V4 Pro's, then the cheapest.
-     - **Result:** **Xiaomi MiMo V2.6 Flash** for the debate. It matched V4 Pro's blind quality, passed 12 of 12, costs a quarter as much per call and answers in about 2 seconds instead of 17. **DeepSeek V4.1 Flash** is the fallback, configured as an OpenRouter fallback model. Qwen3.8 Flash and Claude Haiku 5.5 were also eligible but cost more.
-     - **To confirm:** a real sweep with per-call cost recording, plus a check that MiMo's tool calls stay reliable over a full game.
+     - **Single-turn result:** Xiaomi MiMo V2.6 Flash matched V4 Pro's blind quality, passed 12 of 12, cost a quarter as much per call and answered in about 2 seconds instead of 17. Qwen3.8 Flash and Claude Haiku 5.5 were also eligible but cost more. Superseded by the full-game test below.
      - **Format test, same day:** adding a per-effect `why` plus a sign rule, or trimming to debate-only instructions, did not beat the plain flat format; mechanics got slightly worse. Decided: keep the full preamble with the flat contract swapped in, and no per-effect reason in model output.
-     - **Before picking a model, full games:** MiMo, V4.1 Flash and GPT-6 Luna, with V4 Pro on the flat format as the control. Each set gets objective checks and a blind read of whole games. V4.1 Flash matched V4 Pro in both rounds; MiMo matched in round 1, scored 95% in round 2, and had reliability blips (an empty reply, a reply with no reactions, a stray Chinese word).
+     - **Full-game test, 2026-10-22 (decides the model; §14):** 18 games each for MiMo, V4.1 Flash and GPT-6 Luna, with V4 Pro on the flat format as the control, same seeds. Objective checks plus a blind whole-game read by six Opus judges, under a selection rule fixed in advance.
+     - **Chosen: DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`) for debate, off-turn actions and narration**, unpinned, thinking off. It wrote the best whole games (108% of the control, ranked first in 11 of 18 groups), showed players less breakage than the control, and costs 1.41¢ a game against V4 Pro's 6.04¢. MiMo fell to 89% over whole games and dropped reactions on 3 turns; Luna was the cheapest (0.59¢) and cleanest but flat (80%).
+     - **Ruling:** the rule's breakage criterion counts what a player sees, as the rubric defines it. Most of Flash's raw breakage was in off-turn lines, which the UI never shows, and came from our parser's placeholder for empty text. Read literally, no candidate qualified.
+     - **Defects found, to fix on this branch before merge:** the flat schema does not require a resource or target per effect kind, so options can reach the player with no effect; empty off-turn text gets a placeholder; the retry ignores missing reactions; narration is not filtered for non-Latin words or markup.
    - **Narration** uses the cheapest model that passes the narration guards. It costs well under 0.1¢ a game on any of them, so it never gets a third provider.
    - **Autonomous** stops being an LLM call in W4 (engine rules plus Jev questions). Until then it runs on the debate model.
    - **Eval judges** move to Jev where the W4 head-to-head allows.
@@ -172,7 +175,7 @@ Decided, in order:
 
 Every turn record carries its model (W1). A model switch starts a new baseline: the proposal library and fidelity check are re-recorded.
 
-**Target: ≤ 1¢ per game in real spend, with tool validity and the quality judges no worse than V4 Pro.** With MiMo V2.6 Flash and the flat format, the estimate is about 0.45–0.65¢ a game (about 0.45¢ once W4 removes the autonomous call).
+**Target: ≤ 1¢ per game in real spend, with tool validity and the quality judges no worse than V4 Pro.** Measured with V4.1 Flash and the flat format: 1.41¢ a game (debate 0.80¢, off-turn 0.53¢, narration 0.08¢), with 41% of prompt tokens read from cache. To reach the target: W4 removes the off-turn call (about 0.9¢), and a host pin for V4.1 Flash should raise the cache share (test it first; the V4 Pro pin `StreamLake,Novita` must not carry over).
 
 Exit: per-call cost and cache-hit records; the flat schema live; the bake-off report; the chosen debate and narration models with their measured per-game cost.
 
@@ -347,7 +350,8 @@ These were not explicitly decided in conversation; they are the author's default
 - The $50 split at today's cost: about $17 per fidelity check (only when prompts or model change), $15 per prompt-evolution run (at most one a month), about $9 per held-out confirmation sweep. These fall roughly sixfold once W1b hits 1¢ a game.
 - W1b added and moved ahead of W2 and W3, with a ≤ 1¢ real-spend target.
 - At most two LLM models (debate, narration) plus Jev, all through one OpenRouter key; no DeepSeek-direct for live play.
-- The bake-off rules for a debate model: at least 11 of 12 first-attempt passes, blind quality at least 90% of V4 Pro's, then the cheapest. Under these rules MiMo V2.6 Flash was chosen.
+- The bake-off rules for a debate model: at least 11 of 12 first-attempt passes, blind quality at least 90% of V4 Pro's, then the cheapest. Under these rules MiMo V2.6 Flash was chosen on single turns.
+- The full-game rule (no aborts; breakage no worse than V4 Pro; retry rate at most V4 Pro's plus 10 points; blind overall at least 90% of V4 Pro's; then the cheapest) chose V4.1 Flash, after a ruling that breakage means what a player sees (§W1b, §14). Read literally, nothing qualified and the game would stay on V4 Pro at 6¢.
 - The autonomous LLM call is removed in W4.
 - If Jev loses the head-to-head on a question: reword or decompose twice, then a deterministic engine heuristic; never an LLM judge in the live turn.
 - The simulator computes Jev answers live with memoisation instead of replaying stored ones; fidelity is checked before and after W4.
@@ -397,4 +401,16 @@ These were not explicitly decided in conversation; they are the author's default
     Gemini, Llama, Nova, gpt-oss and Kimi all scored 2.75 or below.
   - Effects matching their descriptions was the weakest criterion for every model, the best included.
   - **Format test** (real spend $0.15): four models × 12 turns × three formats, blind-scored together. Overall, pooled: flat 3.19, flat + per-effect why 3.02, flat + why + debate-only instructions 3.02; mechanics 3.10, 2.90 and 2.81. The plain flat format stays. Mechanics moves to W4's Jev effect-consistency check.
+- **Full-game test** (72 games, real spend about $1.65; report in `docs/playtest/2026-10-22-fullgame-eval/report.md`, local and gitignored):
+  - 4 sets × 18 games (3 settings × 3 policies × 2 seeds, same seeds), no aborts, every set passes the Spec 1 integrity audit. Every call carries the provider's billed cost.
+
+    | Set | ¢ per game | Cached share | Retry | Blind overall (vs V4 Pro) | Visible breakage | Ranked 1st |
+    |---|---|---|---|---|---|---|
+    | **V4.1 Flash 1017** | **1.41** | 41% | 10.3% | **3.67 (108%)** | 38 | 11 / 18 |
+    | V4 Pro (control) | 6.04 | 55% | 9.6% | 3.39 | 51 | 5 |
+    | MiMo V2.6 Flash | 1.14 | 19% | 6.5% | 3.00 (89%) | 39 | 2 |
+    | GPT-6 Luna | 0.59 | 95% | 0.6% | 2.72 (80%) | 33 | 0 |
+
+  - Six blind Opus judges; two groups re-scored by a second judge moved by 0.25 on average with the same top pick both times.
+  - Single-turn tests misled twice: the per-call price ignored caching, which decides the bill over a game, and MiMo's single-turn tie with V4 Pro did not hold over whole games.
 - **Sources:** OpenRouter `/api/v1/models` and the endpoints API (live prices); OpenRouter prompt-caching and usage-accounting docs; DeepSeek API pricing and Anthropic-compatible API docs; the OpenRouter TypeSafe SDK guide.

@@ -211,10 +211,11 @@ the cache (it traces `nodes.usage_record`).
   `extra_body={"provider": {"order": [...], "allow_fallbacks": False}}`):
   listed hosts in order, nothing else. Narration and eval judges stay
   unpinned. `Settings` refuses a non-empty order unless `LLM_BASE_URL` is on
-  openrouter.ai. Why: V4.1 Flash often returned `propose_action` with no
-  `name`/`description` or `{}` input (0 proposals); V4 Pro on StreamLake gave
-  5/5 valid debates, Novita 4/5. `MODEL_PRICING` bills V4 Pro at Novita's
-  (higher) rates so the rails never under-count.
+  openrouter.ai. It was added for V4 Pro (StreamLake, Novita) under the old
+  parallel-tool-call format. The flat format made V4.1 Flash reliable, and the
+  chosen model (`deepseek/deepseek-v4.1-flash-1017`) runs unpinned. A pin is
+  per model: check the listed hosts serve the model before setting one, since
+  `allow_fallbacks: False` turns a missing host into a failed call.
 - Narration/thinking blocks: parsers only read `text` and `tool_use` blocks,
   so any `thinking` block a provider returns is skipped harmlessly.
 
