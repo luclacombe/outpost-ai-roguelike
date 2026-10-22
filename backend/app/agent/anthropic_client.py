@@ -165,8 +165,15 @@ def cost_cents_of(response: Any, model: str) -> float:
     when caching was not used. `getattr(..., 0) or 0` handles both
     "attribute missing" and "attribute present but zero" uniformly.
 
-    Rates come from `pricing_for(model)`; unknown models raise ValueError.
+    The provider-billed cost wins when present: OpenRouter returns USD in
+    `usage.cost`, which the SDK keeps in `usage.model_extra`. That figure is
+    exact (real provider, real cache discounts), so it replaces the table
+    estimate. Without it, rates come from `pricing_for(model)`; unknown
+    models raise ValueError.
     """
+    billed = _billed_cost_cents(response)
+    if billed is not None:
+        return billed
     p = pricing_for(model)
     u = response.usage
     input_tokens: int = u.input_tokens
@@ -181,3 +188,33 @@ def cost_cents_of(response: Any, model: str) -> float:
         + output_tokens * p.output
     )
     return cents / 1_000_000
+
+
+def _billed_cost_cents(response: Any) -> float | None:
+    """Provider-reported cost in cents, or None when the response has none."""
+    extra = getattr(response.usage, "model_extra", None)
+    if not isinstance(extra, dict):
+        return None
+    cost = extra.get("cost")
+    if isinstance(cost, bool) or not isinstance(cost, int | float):
+        return None
+    return float(cost) * 100
+
+
+def usage_record(response: Any, model: str, purpose: str) -> dict[str, Any]:
+    """Per-call usage record for `turn_meta["llm_calls"]`.
+
+    `billed` is True when `cost_cents` came from the provider, False when it
+    is a price-table estimate.
+    """
+    u = response.usage
+    return {
+        "purpose": purpose,
+        "model": model,
+        "input_tokens": u.input_tokens,
+        "cache_read_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+        "cache_write_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0,
+        "output_tokens": u.output_tokens,
+        "cost_cents": cost_cents_of(response, model),
+        "billed": _billed_cost_cents(response) is not None,
+    }

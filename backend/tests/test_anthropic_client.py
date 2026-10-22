@@ -18,12 +18,13 @@ dashboard delta on 2026-04-24 caught the discrepancy. See PLAN.md
 "Errors & Learnings" Phase 4 for details.
 """
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.agent import anthropic_client
-from app.agent.anthropic_client import cost_cents_of, pricing_for
+from app.agent.anthropic_client import cost_cents_of, pricing_for, usage_record
 from app.agent.constants import (
     MODEL_DEEPSEEK_V4_1_FLASH,
     MODEL_HAIKU,
@@ -39,6 +40,7 @@ def _usage(
     output_tokens: int,
     cache_read: int | None = None,
     cache_creation: int | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> MagicMock:
     """Build a usage mock that mimics the SDK's `usage` object.
 
@@ -50,7 +52,11 @@ def _usage(
         spec.append("cache_read_input_tokens")
     if cache_creation is not None:
         spec.append("cache_creation_input_tokens")
+    if extra is not None:
+        spec.append("model_extra")
     u = MagicMock(spec=spec)
+    if extra is not None:
+        u.model_extra = extra
     u.input_tokens = input_tokens
     u.output_tokens = output_tokens
     if cache_read is not None:
@@ -318,3 +324,36 @@ def test_malformed_pricing_override_raises_value_error(monkeypatch):
     )
     with pytest.raises(ValueError, match="vendor/bad"):
         pricing_for("vendor/bad")
+
+
+def test_cost_prefers_billed_cost_when_provider_reports_it():
+    usage = _usage(input_tokens=1000, output_tokens=500, extra={"cost": 0.0033})
+    assert cost_cents_of(_response(usage), "deepseek/deepseek-v4-pro-0813") == pytest.approx(0.33)
+
+
+def test_cost_falls_back_to_price_table_without_billed_cost():
+    usage = _usage(input_tokens=1_000_000, output_tokens=0, extra={})
+    assert cost_cents_of(_response(usage), "xiaomi/mimo-v2.6-flash") == pytest.approx(14.0)
+
+
+def test_usage_record_fields():
+    usage = _usage(input_tokens=100, output_tokens=50, cache_read=4000, extra={"cost": 0.001})
+    rec = usage_record(_response(usage), "openai/gpt-6-luna", "debate")
+    assert rec == {
+        "purpose": "debate",
+        "model": "openai/gpt-6-luna",
+        "input_tokens": 100,
+        "cache_read_tokens": 4000,
+        "cache_write_tokens": 0,
+        "output_tokens": 50,
+        "cost_cents": pytest.approx(0.1),
+        "billed": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["xiaomi/mimo-v2.6-flash", "deepseek/deepseek-v4.1-flash-1017", "openai/gpt-6-luna"],
+)
+def test_new_models_have_prices(model):
+    assert pricing_for(model) is not None

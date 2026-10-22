@@ -20,6 +20,9 @@ MODEL_SONNET = "claude-sonnet-4-6"
 # OpenRouter model slug (Anthropic-compatible Messages endpoint).
 MODEL_DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
 MODEL_DEEPSEEK_V4_PRO = "deepseek/deepseek-v4-pro-0813"
+MODEL_MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"
+MODEL_DEEPSEEK_V4_1_FLASH_1017 = "deepseek/deepseek-v4.1-flash-1017"
+MODEL_GPT_6_LUNA = "openai/gpt-6-luna"
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,12 @@ MODEL_PRICING: dict[str, ModelPricing] = {
     # budget rails never under-count. Cache discounts are not assumed:
     # cache reads and writes bill at the input rate.
     MODEL_DEEPSEEK_V4_PRO: ModelPricing(input=99, cache_write=99, cache_read=99, output=297),
+    # OpenRouter /api/v1/models, fetched 2026-10-22.
+    MODEL_MIMO_V2_6_FLASH: ModelPricing(input=14, cache_write=14, cache_read=0.28, output=28),
+    MODEL_DEEPSEEK_V4_1_FLASH_1017: ModelPricing(
+        input=15, cache_write=15, cache_read=0.3, output=60
+    ),
+    MODEL_GPT_6_LUNA: ModelPricing(input=10, cache_write=10, cache_read=1, output=50),
 }
 
 # Budget rails per ARCHITECTURE §5.2.
