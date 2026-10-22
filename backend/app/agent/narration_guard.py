@@ -110,8 +110,17 @@ def _is_sentence_initial(text: str, start: int) -> bool:
     return prefix[-1] == "-" and (len(prefix) == 1 or prefix[-2].isspace())
 
 
+# Ordinal indicators and the micro sign are Latin-1 letters with no "LATIN" in
+# their Unicode name, so "nº 4" and "5 µm" must be allowed explicitly.
+_LATIN_ADJACENT = frozenset("ºªµ")
+
+
 def _is_non_latin_letter(char: str) -> bool:
-    return char.isalpha() and not unicodedata.name(char, "").startswith("LATIN")
+    return (
+        char.isalpha()
+        and char not in _LATIN_ADJACENT
+        and not unicodedata.name(char, "").startswith("LATIN")
+    )
 
 
 def _non_latin_share(text: str) -> float:
@@ -280,6 +289,9 @@ def sanitize_risk_note(
     if words & _foreign_resource_words(setting):
         return None
     blocking = {"markup", "fourth_wall", "script", "unknown_name"}
-    if any(v.kind in blocking for v in validate_narration(note, allowed_terms, roster_names)):
+    found = validate_narration(
+        note, allowed_terms, roster_names, foreign_ok=(setting.lore, setting.narrative_voice)
+    )
+    if any(v.kind in blocking for v in found):
         return None
     return note

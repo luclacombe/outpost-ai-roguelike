@@ -206,3 +206,17 @@ def test_script_reported_once() -> None:
     text = "Насос выдержал до рассвета. Никто не спал."
     found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
     assert [v.code for v in found].count("script") == 1
+
+
+def test_risk_note_keeps_the_settings_own_foreign_word() -> None:
+    note = "Opening the files marked СЕКРЕТНО could stir up old loyalties nobody wants back."
+    assert sanitize_risk_note(note, ARCTIC, ALLOWED, ROSTER) == note
+
+
+def test_risk_note_drops_an_invented_foreign_word() -> None:
+    note = "Opening the files marked ЖУРНАЛ could stir up old loyalties."
+    assert sanitize_risk_note(note, ARCTIC, ALLOWED, ROSTER) is None
+
+
+def test_latin_adjacent_ordinal_and_micro_signs_are_not_script() -> None:
+    assert "script" not in codes("Corridor nº 4 held. The 5 µm filter and a 2ª shift cleared it.")

@@ -83,6 +83,8 @@ class Tally:
     numbers_in_text: int = 0
     risk_dropped: int = 0
     retried: int = 0
+    retry_options: int = 0
+    retry_reactions: int = 0
     calls: list[ToolCall] = field(default_factory=list)
 
 
@@ -179,6 +181,9 @@ def audit_turn(row: Any, setting: Setting, prior: list[ResolvedEvent], t: Tally)
     calls = [ToolCall.model_validate(c) for c in row.tool_calls]
     t.calls += calls
     t.retried += bool(meta.get("debate_retried"))
+    reasons = meta.get("debate_retry_reasons") or []
+    t.retry_options += "options" in reasons
+    t.retry_reactions += "reactions" in reasons
     t.classes.update(meta.get("proposal_classes") or [])
     t.risk_dropped += int(meta.get("risk_notes_dropped") or 0)
     t.debate_stat_changes += sum(
@@ -355,6 +360,9 @@ def build_report(
     )
     info("Proposals with numbers next to stat words", str(t.numbers_in_text))
     info("risk_note drops", str(t.risk_dropped))
+    info(
+        "Debate retries by reason (options / reactions)", f"{t.retry_options} / {t.retry_reactions}"
+    )
     gate(
         "Debate retry rate",
         _share(t.retried, n),

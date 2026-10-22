@@ -336,3 +336,32 @@ def test_cost_capped_narrations_are_counted_as_info() -> None:
     rows = build_report(t, dormant_failures=0, costs=[10])
     by = {c: (v, s) for c, v, _t, s in rows}
     assert by["Narrations skipped by the cost cap"] == ("1 turns", "INFO")
+
+
+def _stored_hard_for(narration: str) -> int:
+    row = _row()
+    row.narration = narration
+    t = Tally()
+    audit_turn(row, ARCTIC, [], t)
+    return t.stored_hard
+
+
+def test_stored_narration_quoting_the_settings_foreign_word_is_clean() -> None:
+    assert _stored_hard_for("The crate was stamped СЕКРЕТНО. Nobody opened it.") == 0
+
+
+def test_stored_narration_with_an_invented_foreign_word_is_hard() -> None:
+    assert _stored_hard_for("The stores burned in Коридор Б. Nobody slept.") == 1
+
+
+def test_debate_retry_reasons_are_tallied_as_info() -> None:
+    t = Tally()
+    for reasons in (["options"], ["options", "reactions"], ["reactions"], [], None):
+        row = _row()
+        row.turn_meta["debate_retried"] = bool(reasons)
+        if reasons is not None:
+            row.turn_meta["debate_retry_reasons"] = reasons
+        audit_turn(row, ARCTIC, [], t)
+    assert (t.retried, t.retry_options, t.retry_reactions) == (3, 2, 2)
+    by = {c: (v, s) for c, v, _t, s in build_report(t, dormant_failures=0, costs=[10])}
+    assert by["Debate retries by reason (options / reactions)"] == ("2 / 2", "INFO")

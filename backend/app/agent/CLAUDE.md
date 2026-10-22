@@ -136,7 +136,8 @@ carries the full event, not the 60-char title. Output goes through
 (`script` also covers any non-Latin word outside the setting's own vocabulary,
 checked against `foreign_ok=(lore, narrative_voice)` plus the allowed terms, so
 arctic's СЕКРЕТНО passes and an invented "Коридор Б" does not; `markup` also
-covers `*emphasis*` and backtick spans);
+covers `*emphasis*` and backtick spans; `sanitize_risk_note` applies the same
+`foreign_ok`);
 one retry with `RETRY_NOTE` on any violation (skipped once the turn cost cap is
 reached). Keep the attempt with no hard
 violation and fewest soft ones, else `narration.fallback_line` (`You backed

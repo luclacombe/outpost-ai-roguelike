@@ -191,11 +191,12 @@ def _debate_retry_note(valid: int, reactions: int, alive: int, incomplete: int) 
     added only when effects were missing a required field.
     """
     note = (
-        f"\n\n<retry_note>Your previous reply had {valid} of 3 usable options and "
+        "\n\n<retry_note>Your previous reply had "
+        f"{valid} of {DEBATE_TARGET_PROPOSALS} usable options and "
         f"{reactions} of {alive} advisor reactions. Call submit_debate once with one "
-        "reaction from every living advisor and exactly 3 options (one DOMINANT, one "
-        "MORAL, one WILDCARD), each with a non-empty title, description and at least "
-        "one effect."
+        f"reaction from every living advisor and exactly {DEBATE_TARGET_PROPOSALS} options "
+        "(one DOMINANT, one MORAL, one WILDCARD), each with a non-empty title, "
+        "description and at least one effect."
     )
     if incomplete > 0:
         note += (
