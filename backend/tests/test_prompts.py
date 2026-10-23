@@ -567,6 +567,10 @@ def test_preamble_names_both_effect_lists_not_the_old_shape() -> None:
     assert "`effects`" not in t
 
 
+def test_preamble_has_no_em_dashes() -> None:
+    assert "\u2014" not in prompts.build_preamble_block()["text"]
+
+
 def test_debate_user_message_asks_for_one_call() -> None:
     assert "Call submit_debate once" in build_debate_user_message(_flat_event())
 
