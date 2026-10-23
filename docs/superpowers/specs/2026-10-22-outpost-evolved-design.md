@@ -291,6 +291,8 @@ Jev is TypeSafe's System One model (docs: https://docs.typesafe.ai). It takes a 
 
 **Access:** OpenRouter documents the TypeSafe SDK working with an OpenRouter key: base URL `https://openrouter.ai/api` (the SDK calls `/v1/systemone`), model `jev-1.13` or `jev-latest`, responses carry `usage.cost`. OpenRouter's catalog currently lists `typesafe/jev-router`, its guide does not mention Jev 1.14, the long-context or image headers, or rate limits, and a third-party guide calls the route beta. The first W4 task is a one-cent test through OpenRouter: confirm the answers, the model version, `usage.input_tokens`, and that the 32k per-question limit still rejects. If anything is missing, use a direct TypeSafe key.
 
+**One-cent test, 2026-10-23: works.** `typesafe-sdk` with the OpenRouter key, base URL `https://openrouter.ai/api`, model `jev-1.13` (served as `typesafe/jev-1.13-20260917`; `jev-latest` points at 1.13 per TypeSafe). One request, a Choice plus a 4-level Score question, 418 input tokens, 0.59 s, about $0.00002 at list price. No extra headers needed. Gaps: the response had no cost field and no `x-typesafe-request-id`, so billed cost is only visible on the OpenRouter activity page; the per-question 32k rejection was not tested (it would cost a 32k-token call). SDK notes: retries are set with `retry=RetryPolicy(max_retries=0)` (default 2), and Score returns a value on the level scale (0 to n-1), not 0 to 1. Quality on this one sample was poor: it said a humanitarian doctor *supports* sealing four sick people in (0.73, confidence 0.59) and scored the betrayal low (confidence 0.29). One sample proves nothing, but it raises the bar for the W4 head-to-head; per-question decomposition is the first thing to try.
+
 - **One wrapper** (`app/agent/jev.py` or similar; builder's call on location, but it lives outside `app/game/` to keep the engine pure) is the only way to call Jev. It:
   - counts tokens per question and refuses to send any question whose state plus question exceeds 24k tokens (a margin under the 32k limit);
   - never sends the `TypeSafe-Danger-Zone-Long-Context` header;
@@ -363,7 +365,7 @@ These were not explicitly decided in conversation; they are the author's default
 
 ## 13. Open questions
 
-- **Whether Jev works fully through OpenRouter** (§8). A direct TypeSafe key is the fallback.
+- **Whether Jev works fully through OpenRouter** (§8): calls work (2026-10-23 test); billed cost per call and the 32k rejection remain unconfirmed there. A direct TypeSafe key is the fallback.
 - **Who the 3–5 W2 playtesters are** and when those sessions can happen; W2's human half depends on it.
 
 ## 14. Cost evidence (2026-10-22)
