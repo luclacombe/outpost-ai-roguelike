@@ -35,6 +35,7 @@ from app.agent.graph import thread_config
 from app.agent.observability import with_observability
 from app.agent.state import GameTurnState
 from app.game.exceptions import GameNotFound
+from app.game.preview import render_close
 from app.game.schemas import Agent, ColonyState, Proposal
 from app.game.schemas_io import ProposalPublic
 from app.game.service import get_game_session
@@ -77,6 +78,7 @@ def _proposal_public(p: Proposal) -> dict[str, Any]:
         name=p.name,
         description=p.description,
         effects_preview=p.effects_preview,
+        risk_note=p.risk_note,
     ).model_dump(mode="json")
 
 
@@ -93,6 +95,7 @@ def _proposals_ready_payload(state_values: dict[str, Any]) -> dict[str, Any]:
         "turn_number": colony.turn_number if colony is not None else None,
         "current_event": current_event,
         "proposals": [_proposal_public(p) for p in proposals],
+        "close_preview": render_close(),
     }
 
 

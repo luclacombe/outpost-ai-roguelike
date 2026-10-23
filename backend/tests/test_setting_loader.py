@@ -6,11 +6,18 @@ All tests are sync (no asyncio needed — loader is pure I/O + validation).
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
 from app.game.schemas import Quadrant
-from app.game.setting_loader import Setting, list_available_settings, load_setting
+from app.game.setting_loader import (
+    AdvisorArchetype,
+    Setting,
+    list_available_settings,
+    load_setting,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,6 +35,7 @@ def _minimal_valid_setting_dict() -> dict:
         "lore": "A" * 120,  # 100-char minimum
         "palette_accent": "#1a2b3c",
         "narrative_voice": "Terse and plain.",
+        "player_title": "Director",
         "resources": [
             {
                 "id": f"res_{i}",
@@ -252,3 +260,73 @@ def test_verbal_tic_multi_sentence_rejected():
     bad["advisor_archetypes"][0]["verbal_tic"] = "One sentence. Second sentence."
     with pytest.raises(ValidationError):
         Setting.model_validate(bad)
+
+
+_EXPECTED_TITLES = {
+    "arctic_station_v1": "Director",
+    "desert_outpost_v1": "Warden",
+    "orbital_colony_v1": "Director",
+}
+
+
+@pytest.mark.parametrize("setting_id", sorted(_EXPECTED_TITLES))
+def test_player_title_per_setting(setting_id: str) -> None:
+    assert load_setting(setting_id).player_title == _EXPECTED_TITLES[setting_id]
+
+
+@pytest.mark.parametrize("setting_id", sorted(_EXPECTED_TITLES))
+def test_every_shipped_event_has_short_title(setting_id: str) -> None:
+    setting = load_setting(setting_id)
+    for event in setting.event_categories:
+        assert event.title, f"{setting_id}:{event.id} has no title"
+        assert len(event.title) <= 48, f"{setting_id}:{event.id} title too long"
+
+
+@pytest.mark.parametrize("setting_id", sorted(_EXPECTED_TITLES))
+def test_lexicon_is_authored(setting_id: str) -> None:
+    assert load_setting(setting_id).lexicon
+
+
+def test_player_title_never_collides_with_a_role() -> None:
+    for sid in list_available_settings():
+        s = load_setting(sid)
+        roles = {a.role_name for a in s.advisor_archetypes}
+        assert s.player_title not in roles, sid
+
+
+@pytest.mark.parametrize("setting_id", sorted(_EXPECTED_TITLES))
+def test_shipped_tics_have_no_digits_or_gendered_pronouns(setting_id: str) -> None:
+    for a in load_setting(setting_id).advisor_archetypes:
+        assert not re.search(r"\d", a.verbal_tic), a.role_name
+        assert not re.search(r"\b(he|him|his|she|her)\b", a.verbal_tic, re.I), a.role_name
+
+
+def _archetype(tic: str) -> dict:
+    return {
+        "quadrant": "ACCOUNTANT",
+        "role_name": "Clerk",
+        "name_pool": ["A", "B", "C"],
+        "description_template": "x",
+        "verbal_tic": tic,
+        "portrait_options": {},
+    }
+
+
+@pytest.mark.parametrize(
+    "tic",
+    [
+        "Opens with MET 14:07:32 when nervous.",
+        "Uses his last name when angry.",
+        "She hums when tired.",
+    ],
+)
+def test_tic_validator_rejects_digits_and_pronouns(tic: str) -> None:
+    with pytest.raises(ValidationError):
+        AdvisorArchetype.model_validate(_archetype(tic))
+
+
+def test_tic_validator_allows_words_containing_pronoun_letters() -> None:
+    # "other", "the", "whether", "theirs" contain he/her as substrings only.
+    AdvisorArchetype.model_validate(
+        _archetype("Asks whether the other crew agree before acting on theirs.")
+    )

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -94,6 +94,9 @@ class Transformation(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+ToolCallPhase = Literal["debate", "prepare", "resolve", "autonomy", "close"]
+
+
 class ToolCall(BaseModel):
     """A single validated (or pending) engine tool invocation."""
 
@@ -102,6 +105,11 @@ class ToolCall(BaseModel):
     caller_id: UUID | None  # None = engine-emitted or player order
     args: dict[str, Any]
     rejection_reason: str | None = None  # set by engine when invalid
+    # What the engine actually changed (after clamping); None for rejected or
+    # non-numeric calls. Set by engine.apply_tool_call.
+    applied_delta: int | None = None
+    # Which node produced the call; None on calls recorded before 2026-10.
+    phase: ToolCallPhase | None = None
 
 
 class SeedPayload(BaseModel):
@@ -198,8 +206,9 @@ class Proposal(BaseModel):
     flavor: ProposalFlavor
     name: str
     description: str
-    effects_preview: list[str]  # human-readable bullets shown before picking
+    effects_preview: list[str]  # engine-rendered by app.game.preview; never LLM text
     tool_calls_on_pick: list[ToolCall]  # applied by engine when this is chosen
+    risk_note: str | None = None  # engine-sanitized qualitative hint; never numbers
 
 
 # ---------------------------------------------------------------------------

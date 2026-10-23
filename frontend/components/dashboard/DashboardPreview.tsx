@@ -125,6 +125,7 @@ export function DashboardPreview() {
             setting={setting}
             phase={stream.phase === "error" ? "idle" : stream.phase}
             legitimacy={stream.legitimacy ?? DEV_GAME_STATE.legitimacy}
+            closePreview={DEV_GAME_STATE.close_preview ?? []}
             onChoose={stream.submitChoice}
             onBeginTurn={stream.beginTurn}
             onContinue={stream.continueAfterNarration}

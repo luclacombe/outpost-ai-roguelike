@@ -8,7 +8,7 @@ shape is a deliberately narrowed, player-facing projection:
     "how the sausage is made" layer that keeps advisor personalities
     feeling alive.
   - Proposal.tool_calls_on_pick is hidden — the player sees the
-    effects_preview bullets only.
+    effects_preview bullets and an optional risk_note only.
   - Consequence seeds are never exposed during a run.
 
 Response shape is stable; adding fields is fine, renaming is a breaking
@@ -66,7 +66,8 @@ class ResourcePublic(BaseModel):
 
 class ProposalPublic(BaseModel):
     """Player-facing view of a Proposal. Drops `tool_calls_on_pick` — the
-    player sees `effects_preview` bullets only."""
+    player sees the engine-rendered `effects_preview` and an optional
+    sanitized `risk_note`."""
 
     id: str
     proposed_by_agent_id: UUID | None
@@ -74,6 +75,7 @@ class ProposalPublic(BaseModel):
     name: str
     description: str
     effects_preview: list[str]
+    risk_note: str | None = None
 
 
 class GameSessionResponse(BaseModel):
@@ -100,6 +102,8 @@ class GameSessionResponse(BaseModel):
     # the dashboard's "ended" footer; navigating back to /run/<id> after a run
     # closes should NOT offer a "Begin turn" affordance.
     end_state: EndState | None = None
+    # Engine rule lines shown once in the ChoosePanel header (spec §4.1).
+    close_preview: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +143,7 @@ class PostMortemProposal(BaseModel):
     flavor: ProposalFlavor
     proposed_by_agent_id: UUID | None = None
     effects_preview: list[str] = []
+    risk_note: str | None = None
 
 
 class PostMortemAdvisorLine(BaseModel):

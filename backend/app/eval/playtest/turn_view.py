@@ -14,8 +14,9 @@ during continuous play. Nothing hidden by the UI is included.
 | event_log             | EventLog: event titles lowercased + "<name> died."        |
 | advisor_reactions     | EventDebatePanel DEBATE lines                             |
 | last_turn.narration   | EventDebatePanel AFTER block (held by the Continue gate)  |
+| close_preview         | ChoosePanel header (engine rule shown once)               |
 | proposals             | ChoosePanel: name, flavor, proposer, description,         |
-|                       | effects_preview                                           |
+|                       | effects_preview, risk_note                                |
 
 `last_turn` deltas are diffs of the visible numbers above between two
 consecutive views, so the persona learns nothing a player watching the
@@ -121,6 +122,7 @@ class TurnViewTracker:
             "name": proposal.get("name"),
             "flavor": proposal.get("flavor"),
             "effects_preview": list(proposal.get("effects_preview") or []),
+            "risk_note": proposal.get("risk_note"),
         }
 
     def _last_turn(self, dashboard: dict[str, Any]) -> dict[str, Any] | None:
@@ -194,6 +196,7 @@ class TurnViewTracker:
             "event": pr_data.get("current_event") or {},
             "event_log": list(self.event_log),
             "last_turn": self._last_turn(dashboard),
+            "close_preview": list(pr_data.get("close_preview") or []),
             "proposals": proposals,
             "advisor_reactions": [
                 {"agent_id": f["data"]["agent_id"], "text": f["data"]["text"]}

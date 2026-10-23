@@ -23,7 +23,11 @@ from sqlalchemy import text
 
 from app.database import async_session_factory
 from app.dependencies import get_current_user
+from app.game.preview import render_close
+from app.game.router import _shape_response
+from app.game.schemas import Proposal, ProposalFlavor
 from app.main import app
+from tests._factories import _colony
 
 # Matches the stub in tests/conftest.py.
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -254,6 +258,7 @@ async def test_get_session_returns_own(client, seeded_user) -> None:
     assert body["game_id"] == game_id
     assert body["current_turn"] == 0
     assert len(body["agents"]) == 4
+    assert body["close_preview"] == render_close()
 
 
 async def test_get_session_other_user_404(client, seeded_user) -> None:
@@ -301,3 +306,26 @@ async def test_get_session_nonexistent_404(client, seeded_user) -> None:
 async def test_get_session_requires_auth(unauth_client) -> None:
     resp = await unauth_client.get(f"/game/{uuid.uuid4()}")
     assert resp.status_code in (401, 403)
+
+
+def test_shape_response_exposes_close_preview_and_risk_note() -> None:
+    colony = _colony()
+    proposals = [
+        Proposal(
+            id=pid,
+            proposed_by_agent_id=colony.agents[0].id,
+            flavor=ProposalFlavor.DOMINANT,
+            name=f"Plan {pid}",
+            description="Do it.",
+            effects_preview=["fuel -5"],
+            tool_calls_on_pick=[],
+            risk_note=note,
+        )
+        for pid, note in (("a", "People will notice."), ("b", None))
+    ]
+    colony = colony.model_copy(update={"turn_proposals": proposals})
+
+    shaped = _shape_response(colony, setting_name="Arctic Station")
+
+    assert shaped.close_preview == render_close()
+    assert [p.risk_note for p in shaped.turn_proposals] == ["People will notice.", None]

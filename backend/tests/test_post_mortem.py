@@ -12,7 +12,9 @@ Two layers:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,6 +27,7 @@ from app.game.exceptions import GameNotEnded, GameNotFound
 from app.game.post_mortem import (
     _last_sentence,
     _peak_near_miss,
+    _seeds_from_state,
     _to_one_line,
     build_post_mortem,
     build_post_mortem_by_token,
@@ -124,12 +127,42 @@ async def _ensure_user(s: AsyncSession, user_id: UUID, email: str) -> None:
     )
 
 
+def _seed_dict(
+    seed_id: UUID,
+    game_id: UUID,
+    *,
+    written: int,
+    fires: int,
+    fired: bool,
+    dormant: bool,
+    description: str,
+    foreshadowed: bool = False,
+) -> dict:
+    return {
+        "id": str(seed_id),
+        "game_id": str(game_id),
+        "written_at_turn": written,
+        "fires_at_turn": fires,
+        "foreshadowed": foreshadowed,
+        "foreshadow_turn": written if foreshadowed else None,
+        "payload": {
+            "event_id": f"aftermath_{seed_id.hex[:6]}",
+            "severity": 2,
+            "category": "infrastructure",
+            "description": description,
+        },
+        "origin_decision": {"turn_number": written, "event_id": "evt", "chosen_proposal_id": "p1"},
+        "fired": fired,
+        "dormant": dormant,
+    }
+
+
 def _empty_colony_state(game_id: UUID, user_id: UUID) -> dict:
     """Minimal `state` JSONB for a game_sessions row.
 
-    The post-mortem aggregator does not read game_sessions.state — every
-    field it needs is on scalar columns or in turn_logs. We still need
-    *something* parseable here to satisfy the not-null constraint.
+    The post-mortem aggregator reads `consequence_seeds` from this state;
+    everything else it needs is on scalar columns or in turn_logs. The rest
+    is here to satisfy the not-null constraint.
     """
     return {
         "game_id": str(game_id),
@@ -194,7 +227,30 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
                 seed=42,
                 max_turns=2,
                 current_turn=2,
-                state=_empty_colony_state(game_id, user_id),
+                state={
+                    **_empty_colony_state(game_id, user_id),
+                    "consequence_seeds": [
+                        _seed_dict(
+                            seed_fired_id,
+                            game_id,
+                            written=0,
+                            fires=1,
+                            fired=True,
+                            dormant=False,
+                            description="Aftermath of the leak",
+                            foreshadowed=True,
+                        ),
+                        _seed_dict(
+                            seed_dormant_id,
+                            game_id,
+                            written=0,
+                            fires=5,
+                            fired=False,
+                            dormant=True,
+                            description="Marko remembers",
+                        ),
+                    ],
+                },
                 legitimacy=78,
                 player_health=100,
                 end_state="ENDURED",
@@ -255,6 +311,7 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
                         "flavor": "DOMINANT",
                         "proposed_by_agent_id": str(agent_b),
                         "effects_preview": ["fuel −12"],
+                        "risk_note": "The core may not hold.",
                     }
                 ],
                 chosen={"chosen_proposal_id": "p1"},
@@ -310,35 +367,6 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
             )
         )
 
-        # Two seeds: one fired (matches turn 1), one dormant (never fired).
-        s.add(
-            game_models.ConsequenceSeed(
-                id=seed_fired_id,
-                game_id=game_id,
-                written_at_turn=0,
-                fires_at_turn=1,
-                foreshadowed=True,
-                foreshadow_turn=0,
-                payload={"title": "Aftermath of leak", "category": "infrastructure"},
-                origin_decision={"event_title": "Heating core leak", "proposal_id": "p1"},
-                fired=True,
-                dormant=False,
-            )
-        )
-        s.add(
-            game_models.ConsequenceSeed(
-                id=seed_dormant_id,
-                game_id=game_id,
-                written_at_turn=0,
-                fires_at_turn=5,
-                foreshadowed=False,
-                foreshadow_turn=None,
-                payload={"title": "Marko remembers", "category": "social"},
-                origin_decision={"event_title": "Heating core leak", "proposal_id": "p1"},
-                fired=False,
-                dormant=True,
-            )
-        )
         await s.commit()
 
     # Run aggregator
@@ -359,6 +387,10 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
     assert final_status[agent_a] == "ACTIVE"
     assert final_status[agent_b] == "ACTIVE"
 
+    # risk_note passes through from the stored proposal; absent stays None.
+    assert post_mortem.turns[0].proposals[0].risk_note == "The core may not hold."
+    assert post_mortem.turns[1].proposals[0].risk_note is None
+
     # Turn 0: advisor lines collapsed to single sentence.
     line_a_t0 = next(
         line for line in post_mortem.turns[0].advisor_lines if line.agent_id == agent_a
@@ -378,6 +410,9 @@ async def test_build_post_mortem_aggregates_completed_run() -> None:
     cf = post_mortem.counterfactuals
     dormant_ids = {s.id for s in cf.dormant_seeds}
     assert seed_dormant_id in dormant_ids
+    dormant_ref = next(s for s in cf.dormant_seeds if s.id == seed_dormant_id)
+    assert dormant_ref.payload_summary == "Marko remembers"
+    assert dormant_ref.origin_event_title == post_mortem.turns[0].event.title
     # Both agents hit grievance 7 simultaneously on turn 0 → one near-miss.
     assert len(cf.near_miss_coups) == 1
     near = cf.near_miss_coups[0]
@@ -493,3 +528,21 @@ async def test_build_post_mortem_raises_when_run_still_active() -> None:
     async with async_session_factory() as s:
         with pytest.raises(GameNotEnded):
             await build_post_mortem(game_id=game_id, db=s)
+
+
+def test_post_mortem_skips_malformed_seed(caplog: pytest.LogCaptureFixture) -> None:
+    game_id = uuid4()
+    good = _seed_dict(
+        uuid4(),
+        game_id,
+        written=0,
+        fires=2,
+        fired=False,
+        dormant=True,
+        description="Marko remembers",
+    )
+    session = SimpleNamespace(id=game_id, state={"consequence_seeds": [good, {"bogus": 1}]})
+    with caplog.at_level(logging.WARNING):
+        seeds = _seeds_from_state(session)
+    assert [s.payload.description for s in seeds] == ["Marko remembers"]
+    assert "malformed seed" in caplog.text

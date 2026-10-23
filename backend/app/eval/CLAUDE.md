@@ -17,12 +17,12 @@ hot path.
 - `personality.py` — embedding + Haiku-judge personality consistency.
 - `coherence.py` — Haiku-judge decision coherence (action vs reasoning + personality). `score_run_coherence` caps concurrency at 4 via `asyncio.Semaphore` — never use a bare `asyncio.gather` for judge fan-out.
 - `_judge_utils.py` — private helpers shared by Haiku-judge metrics (text extraction, code-fence stripping, JSON parsing). Import `_extract_text` / `_parse_judge_json` from here in any new judge module.
-- `tool_validity.py` — `tool_validity_rate` + `tool_validity_breakdown` (engine-only).
+- `tool_validity.py` — `tool_validity_rate` + `tool_validity_by_phase` + `tool_validity_breakdown` (engine-only).
 - `repetition.py` — pairwise BLEU-2 narrative repetition (NLTK, no LLM).
 - `balance.py` — aggregated survival/resource/forced-choice metrics across runs.
 - `end_state.py` — observed end-state distribution vs SPEC target bands.
 - `inter_run_similarity.py` — mean pairwise cosine on per-run narration; reuses `personality._get_model` and `_cosine`. Verdict band `[0.55, 0.80]`.
-- `choice_spread.py` — pure oracle: applies each offered proposal to a copy of the paused colony via the resolve path; per-option deltas + max pairwise L1 spread. The simulator calls it at every pause (`RunRecord.choice_spread`).
+- `choice_spread.py` — pure oracle: applies each offered proposal to a copy of the paused colony via the resolve path; per-option deltas + max pairwise L1 spread. Outcomes come from `app.game.preview.simulate_option` and exclude end-of-turn decay. The simulator calls it at every pause (`RunRecord.choice_spread`).
 - `paired.py` — per (setting, seed) cell comparison across players (persona harness + sweep): do end states / final numbers differ?
 - `sweep_summary.py` — `scripts/sweep.py` summary.json + summary.md.
 - `types.py` — `RunRecord`, the canonical Pydantic snapshot of one simulated run. Single source of truth — do not shadow with per-module variants.
@@ -62,7 +62,7 @@ call downloads ~80MB, subsequent calls are free.
   `messages.create` call args.
 - Using prompt caching for per-call judges. The prompt is small and varies
   per response — cache-write overhead would dominate.
-- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Metrics consume `RunRecord.tool_calls` (built from the live SSE / in-memory stream). Until that gap closes, `tool_validity_rate` measures applied calls only — rejected-at-resolve calls do not survive into stored runs. For the picked option, `summarize_choice_spread(...)["picked_rejected_calls"]` (choice-spread oracle) does count them.
+- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Read `turn_logs.tool_calls` instead (the full phase-tagged record). `tool_validity_rate` counts LLM-originated phases (`debate`, `prepare`, `autonomy`, plus untagged legacy calls); `resolve` and `close` are engine-derived and excluded. `tool_validity_by_phase` gives the split.
 
 ## Test layout
 

@@ -77,8 +77,11 @@ RESPONSE CONTRACT (obey exactly):
         <agent name="EXACT_NAME">in-character reaction, at most 25 words</agent>
     Use the exact name from the persona block. Do not invent advisors.
     Dead advisors do not speak and do not emit tool calls.
-  * For any action you want applied to the world, emit a separate tool_use
-    block. Never embed numbers or state changes in the prose.
+  * Tool calls are the only way to change the world. Never embed numbers
+    or state changes in the prose. In the debate, emit only `propose_action`
+    tool_use blocks: every effect goes inside `tool_calls_on_pick`, and any
+    other tool call in the debate is discarded. In the off-turn phase, emit
+    only the tools listed under OFF-TURN (AUTONOMOUS) PHASE.
   * Every tool_use MUST include `caller_agent_id` set to the UUID of the
     agent emitting the call. Omitting it routes the call to the engine as
     if nobody claimed authorship, and the validator will reject effects
@@ -88,16 +91,25 @@ AVAILABLE TOOLS (debate phase):
   propose_action       — add one DOMINANT / MORAL / WILDCARD choice to the
                          player's three-option pool for this turn. Include
                          a short name (≤40 chars), a description (≤200
-                         chars), up to 5 effects_preview strings the
-                         player will see before choosing, AND a
+                         chars), an optional risk_note (one short line on
+                         what could go wrong, no numbers), AND a
                          tool_calls_on_pick list (up to 5 nested calls)
                          that fire if the player picks this proposal.
                          The nested calls are how your proposal moves
                          the world. See PROPOSAL EFFECTS below.
+  propose_action is the only tool the debate phase applies. Anything else
+  you emit during the debate is discarded unseen. Every effect goes inside
+  a proposal's tool_calls_on_pick.
+
+NESTED TOOLS (only inside tool_calls_on_pick):
   modify_resource      — shift a colony resource by a signed integer delta
-                         bounded to [-50, +50]. The validator rejects
-                         resource_ids that the current setting doesn't
-                         define, and clamps values at 0 and max.
+                         bounded to [-50, +50]. Use only the resource ids
+                         listed under `resources:` in <colony_state>; any
+                         other id is rejected. Gains above max are capped;
+                         spending more than the colony has is rejected.
+                         Legitimacy, health and grievance are not
+                         resources; use the tools below for health and
+                         grievance. The engine owns legitimacy.
   modify_health        — change an agent's or the player's health by a
                          signed delta. target_id is an agent UUID or the
                          literal string "player". Damage below 0 is
@@ -105,35 +117,30 @@ AVAILABLE TOOLS (debate phase):
   adjust_grievance     — shift another agent's grievance in [-3, +3]. Use
                          sparingly and only when justified by the event —
                          the engine caps at ±3 per call.
-  speak_to_agent       — private line to another advisor. target_id is a
-                         living-agent UUID; message is appended to their
-                         memory (≤200 chars, truncated otherwise).
-  adjust_relationship  — shift YOUR OWN relationship score toward another
-                         advisor in [-3, +3]. Requires caller_agent_id.
 
 PROPOSAL EFFECTS (how a proposal mutates state when picked):
   Every propose_action MUST include `tool_calls_on_pick` — a list of
   structured tool calls describing exactly what changes if the player
   picks your proposal. Each item has shape:
-      {"name": "<tool>", "args": {<args mirroring the standalone tool>}}
+      {"name": "<tool>", "args": {<args mirroring the nested tool>}}
   Allowed names: modify_resource, modify_health, adjust_grievance.
   Do NOT include `caller_agent_id` inside `args` — these calls are
-  engine-emitted at pick time. The numbers in `effects_preview` and the
-  numbers in `tool_calls_on_pick` MUST match — the player sees the
-  preview and trusts it. If preview says "-10 fuel", the nested call
-  must be modify_resource(fuel, -10).
+  engine-emitted at pick time. The engine computes what the player sees
+  from these calls, so every effect size goes here and nowhere else:
+  never write numbers in `name` or `description`.
 
-  Example propose_action input:
+  Example propose_action input (resource ids are placeholders; use the
+  ids from <colony_state>):
       {
-        "name": "Burn fuel for warmth",
-        "description": "Run the heater hard until dawn.",
+        "name": "Ration the stores",
+        "description": "Cut every share by a third until the next resupply.",
         "flavor": "DOMINANT",
-        "effects_preview": ["-12 fuel", "+5 morale"],
+        "risk_note": "People will notice who still eats well.",
         "tool_calls_on_pick": [
           {"name": "modify_resource",
-           "args": {"resource_id": "fuel", "delta": -12, "reason": "heater run"}},
+           "args": {"resource_id": "<resource id>", "delta": 12, "reason": "smaller shares"}},
           {"name": "modify_resource",
-           "args": {"resource_id": "morale", "delta": 5, "reason": "warm bunks"}}
+           "args": {"resource_id": "<another resource id>", "delta": -5, "reason": "resentment"}}
         ],
         "caller_agent_id": "<your-uuid>"
       }
@@ -142,17 +149,11 @@ DEBATE TARGETS (per-turn, aspirational — the engine caps at three):
   * Exactly three `propose_action` calls across the living advisors,
     one per flavor: one DOMINANT (the pragmatic / hard-edged option,
     resource-efficient but hard on people), one MORAL (principled /
-    costly, legitimacy-positive, often resource-negative), one WILDCARD
-    (unorthodox / risky, legitimacy-negative, high variance outcomes).
+    costly, often resource-negative), one WILDCARD (unorthodox / risky,
+    high variance outcomes).
   * If four advisors are alive, one of them sits this turn out rather
     than duplicating a flavor. Pick the advisor whose axes least match
     the available flavor left.
-  * Standalone modify_resource / modify_health / adjust_grievance calls
-    (i.e. NOT nested inside a propose_action) represent the ambient
-    cost of the crisis — damage that lands regardless of which proposal
-    the player picks. Use these sparingly and only for unavoidable
-    environmental damage. The proposal's tool_calls_on_pick is the
-    primary mutation channel; ambient calls are an exception.
 
 CONSEQUENCE SEEDS (context — do not invoke directly):
   When a severity-3+ event is chosen, the engine schedules an aftermath
@@ -176,7 +177,7 @@ VOICE:
   <colony_state> is for your pacing, not for quoting back.
 
   If the event body explicitly attributes the discovery or action to
-  you (for example "Ilya finds the message in the queue"), do NOT
+  you (for example, the event says you found the message yourself), do NOT
   frame your reaction as second-hand — speak from direct knowledge.
   Radio-rumor framings ("I heard on the radio that—") are appropriate
   ONLY when the information actually came from the radio and not from
@@ -372,9 +373,9 @@ def build_debate_user_message(event: Event) -> str:
         "applied. Remember: exactly three `propose_action` calls across "
         "the group (one DOMINANT, one MORAL, one WILDCARD); every "
         "propose_action MUST include `tool_calls_on_pick` (1-5 nested "
-        "modify_resource / modify_health / adjust_grievance calls) "
-        "matching the numbers in `effects_preview`; every tool_use MUST "
-        "set `caller_agent_id` to your UUID."
+        "modify_resource / modify_health / adjust_grievance calls); put no "
+        "numbers in name or description; every tool_use MUST set "
+        "`caller_agent_id` to your UUID."
     )
 
 

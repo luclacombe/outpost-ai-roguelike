@@ -36,7 +36,7 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "name": "propose_action",
         "description": (
             "Add a structured action to the player's choice pool for this turn; "
-            "supply name, description, flavor, and optional previews."
+            "supply name, description, flavor, tool_calls_on_pick, and optionally a risk_note."
         ),
         "input_schema": {
             "type": "object",
@@ -47,10 +47,13 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "string",
                     "enum": ["DOMINANT", "MORAL", "WILDCARD"],
                 },
-                "effects_preview": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "maxItems": 5,
+                "risk_note": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "description": (
+                        "Optional. One short line hinting at what could go wrong. "
+                        "No numbers. The engine shows the player the exact effects."
+                    ),
                 },
                 "tool_calls_on_pick": {
                     "type": "array",

@@ -181,7 +181,15 @@ def _debate_haiku_body(agents) -> dict:
                 "name": f"Plan {i}",
                 "description": f"Option {i}.",
                 "flavor": ["DOMINANT", "MORAL", "WILDCARD"][i],
-                "effects_preview": [],
+                # Setting-agnostic nested effect (the setting is picked per
+                # user): without it the proposal classes as no_effect and the
+                # debate retries.
+                "tool_calls_on_pick": [
+                    {
+                        "name": "modify_health",
+                        "args": {"target_id": "player", "delta": -1, "reason": "strain"},
+                    }
+                ],
             },
         }
         for i in range(3)

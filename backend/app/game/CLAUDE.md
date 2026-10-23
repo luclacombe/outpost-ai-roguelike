@@ -16,22 +16,30 @@ The single mutation pathway for all state changes:
 
 1. `apply_tool_call(state, tc)` in `engine.py` calls `validate_tool_call(tc, state)` from `validator.py`.
 2. Invalid → record `rejection_reason` on the tool call, append to `turn_tool_calls`, return state unchanged.
-3. Valid → `_apply_valid_effect(state, tc)` mutates; tool call appended with `rejection_reason=None`.
+3. Valid → `_apply_valid_effect(state, tc)` mutates; tool call appended with `rejection_reason=None` and
+   `applied_delta` (what actually changed after clamping).
+
+Every call carries a `phase`: `debate`, `prepare`, `resolve`, `autonomy`,
+`close` (set by `engine.stamp_phase` in the nodes, or `model_copy` in
+`prepare.py`). End-of-turn decay is
+`engine.close_turn` (`modify_legitimacy`, phase `close`). The full record
+persists to `turn_logs.tool_calls`.
+
+Validation: resource overflow clamps to max (no `would_overflow`); underflow
+rejects (`would_underflow`).
 
 Engine-emitted calls (axis heuristics, e.g. Collective agent gains
 grievance when the group is harmed) use `caller_id=None` and go through
 the **same** pipeline — so the Tool-Call Validity metric counts every
 state change. No side-channel mutations.
 
-## When to split engine.py
+## Resolution rules live in resolution.py
 
-`engine.py` has a 300-line soft-target waiver (root CLAUDE.md). Section 7
-(`derive_resolution_consequences` + rule constants) is the natural split
-point — it's a self-contained pure function with its own constants and
-helpers, no shared state with Sections 1-6, and is the most likely
-section to grow as new severe-payload semantics emerge. If the file
-crosses ~600 lines, extract Section 7 to `engine_consequences.py` (or
-`consequence_rules.py`) before adding more.
+`derive_resolution_consequences` + its rule constants live in
+`resolution.py` (the former `engine.py` Section 7, re-exported from `engine`).
+It emits one `modify_legitimacy` call per triggered rule, each with a named
+reason, so the preview can show every part. Reasons name the advisor and say
+"you" for the player. `resolution.py` must not import `engine`.
 
 ## Engine-only tools
 
@@ -41,8 +49,9 @@ instance with `caller_id is not None` (reason: `engine_only_tool`). Current
 members:
 
 - `modify_legitimacy(delta, reason)` — emitted by
-  `engine.derive_resolution_consequences` when a picked proposal's payload
-  or cross-proposal context warrants a legitimacy shift.
+  `resolution.derive_resolution_consequences` when a picked proposal's
+  payload or cross-proposal context warrants a legitimacy shift, and by
+  `engine.close_turn` for the end-of-turn decay.
 - `set_advisor_status(target_id, new_status, reason)` — emitted by the
   engine at pick time when an advisor-status transition rides in
   `tool_calls_on_pick`. Allowed transitions: `ACTIVE↔DETAINED`,
@@ -52,12 +61,12 @@ members:
 
 `set_advisor_status` is in `_NESTED_TOOL_WHITELIST` (LLM may include it in
 a proposal's `tool_calls_on_pick`). `modify_legitimacy` is NOT — only
-`derive_resolution_consequences` emits it.
+the engine emits it (`derive_resolution_consequences`, `close_turn`).
 
-## propose_action: two-stage validation
+## propose_action: three-stage validation
 
 `tool_calls_on_pick` is the proposal's effect list — nested tool calls
-that fire at pick time. Validation is deliberately split:
+that fire at pick time. Validation is deliberately staged:
 
 - **Debate time** (`_validate_propose_action`): shape-only — each nested
   item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
@@ -67,11 +76,17 @@ that fire at pick time. Validation is deliberately split:
   `set_advisor_status` per `tool_calls_on_pick`
   (`multiple_status_mutations`) — mass-DETAIN would otherwise leave next
   turn with one ACTIVE author and break SPEC §7.3's three-author triple.
-- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): each
-  nested call re-validates against current state. State-dependent
-  rejects (e.g. `would_underflow` when resources have shifted between
-  propose and pick) fire here and land in `turn_tool_calls` with
-  `rejection_reason`, not in `_validate_propose_action`.
+- **Preparation** (`agent/prepare.py::_strip`, after the debate): each
+  nested call is applied one by one against the debate-time state.
+  State-dependent rejects (e.g. `would_underflow`) are dropped from the
+  proposal and recorded in `turn_tool_calls` with `phase="prepare"` and
+  `rejection_reason="stripped:<reason>"`, not in `_validate_propose_action`.
+  These records are what `tool_validity_rate` counts (`prepare` is an
+  LLM-originated phase).
+- **Pick time** (`nodes.resolve` → `engine.apply_tool_calls`): resolve
+  receives only the kept calls and re-validates them as a safety net.
+  Rejects here are not expected; they would land in `turn_tool_calls`
+  with phase `resolve`, which the validity metric excludes.
 
 Nested calls are constructed as `ToolCall(name=..., caller_id=None,
 args=...)` — engine-emitted at pick. The proposing agent's UUID lives
@@ -120,7 +135,8 @@ No LLM calls. All branches tested in `test_engine.py`.
 ## Gotchas
 
 - `generate_run`: content (max_turns, advisor names/axes, portrait seeds) is a function of `(setting_id, seed)` only, via sha256 — never `hash(str)` (salted per process). Identity is separate: `game_id` folds in `user_id` + `run_key`, agent ids fold in `game_id`. `create_game_session` passes a fresh `run_key` because `game_id` is also the LangGraph thread_id; a reused one resumes a stale checkpoint. Paired playtests depend on this split.
-- `derive_resolution_consequences` reads `tool_calls_on_pick` args before validation, so a heavy drain the validator then rejects (e.g. `delta_out_of_range`) still costs legitimacy. Known; surfaced by the choice-spread oracle.
+- Rejected nested calls are stripped at preparation (`agent/prepare.py`), so `derive_resolution_consequences` only sees calls that will apply. Don't feed it unvalidated `tool_calls_on_pick`.
+- Post-mortem reads seeds from `game_sessions.state.consequence_seeds` (`post_mortem.py`); the `consequence_seeds` table is deprecated and never written.
 
 - `MissingGreenlet` after `await db.rollback()`: snapshot `profile.last_run_started_at` *before* rolling back — the async-loaded relationship detaches post-rollback.
 - Between `db.add(game_session)` and `db.add_all(agents)` you need `await db.flush()` so the FK resolves; psycopg3 `executemany` batching otherwise blows up.
@@ -136,7 +152,10 @@ schemas.py          state types (Pydantic v2)
 models.py           ORM (SQLAlchemy) — JSONB-backed state
 tools.py            Anthropic tool schemas
 validator.py        pure (ToolCall, ColonyState) → ValidationResult
-engine.py           apply_tool_call, deaths, coup, advance_turn
+engine.py           apply_tool_call, deaths, coup, advance_turn, close_turn
+resolution.py       derive_resolution_consequences (pick-time legitimacy/grievance rules)
+preview.py          simulate_option + render_effects: engine-rendered effects_preview
+post_mortem.py      post-mortem + share data from stored runs
 consequence.py      seed scheduler + foreshadow
 events.py           select_event (seed > forced > natural priority)
 difficulty.py       wealth_scale_factor + apply_early_turn_floors + pool validator

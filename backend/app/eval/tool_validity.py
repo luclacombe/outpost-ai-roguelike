@@ -18,15 +18,34 @@ TOOL_VALIDITY_THRESHOLD = 0.85
 """Minimum acceptable fraction of valid tool calls (see ARCHITECTURE §12)."""
 
 
-def tool_validity_rate(tool_calls: list[ToolCall]) -> float:
-    """Fraction of tool calls with `rejection_reason is None`.
+LLM_PHASES: frozenset[str] = frozenset({"debate", "prepare", "autonomy"})
+"""Phases whose calls the LLM authored. `resolve` and `close` calls are
+engine-derived and valid by construction; counting them would dilute the
+gate. Calls with phase None predate phase tags and still count."""
 
-    An empty list returns 1.0 (vacuously valid — nothing to reject).
+
+def _counted(tc: ToolCall) -> bool:
+    return tc.phase is None or tc.phase in LLM_PHASES
+
+
+def tool_validity_rate(tool_calls: list[ToolCall]) -> float:
+    """Fraction of LLM-originated calls with `rejection_reason is None`.
+
+    An empty (or engine-only) list returns 1.0 (vacuously valid).
     """
-    if not tool_calls:
+    counted = [tc for tc in tool_calls if _counted(tc)]
+    if not counted:
         return 1.0
-    valid = sum(1 for tc in tool_calls if tc.rejection_reason is None)
-    return valid / len(tool_calls)
+    return sum(1 for tc in counted if tc.rejection_reason is None) / len(counted)
+
+
+def tool_validity_by_phase(tool_calls: list[ToolCall]) -> dict[str, dict[str, int]]:
+    """{phase: {"valid": n, "rejected": m}} over every call, engine phases included."""
+    out: dict[str, dict[str, int]] = {}
+    for tc in tool_calls:
+        bucket = out.setdefault(tc.phase or "unknown", {"valid": 0, "rejected": 0})
+        bucket["rejected" if tc.rejection_reason else "valid"] += 1
+    return out
 
 
 def tool_validity_breakdown(tool_calls: list[ToolCall]) -> dict[str, int]:

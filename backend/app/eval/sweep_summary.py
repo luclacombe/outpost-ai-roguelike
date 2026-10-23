@@ -6,10 +6,12 @@ Input is one dict per finished game, as written to `raw/*.json` by
 Rejected-call rates come in two flavours, both kept because each misses
 something:
   - `picked_rejected_rate`: resolve-time rejections on the picked option,
-    from the choice-spread oracle. `turn_logs` never persists these.
-  - `turn_log_rejected_rate`: from `RunRecord.tool_calls` (persisted picked
-    calls + applied autonomous calls). Autonomous rejections are not
-    persisted, so this undercounts (see app/eval/CLAUDE.md).
+    from the choice-spread oracle.
+  - `turn_log_rejected_rate`: from `RunRecord.tool_calls`, i.e. the full
+    `turn_logs.tool_calls` record. Since the phase-tagged record landed it
+    holds every phase (debate, prepare incl. `stripped:` rejects, resolve,
+    autonomy, close), so this rate is over all phases and is not comparable
+    with sweeps run before that change.
 """
 
 from __future__ import annotations

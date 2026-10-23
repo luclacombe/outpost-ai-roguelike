@@ -22,7 +22,7 @@ from app.game.schemas import (
     Resource,
     ToolCall,
 )
-from app.game.validator import ValidationResult, validate_tool_call
+from app.game.validator import ValidationResult, strip_scaffold_prefix, validate_tool_call
 
 # ---------------------------------------------------------------------------
 # Test helpers / fabricators
@@ -165,12 +165,11 @@ def test_modify_resource_would_underflow() -> None:
     assert "would_underflow" in result.reason
 
 
-def test_modify_resource_would_overflow() -> None:
-    state = _colony(resources={"fuel": _resource(value=95)})
-    tc = _tc("modify_resource", {"resource_id": "fuel", "delta": 10, "reason": "refuelled"})
-    result = validate_tool_call(tc, state)
-    assert result.valid is False
-    assert "would_overflow" in result.reason
+def test_modify_resource_overflow_is_valid_now() -> None:
+    # Overflow clamps in the effect (engine._effect_modify_resource); spec 4.1.
+    state = _colony(resources={"fuel": _resource(value=95, max_val=100)})
+    tc = _tc("modify_resource", {"resource_id": "fuel", "delta": 20, "reason": "r"})
+    assert validate_tool_call(tc, state).valid
 
 
 def test_modify_resource_delta_out_of_range() -> None:
@@ -955,3 +954,39 @@ def test_set_advisor_status_requires_reason():
     result = validate_tool_call(tc, state)
     assert not result.valid
     assert result.reason == "missing_reason"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("DOMINANT: Burn it", "Burn it"),
+        ("Rank flavor: Hold", "Hold"),
+        ("  wildcard :  Jump", "Jump"),
+        ("Moral high ground", "Moral high ground"),
+    ],
+)
+def test_strip_scaffold_prefix(raw: str, expected: str) -> None:
+    assert strip_scaffold_prefix(raw) == expected
+
+
+def test_duplicate_check_compares_stripped_names() -> None:
+    existing = Proposal(
+        id="x",
+        proposed_by_agent_id=None,
+        flavor=ProposalFlavor.DOMINANT,
+        name="Burn it",
+        description="d",
+        effects_preview=[],
+        tool_calls_on_pick=[],
+    )
+    state = _colony().model_copy(update={"turn_proposals": [existing]})
+    tc = _tc(
+        "propose_action",
+        {"name": "DOMINANT: Burn it", "description": "d", "flavor": "MORAL"},
+    )
+    assert validate_tool_call(tc, state).reason == "duplicate_proposal"
+
+
+def test_name_that_is_only_a_prefix_is_missing() -> None:
+    tc = _tc("propose_action", {"name": "MORAL:", "description": "d", "flavor": "MORAL"})
+    assert validate_tool_call(tc, _colony()).reason == "missing_name"

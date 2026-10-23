@@ -90,6 +90,7 @@ const PROPOSALS: ProposalPublic[] = [
     description:
       "Run the backup at full draw for three hours. Patch the core in that window or freeze.",
     effects_preview: ["fuel −12", "warmth +20", "morale −4"],
+    risk_note: "Stores may not last the week.",
   },
   {
     id: "prop-infirmary",
@@ -98,7 +99,8 @@ const PROPOSALS: ProposalPublic[] = [
     name: "Infirmary first",
     description:
       "Reduced draw, six hours, infirmary kept at priority. Elena makes it through the night.",
-    effects_preview: ["fuel −8", "warmth +6", "medical +10"],
+    effects_preview: ["fuel −8", "warmth +6", "medicine +10"],
+    risk_note: null,
   },
   {
     id: "prop-bypass",
@@ -107,7 +109,8 @@ const PROPOSALS: ProposalPublic[] = [
     name: "Bypass gamble",
     description:
       "Two hours of full power while Yuri rigs a partial bypass. If it holds, no fuel burn overnight.",
-    effects_preview: ["fuel −8", "warmth +10", "20% catastrophic on fail"],
+    effects_preview: ["fuel −8", "warmth +10"],
+    risk_note: null,
   },
 ];
 
@@ -125,6 +128,7 @@ export const DEV_GAME_STATE: GameSessionResponse = {
   current_event: EVENT,
   turn_proposals: PROPOSALS,
   end_state: null,
+  close_preview: ["−1 legitimacy at day's end"],
 };
 
 export const DEV_DEBATE_LINES: { agent_id: string; text: string }[] = [

@@ -6,7 +6,7 @@ The graph's Postgres checkpointer owns mid-turn state across HTTP boundaries
 (see app.agent.graph — interrupt_before=["resolve"]).
 """
 
-from typing import TypedDict
+from typing import Any, TypedDict
 from uuid import UUID
 
 from app.game.schemas import ColonyState, Event, Proposal, ToolCall
@@ -47,6 +47,10 @@ class GameTurnState(TypedDict, total=False):
     # Running cost for this turn's LLM calls. Reset at generate_event, accumulated
     # by any node that makes an LLM call, written to TurnLog.turn_cost_cents at advance.
     cost_cents_this_turn: float
+
+    # Per-turn integrity metadata persisted to turn_logs.turn_meta (spec §4.4).
+    # Reset at generate_event; each node merges its keys into a copy.
+    turn_meta: dict[str, Any]
 
     # Set by advance_turn's conditional edge evaluator.
     is_run_over: bool

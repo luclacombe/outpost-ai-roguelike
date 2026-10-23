@@ -11,6 +11,7 @@ without fragile substring searches.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +30,15 @@ class ValidationResult:
 
 
 _OK = ValidationResult(valid=True)
+
+_SCAFFOLD_PREFIX = re.compile(
+    r"^\s*(rank\s+)?(flavor|dominant|moral|wildcard)\s*:\s*", re.IGNORECASE
+)
+
+
+def strip_scaffold_prefix(name: str) -> str:
+    """Remove a leaked prompt scaffold like 'DOMINANT:' or 'Rank flavor:'."""
+    return _SCAFFOLD_PREFIX.sub("", name, count=1).strip()
 
 
 def _fail(reason: str) -> ValidationResult:
@@ -80,8 +90,11 @@ _NESTED_TOOL_WHITELIST: frozenset[str] = frozenset(
 
 def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResult:
     args = tc.args
-    name = args.get("name")
-    if not name or not isinstance(name, str) or not name.strip():
+    raw_name = args.get("name")
+    if not isinstance(raw_name, str):
+        return _fail("missing_name")
+    name = strip_scaffold_prefix(raw_name)
+    if not name:
         return _fail("missing_name")
     description = args.get("description")
     if not description or not isinstance(description, str) or not description.strip():
@@ -91,9 +104,9 @@ def _validate_propose_action(tc: ToolCall, state: ColonyState) -> ValidationResu
         return _fail("invalid_flavor")
 
     # Duplicate-proposal check (case-insensitive, stripped)
-    normalised = name.strip().lower()
+    normalised = name.lower()
     for proposal in state.turn_proposals:
-        if proposal.name.strip().lower() == normalised:
+        if strip_scaffold_prefix(proposal.name).lower() == normalised:
             return _fail("duplicate_proposal")
 
     # Shape-only check on nested tool_calls_on_pick. State-dependent
@@ -146,8 +159,7 @@ def _validate_modify_resource(tc: ToolCall, state: ColonyState) -> ValidationRes
     projected = resource.value + delta
     if projected < 0:
         return _fail("would_underflow")
-    if projected > resource.max:
-        return _fail("would_overflow")
+    # Overflow is allowed: the effect clamps at max (spec 4.1).
 
     return _OK
 

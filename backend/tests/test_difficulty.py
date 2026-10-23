@@ -164,6 +164,7 @@ def _setting_with(categories: list[EventCategory]) -> Setting:
         lore="L" * 120,
         palette_accent="#1a2b3c",
         narrative_voice="Terse.",
+        player_title="Director",
         resources=_minimal_resources(),
         advisor_archetypes=_minimal_archetypes(),
         event_categories=[*categories, *filler],

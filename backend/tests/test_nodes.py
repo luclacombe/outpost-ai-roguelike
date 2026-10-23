@@ -462,6 +462,7 @@ async def test_agent_debate_no_retry_when_three_valid(monkeypatch):
     assert len(fake.calls) == 1
     assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
     assert result["cost_cents_this_turn"] == pytest.approx(cost_cents_of(first, MODEL_HAIKU))
+    assert result["turn_meta"]["debate_retried"] is False
 
 
 async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
@@ -475,6 +476,7 @@ async def test_agent_debate_retries_once_and_uses_better_retry(monkeypatch):
     assert len(fake.calls) == 2
     assert len(result["debate_tool_calls"]) == 3
     assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
+    assert result["turn_meta"]["debate_retried"] is True
     expected = 1.0 + cost_cents_of(first, MODEL_HAIKU) + cost_cents_of(second, MODEL_HAIKU)
     assert result["cost_cents_this_turn"] == pytest.approx(expected)
 
@@ -672,37 +674,137 @@ async def test_propose_pick_resolve_pipeline_mutates_resource():
 
 
 async def test_apply_tool_calls_separates_applied_from_rejected():
-    nadia = make_alive_agent(name="Nadia")
-    colony = make_colony_state(agents=[nadia])
-    nadia = colony.agents[0]
-
-    valid = ToolCall(
-        name="modify_resource",
-        caller_id=nadia.id,
-        args={"resource_id": "fuel", "delta": -5, "reason": "patching"},
-    )
-    invalid = ToolCall(
-        name="modify_resource",
-        caller_id=nadia.id,
+    colony = make_colony_state()
+    good = ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[0].id,
         args={
-            "resource_id": "nonexistent",
-            "delta": -5,
-            "reason": "bogus",
+            "name": "Patch",
+            "description": "Patch it.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -5, "reason": "patching"},
+                }
+            ],
+        },
+    )
+    bad = ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[1].id,
+        args={"name": "Nope", "flavor": "MORAL"},
+    )
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [good, bad]})
+    assert [tc.args["name"] for tc in result["applied_tool_calls"]] == ["Patch"]
+    assert [tc.rejection_reason for tc in result["rejected_tool_calls"]] == ["missing_description"]
+
+
+async def test_apply_node_rejects_ambient_debate_calls():
+    colony = make_colony_state()
+    ambient = ToolCall(
+        name="modify_resource",
+        caller_id=colony.agents[0].id,
+        args={"resource_id": "fuel", "delta": -5, "reason": "storm"},
+    )
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [ambient]})
+    assert result["colony_state"].resources["fuel"].value == 70
+    rejected = result["rejected_tool_calls"]
+    assert [(tc.phase, tc.rejection_reason) for tc in rejected] == [
+        ("debate", "not_allowed_in_debate")
+    ]
+
+
+def _patch_call(colony: ColonyState, **extra: Any) -> ToolCall:
+    return ToolCall(
+        name="propose_action",
+        caller_id=colony.agents[0].id,
+        args={
+            "name": "Patch",
+            "description": "Patch it.",
+            "flavor": "DOMINANT",
+            "tool_calls_on_pick": [
+                {
+                    "name": "modify_resource",
+                    "args": {"resource_id": "fuel", "delta": -5, "reason": "p"},
+                }
+            ],
+            **extra,
         },
     )
 
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "debate_tool_calls": [valid, invalid],
+
+async def test_apply_node_renders_preview_and_ignores_llm_preview():
+    colony = make_colony_state()
+    call = _patch_call(colony, effects_preview=["+99 legitimacy"])
+    result = await apply_tool_calls({"colony_state": colony, "debate_tool_calls": [call]})
+    assert result["proposals"][0].effects_preview == ["fuel \u22125"]
+    assert result["colony_state"].turn_proposals[0].effects_preview == ["fuel \u22125"]
+
+
+async def test_apply_node_writes_turn_meta():
+    colony = make_colony_state()
+    result = await apply_tool_calls(
+        {
+            "colony_state": colony,
+            "debate_tool_calls": [_patch_call(colony)],
+            "turn_meta": {"debate_retried": False},
+        }
+    )
+    meta = result["turn_meta"]
+    assert meta["debate_retried"] is False
+    assert meta["proposal_classes"] == ["valid"]
+    assert meta["risk_notes_dropped"] == 0
+    assert meta["pre_pick"]["legitimacy"] == colony.legitimacy
+
+
+async def test_resolve_stamps_resolve_phase():
+    colony = make_colony_state()
+    applied = await apply_tool_calls(
+        {"colony_state": colony, "debate_tool_calls": [_patch_call(colony)]}
+    )
+    before = applied["colony_state"]
+    out = await resolve(
+        {
+            "colony_state": before,
+            "proposals": applied["proposals"],
+            "player_choice": applied["proposals"][0].id,
+            "current_event": _make_event(severity=1),
+        }
+    )
+    new_calls = out["colony_state"].turn_tool_calls[len(before.turn_tool_calls) :]
+    assert new_calls and all(tc.phase == "resolve" for tc in new_calls)
+
+
+async def test_autonomous_stamps_autonomy_phase(monkeypatch):
+    colony = make_colony_state()
+    remember = {
+        "name": "remember",
+        "input": {"fact": "The pump held.", "caller_agent_id": str(colony.agents[0].id)},
     }
-    result = await apply_tool_calls(state)
+    _install_fake(monkeypatch, [_debate_message(colony, [remember])])
+    out = await autonomous_actions(
+        {"colony_state": colony, "narration": "x", "cost_cents_this_turn": 0.0}
+    )
+    assert out["colony_state"].turn_tool_calls[-1].phase == "autonomy"
 
-    assert len(result["applied_tool_calls"]) == 1
-    assert result["applied_tool_calls"][0].args["resource_id"] == "fuel"
-    assert result["applied_tool_calls"][0].rejection_reason is None
 
-    assert len(result["rejected_tool_calls"]) == 1
-    assert result["rejected_tool_calls"][0].rejection_reason == "unknown_resource"
+async def test_retry_ignores_discarded_first_attempt_for_duplicate_names(monkeypatch):
+    """The retry is judged on the pre-debate state. The first attempt's two
+    valid proposals share names with the retry's three; if the retry were
+    judged on a state that had absorbed the first attempt, every retry
+    proposal would read as a duplicate and the weaker first attempt would win."""
+    colony = make_colony_state()
+    first = _debate_message(colony, _valid_tool_uses(colony, n=2), reaction="first")
+    second = _debate_message(colony, _valid_tool_uses(colony, n=3), reaction="second")
+    fake = _install_fake(monkeypatch, [first, second])
+
+    result = await agent_debate(_debate_state(colony))
+
+    assert len(fake.calls) == 2
+    assert [tc.args["name"] for tc in result["debate_tool_calls"]] == ["Plan 0", "Plan 1", "Plan 2"]
+    assert result["debate_per_agent_text"][colony.agents[0].id] == "second"
+    assert result["turn_meta"]["debate_retried"] is True
 
 
 async def test_apply_tool_calls_caps_proposals_at_3():
@@ -1138,60 +1240,135 @@ async def test_check_deaths_flips_agent_is_alive():
 # ---------------------------------------------------------------------------
 
 
+def _narrate_state(colony: ColonyState, cost: float = 1.0) -> dict[str, Any]:
+    picked = _make_proposal(pid="p_n", flavor=ProposalFlavor.DOMINANT).model_copy(
+        update={"proposed_by_agent_id": colony.agents[0].id, "name": "Hold the line"}
+    )
+    return {
+        "colony_state": colony,
+        "cost_cents_this_turn": cost,
+        "current_event": _make_event(),
+        "proposals": [picked],
+        "player_choice": "p_n",
+        "turn_meta": {"debate_retried": False},
+    }
+
+
+def _sonnet(text: str) -> Response:
+    return Response(200, json=fake_sonnet_response(text))
+
+
 @respx.mock
-async def test_narrate_turn_skips_sonnet_when_over_budget():
+async def test_narrate_turn_skips_call_when_over_budget():
     colony = make_colony_state()
     route = respx.post(_ANTHROPIC_URL)
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": float(MAX_COST_CENTS_PER_TURN) + 1.0,
-        "current_event": _make_event(),
-    }
-    result = await narrate_turn(state)
-
+    result = await narrate_turn(_narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) + 1.0))
     assert route.call_count == 0
-    assert "narration" in result
-    assert "Colony stands" in result["narration"]
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "cost_cap"
+    assert result["turn_meta"]["debate_retried"] is False
 
 
 @respx.mock
-async def test_narrate_turn_calls_sonnet_when_under_budget():
+async def test_narrate_turn_first_pass_success():
     colony = make_colony_state()
-    narration_text = "The wall held. Nadia counted the rations twice."
-    route = respx.post(_ANTHROPIC_URL).mock(
-        return_value=Response(200, json=fake_sonnet_response(narration_text))
-    )
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": 1.0,
-        "current_event": _make_event(),
-    }
-    result = await narrate_turn(state)
-
+    text = "The wall held. Nadia counted the rations twice."
+    route = respx.post(_ANTHROPIC_URL).mock(return_value=_sonnet(text))
+    result = await narrate_turn(_narrate_state(colony))
     assert route.call_count == 1
-    assert result["narration"] == narration_text
-    # Cost accumulates.
+    assert result["narration"] == text
+    assert result["turn_meta"]["narration"] == {
+        "source": "llm",
+        "attempts": 1,
+        "first_attempt_violations": [],
+        "kept_violations": [],
+    }
     assert result["cost_cents_this_turn"] > 1.0
+
+
+@respx.mock
+async def test_narrate_turn_uses_own_cached_system_block():
+    colony = make_colony_state()
+    route = respx.post(_ANTHROPIC_URL).mock(return_value=_sonnet("The wall held."))
+    await narrate_turn(_narrate_state(colony))
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["system"]) == 1
+    assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "<agent" not in body["system"][0]["text"]
+
+
+@respx.mock
+async def test_narrate_turn_retry_then_success():
+    colony = make_colony_state()
+    bad = '<agent name="Nadia">Held.</agent>'
+    good = "The wall held. Nadia slept."
+    route = respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(bad), _sonnet(good)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert route.call_count == 2
+    assert "retry_note" in route.calls[1].request.content.decode()
+    assert result["narration"] == good
+    meta = result["turn_meta"]["narration"]
+    assert meta["source"] == "retry" and meta["attempts"] == 2
+    assert "markup" in meta["first_attempt_violations"]
+
+
+@respx.mock
+async def test_narrate_turn_soft_violations_keep_fewer():
+    colony = make_colony_state()
+    first = "You backed Nadia, and Ilyana and Borek watched."
+    second = "You backed Nadia, and Ilyana watched."
+    respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(first), _sonnet(second)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == second
+    assert result["turn_meta"]["narration"]["kept_violations"] == ["unknown_name:Ilyana"]
+
+
+@respx.mock
+async def test_narrate_hard_violation_twice_falls_back():
+    colony = make_colony_state()
+    russian = "Стена выдержала. Никто не спал."
+    respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(russian), _sonnet(russian)])
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    meta = result["turn_meta"]["narration"]
+    assert meta["source"] == "fallback"
+    assert meta["first_attempt_violations"] == ["script"]
+
+
+@respx.mock
+async def test_narrate_turn_no_retry_once_cost_cap_reached():
+    colony = make_colony_state()
+    # Sonnet call itself pushes the turn over the cap.
+    state = _narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) - 0.01)
+    route = respx.post(_ANTHROPIC_URL).mock(
+        side_effect=[_sonnet('<agent name="Nadia">Held.</agent>'), _sonnet("Never sent.")]
+    )
+    result = await narrate_turn(state)
+    assert route.call_count == 1
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "fallback"
+    assert result["turn_meta"]["narration"]["attempts"] == 1
+
+
+@respx.mock
+async def test_narrate_turn_no_retry_over_cap_keeps_soft_only():
+    colony = make_colony_state()
+    state = _narrate_state(colony, cost=float(MAX_COST_CENTS_PER_TURN) - 0.01)
+    text = "You backed Nadia, and Ilyana watched."
+    route = respx.post(_ANTHROPIC_URL).mock(side_effect=[_sonnet(text), _sonnet("Never sent.")])
+    result = await narrate_turn(state)
+    assert route.call_count == 1
+    assert result["narration"] == text
+    assert result["turn_meta"]["narration"]["kept_violations"] == ["unknown_name:Ilyana"]
 
 
 @respx.mock
 async def test_narrate_turn_falls_back_on_api_error():
     colony = make_colony_state()
     respx.post(_ANTHROPIC_URL).mock(return_value=Response(500, json={"error": "boom"}))
-
-    state: dict[str, Any] = {
-        "colony_state": colony,
-        "cost_cents_this_turn": 1.0,
-        "current_event": _make_event(),
-    }
-    # Should not raise; templated fallback instead.
-    result = await narrate_turn(state)
-
-    assert "narration" in result
-    assert "Colony stands" in result["narration"]
-    # No cost accumulation on error.
+    result = await narrate_turn(_narrate_state(colony))
+    assert result["narration"] == f"You backed {colony.agents[0].name}: Hold the line."
+    assert result["turn_meta"]["narration"]["source"] == "fallback"
     assert "cost_cents_this_turn" not in result
 
 
@@ -1375,3 +1552,60 @@ async def test_advance_turn_sets_is_run_over_when_end_state_set(persisted_colony
 
     assert result["is_run_over"] is True
     assert result["colony_state"].end_state is not None
+
+
+async def test_advance_turn_persists_tool_calls_and_turn_meta(persisted_colony):
+    colony = persisted_colony
+    event = _make_event(severity=2, event_id="evt_rec")
+    colony = colony.model_copy(update={"current_event": event})
+    meta = {"debate_retried": True, "proposal_classes": ["valid"], "risk_notes_dropped": 0}
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [_make_proposal(pid="p_rec", flavor=ProposalFlavor.DOMINANT)],
+        "player_choice": "p_rec",
+        "narration": "It held.",
+        "cost_cents_this_turn": 1.0,
+        "turn_meta": meta,
+    }
+    result = await advance_turn(state)
+    assert result["colony_state"].legitimacy == colony.legitimacy - 1
+
+    async with async_session_factory() as s:
+        row = (
+            await s.execute(
+                text("SELECT tool_calls, turn_meta FROM turn_logs WHERE game_id = :gid"),
+                {"gid": colony.game_id},
+            )
+        ).one()
+    close = [tc for tc in row.tool_calls if tc["phase"] == "close"]
+    assert close and close[0]["name"] == "modify_legitimacy" and close[0]["applied_delta"] == -1
+    assert row.turn_meta == meta
+
+
+async def test_advance_turn_without_turn_meta(persisted_colony):
+    """A game paused before this change resumes without turn_meta (Review Focus 5)."""
+    colony = persisted_colony
+    event = _make_event(severity=2, event_id="evt_old")
+    colony = colony.model_copy(update={"current_event": event})
+    state: dict[str, Any] = {
+        "game_id": str(colony.game_id),
+        "user_id": str(colony.user_id),
+        "colony_state": colony,
+        "current_event": event,
+        "proposals": [],
+        "player_choice": None,
+        "narration": None,
+        "cost_cents_this_turn": 0.0,
+    }
+    await advance_turn(state)
+    async with async_session_factory() as s:
+        row = (
+            await s.execute(
+                text("SELECT turn_meta FROM turn_logs WHERE game_id = :gid"),
+                {"gid": colony.game_id},
+            )
+        ).one()
+    assert row.turn_meta == {}

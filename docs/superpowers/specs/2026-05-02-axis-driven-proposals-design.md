@@ -161,6 +161,8 @@ Plus one worked example showing the same event resolving to different proposal f
 - The four-alive → one-sits-out rule (now reframed: "if four advisors are alive, the advisor whose axes least diverge from the other three sits out").
 - Engine validation, `tool_calls_on_pick`, `effects_preview` matching, all unchanged.
 
+Update 2026-10: effects_preview is engine-rendered (app/game/preview.py); the LLM no longer writes it. See 2026-10-07-truth-and-integrity-design.md.
+
 ## 4. Eval design
 
 ### 4.1 Two new Haiku judges

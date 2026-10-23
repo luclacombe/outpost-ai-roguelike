@@ -9,6 +9,8 @@ import random
 from uuid import UUID, uuid4
 
 from app.game.events import (
+    _build_event,
+    _derive_title,
     forced_escalation_probability,
     has_forced_escalation_fired,
     select_event,
@@ -163,6 +165,7 @@ def _setting_with_events(categories: list[EventCategory]) -> Setting:
         lore="L" * 120,
         palette_accent="#1a2b3c",
         narrative_voice="Terse.",
+        player_title="Director",
         resources=_minimal_resources(),
         advisor_archetypes=_minimal_archetypes(),
         event_categories=[*categories, *filler],
@@ -750,3 +753,25 @@ def test_select_event_skips_categories_in_recent_event_log_when_caller_passes_th
         assert result.category != "recycler", (
             f"seed {seed}: 'recycler' fired again despite cooldown set"
         )
+
+
+def test_derive_title_keeps_short_first_sentence() -> None:
+    assert _derive_title("A blizzard rolls in. Visibility drops.") == "A blizzard rolls in"
+
+
+def test_derive_title_never_cuts_mid_word() -> None:
+    long = (
+        "A coded message arrives addressed to the commissar by his old rank from the "
+        "ministry. More text."
+    )
+    title = _derive_title(long)
+    assert len(title) <= 48
+    assert title.endswith("…")
+    body_words = long.split(".")[0].split()
+    assert title[:-1].split() == body_words[: len(title[:-1].split())]
+
+
+def test_build_event_prefers_authored_title() -> None:
+    category = load_setting("arctic_station_v1").event_categories[0]
+    event = _build_event(category, random.Random(1), EventOrigin.NATURAL)
+    assert event.title == category.title

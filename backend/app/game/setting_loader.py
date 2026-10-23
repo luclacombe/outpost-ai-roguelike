@@ -28,6 +28,7 @@ SETTINGS_DIR = Path(__file__).parent / "settings"
 _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+_TIC_PRONOUN = re.compile(r"\b(he|him|his|she|her)\b", re.IGNORECASE)
 
 
 class ResourceDef(BaseModel):
@@ -75,6 +76,17 @@ class AdvisorArchetype(BaseModel):
             raise ValueError("verbal_tic must be a single sentence")
         return v
 
+    @field_validator("verbal_tic")
+    @classmethod
+    def _verbal_tic_has_no_literals(cls, v: str) -> str:
+        # Tics are per role; names (and so pronouns) are drawn per run, and a
+        # literal timestamp gets copied verbatim into every line.
+        if re.search(r"\d", v):
+            raise ValueError("verbal_tic must not contain digits")
+        if _TIC_PRONOUN.search(v):
+            raise ValueError("verbal_tic must not contain gendered pronouns")
+        return v
+
     @field_validator("name_pool")
     @classmethod
     def name_pool_nonempty_strings(cls, v: list[str]) -> list[str]:
@@ -95,6 +107,7 @@ class EventCategory(BaseModel):
     prompt_template: str
     choice_templates: Annotated[list[str], Field(min_length=3)]
     can_kill_agent: bool = False
+    title: Annotated[str, Field(min_length=1, max_length=48)] | None = None
 
     @field_validator("id")
     @classmethod
@@ -121,6 +134,8 @@ class Setting(BaseModel):
     lore: Annotated[str, Field(min_length=100, max_length=1500)]
     palette_accent: str
     narrative_voice: str
+    player_title: Annotated[str, Field(min_length=1, max_length=24)]
+    lexicon: list[str] = []
     resources: Annotated[list[ResourceDef], Field(min_length=5, max_length=5)]
     advisor_archetypes: Annotated[list[AdvisorArchetype], Field(min_length=4, max_length=4)]
     event_categories: Annotated[list[EventCategory], Field(min_length=12, max_length=30)]
