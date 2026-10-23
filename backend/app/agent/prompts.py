@@ -83,22 +83,26 @@ RESPONSE CONTRACT (obey exactly):
     proposed by a different living advisor ("advisor": NAME). Each has a
     `title` (at most 40 chars), a `description` (at most 200 chars), an
     optional `risk_note` (one short line on what could go wrong, no numbers)
-    and `effects`.
-  * `effects` (1-5 per option) are the only way an option changes the world.
-    Never write numbers in title or description. Each effect is one of:
-      {"kind": "resource", "resource": "<resource id from <colony_state>>", "delta": integer in [-50, 50]}
+    and two effect lists, `resource_effects` and `person_effects` (always send
+    both; use [] for the one you do not need).
+  * Effects (1-5 per option across both lists, at least one) are the only way
+    an option changes the world. Never write numbers in title or description.
+    Each `resource_effects` entry is:
+      {"resource": "<resource id from <colony_state>>", "delta": integer in [-50, 50]}
+    Each `person_effects` entry is one of:
       {"kind": "health", "target": "<advisor name or player>", "delta": integer}
       {"kind": "grievance", "target": "<advisor name>", "delta": integer in [-3, 3]}
-    Use only resource ids listed in <colony_state>. Gains above max are
-    capped; spending more than the colony has is rejected. Legitimacy is not
-    a resource; the engine owns it.
+    Every field shown is required. Use only resource ids listed in
+    <colony_state>. Gains above max are capped; spending more than the colony
+    has is rejected. Legitimacy is not a resource; the engine owns it.
 
   Example option (ids and names are placeholders):
       {"flavor": "DOMINANT", "advisor": "<name>", "title": "Ration the stores",
        "description": "Cut every share by a third until the next resupply.",
        "risk_note": "People will notice who still eats well.",
-       "effects": [{"kind": "resource", "resource": "<resource id>", "delta": 12},
-                   {"kind": "resource", "resource": "<another resource id>", "delta": -5}]}
+       "resource_effects": [{"resource": "<resource id>", "delta": 12},
+                            {"resource": "<another resource id>", "delta": -5}],
+       "person_effects": []}
 
 DEBATE TARGETS (per-turn, aspirational — the engine caps at three):
   * Exactly three options across the living advisors,

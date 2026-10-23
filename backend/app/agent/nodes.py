@@ -200,9 +200,9 @@ def _debate_retry_note(valid: int, reactions: int, alive: int, incomplete: int) 
     )
     if incomplete > 0:
         note += (
-            f" {incomplete} effect(s) lacked a required field: every resource effect "
-            'needs "resource" (a resource id from the colony state) and every health or '
-            'grievance effect needs "target".'
+            f" {incomplete} effect(s) lacked a required field: every resource_effects "
+            'entry needs "resource" (a resource id from the colony state) and every '
+            'person_effects entry needs "target" (and a kind of health or grievance).'
         )
     return note + "</retry_note>"
 

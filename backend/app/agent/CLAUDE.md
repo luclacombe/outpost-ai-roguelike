@@ -56,6 +56,16 @@ cheap models made one call and stopped (bake-off 2026-10-22).
 - **Per-game enums.** The schema pins advisor names and resource ids to this
   colony, so it is stable within a game and differs between games. Build it
   per call from the alive cast; never cache one across games.
+- **Two effect lists, every field required.** Each option has
+  `resource_effects` (`{resource, delta}`, max 5) and `person_effects`
+  (`{kind: health|grievance, target, delta}`, max 3); both arrays are required
+  (empty is fine), neither has `minItems`. They replaced one mixed `effects`
+  list whose `resource`/`target` were optional: in the 2026-10-23 sweep all 108
+  incomplete effects sent only `delta` and `kind` (F1). The parser maps both
+  to the same nested `modify_resource` / `modify_health` / `adjust_grievance`
+  calls (resource first, combined cap 5), skips a person entry whose kind is
+  not health/grievance and any non-object entry, and never repairs a value.
+  The old `effects` key is ignored (no legacy path).
 - **Parsers never raise.** `parse_submit_debate` returns
   `DebateParse(per_agent_text, tool_calls)` (options become `propose_action`
   `ToolCall`s with nested `tool_calls_on_pick`; adapter-supplied reasons; no
@@ -85,10 +95,14 @@ or `auto` when the first call fell back to `auto`) when valid proposals are
 under 3 OR fewer advisors reacted than are alive. The note is
 `nodes._debate_retry_note(valid, reactions, alive, incomplete)`, appended to
 the user message: it states the counts, and when
-`debate_format.incomplete_effects` found effects missing `resource` (resource
-kind) or `target` (health/grievance kind) it adds a sentence naming that field.
+`debate_format.incomplete_effects` found effects missing `resource`
+(`resource_effects` entry) or `target` / a health-or-grievance `kind`
+(`person_effects` entry) it adds a sentence naming those fields.
 System blocks and tools are unchanged, so the cached prefix still hits.
-`incomplete_effects` also logs each such effect's key names, so a sweep shows
+`incomplete_effects` also logs each such effect's key names (never values) as
+`submit_debate: resource effect lacks 'resource'; keys sent: [...]`,
+`submit_debate: person effect lacks 'target'; keys sent: [...]` or
+`submit_debate: person effect has kind %r; keys sent: [...]`, so a sweep shows
 whether the model left the field out or used another key (no key aliases are
 accepted). The response with more valid proposals wins, then more reactions
 (ties keep the first; reactions follow the kept response);

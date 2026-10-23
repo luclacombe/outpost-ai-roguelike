@@ -7,6 +7,13 @@ existing `DebateParse` (`per_agent_text` plus `propose_action` ToolCalls with
 nested `tool_calls_on_pick`), so the engine, validator and `prepare_proposals`
 stay unchanged. The effect `reason` the validator requires is not asked of the
 model; the parser supplies it from the option title.
+
+Each option carries two effect lists, `resource_effects` (`{resource, delta}`)
+and `person_effects` (`{kind, target, delta}`), with every item field required
+in the schema. A single mixed list with optional `resource`/`target` let the
+model send effects without the field the engine needs. The parser only
+reshapes both lists into the nested engine calls; it never repairs or guesses a
+value (the validator decides).
 """
 
 from __future__ import annotations
@@ -24,48 +31,68 @@ logger = logging.getLogger(__name__)
 DEBATE_TOOL_NAME = "submit_debate"
 _FLAVORS = ["DOMINANT", "MORAL", "WILDCARD"]
 _REASON_MAX = 60
+_MAX_EFFECTS = 5
+_PERSON_KINDS = ("health", "grievance")
 
 
 def build_debate_tool(alive_agents: list[Agent], resource_ids: list[str]) -> dict[str, Any]:
     """Tool schema whose enums pin advisor names and resource ids to this colony."""
     names = [a.name for a in alive_agents]
-    effect: dict[str, Any] = {
+    resource_effect: dict[str, Any] = {
         "type": "object",
-        "required": ["kind", "delta"],
+        "required": ["resource", "delta"],
         "properties": {
-            "kind": {
-                "type": "string",
-                "enum": ["resource", "health", "grievance"],
-                "description": (
-                    "resource changes a colony resource; health and grievance change a person."
-                ),
-            },
-            "resource": {
-                "type": "string",
-                "enum": list(resource_ids),
-                "description": "Required when kind is resource: one of the colony's resource ids.",
-            },
+            "resource": {"type": "string", "enum": list(resource_ids)},
+            "delta": {"type": "integer", "description": "Signed integer change."},
+        },
+    }
+    person_effect: dict[str, Any] = {
+        "type": "object",
+        "required": ["kind", "target", "delta"],
+        "properties": {
+            "kind": {"type": "string", "enum": list(_PERSON_KINDS)},
             "target": {
                 "type": "string",
                 "enum": [*names, "player"],
-                "description": (
-                    "Required when kind is health or grievance: an advisor name, "
-                    "or player for health."
-                ),
+                "description": "An advisor name, or player (health only).",
             },
             "delta": {"type": "integer", "description": "Signed integer change."},
         },
     }
     option: dict[str, Any] = {
         "type": "object",
-        "required": ["flavor", "advisor", "title", "description", "effects"],
+        "required": [
+            "flavor",
+            "advisor",
+            "title",
+            "description",
+            "resource_effects",
+            "person_effects",
+        ],
         "properties": {
             "flavor": {"type": "string", "enum": _FLAVORS},
             "advisor": {"type": "string", "enum": names},
             "title": {"type": "string"},
             "description": {"type": "string"},
             "risk_note": {"type": "string"},
-            "effects": {"type": "array", "minItems": 1, "maxItems": 5, "items": effect},
+            "resource_effects": {
+                "type": "array",
+                "maxItems": _MAX_EFFECTS,
+                "items": resource_effect,
+                "description": (
+                    "Changes to colony resources. Use [] if none; give at least one effect "
+                    "across resource_effects and person_effects."
+                ),
+            },
+            "person_effects": {
+                "type": "array",
+                "maxItems": 3,
+                "items": person_effect,
+                "description": (
+                    "Changes to advisor or player health or advisor grievance. Use [] if none; "
+                    "give at least one effect across resource_effects and person_effects."
+                ),
+            },
         },
     }
     return {
@@ -99,10 +126,17 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def _nested_call(
+def _resource_call(effect: dict[str, Any], reason: str) -> dict[str, Any]:
+    args = {"resource_id": effect.get("resource"), "delta": effect.get("delta"), "reason": reason}
+    return {"name": "modify_resource", "args": args}
+
+
+def _person_call(
     effect: dict[str, Any], by_name: dict[str, Agent], reason: str
 ) -> dict[str, Any] | None:
-    kind, delta = effect.get("kind"), effect.get("delta")
+    kind = effect.get("kind")
+    if kind not in _PERSON_KINDS:
+        return None
     target = str(effect.get("target", ""))
     if target.lower() == "player":
         target_id = "player"
@@ -110,20 +144,27 @@ def _nested_call(
         target_id = str(by_name[target.lower()].id)
     else:
         target_id = target
-    if kind == "resource":
-        args = {"resource_id": effect.get("resource"), "delta": delta, "reason": reason}
-        return {"name": "modify_resource", "args": args}
-    if kind == "health":
-        return {
-            "name": "modify_health",
-            "args": {"target_id": target_id, "delta": delta, "reason": reason},
-        }
-    if kind == "grievance":
-        return {
-            "name": "adjust_grievance",
-            "args": {"target_id": target_id, "delta": delta, "reason": reason},
-        }
-    return None
+    name = "modify_health" if kind == "health" else "adjust_grievance"
+    return {
+        "name": name,
+        "args": {"target_id": target_id, "delta": effect.get("delta"), "reason": reason},
+    }
+
+
+def _nested_calls(
+    option: dict[str, Any], by_name: dict[str, Agent], reason: str
+) -> list[dict[str, Any]]:
+    """Resource calls first, then person calls, capped at `_MAX_EFFECTS`."""
+    calls = [
+        _resource_call(e, reason)
+        for e in _as_list(option.get("resource_effects"))
+        if isinstance(e, dict)
+    ]
+    for effect in _as_list(option.get("person_effects")):
+        call = _person_call(effect, by_name, reason) if isinstance(effect, dict) else None
+        if call is not None:
+            calls.append(call)
+    return calls[:_MAX_EFFECTS]
 
 
 def _debate_payload(response: Any) -> dict[str, Any]:
@@ -138,38 +179,43 @@ def _debate_payload(response: Any) -> dict[str, Any]:
 
 
 def incomplete_effects(response: Any) -> int:
-    """Count effects in the first `submit_debate` input that lack a required field.
+    """Count effects in the first `submit_debate` input the parser cannot use as sent.
 
-    A `resource` effect needs a non-empty `resource`; a `health` or `grievance`
-    effect needs a non-empty `target`. Diagnostic only: nothing is dropped or
-    repaired here (the engine validator decides). Each incomplete effect logs
-    one warning with its sorted key names (never values), so a sweep shows
-    whether the model omitted the field or used another key. Never raises.
+    A `resource_effects` entry needs a non-empty `resource`; a `person_effects`
+    entry needs a `kind` of health or grievance and a non-empty `target`; an
+    entry that is not an object counts too. Diagnostic only: nothing is dropped
+    or repaired here (the engine validator decides). Each one logs a warning
+    with its sorted key names (never values), so a sweep shows whether the model
+    omitted the field or used another key. Never raises.
     """
     count = 0
     for option in _as_list(_debate_payload(response).get("options")):
         if not isinstance(option, dict):
             continue
-        for effect in _as_list(option.get("effects")):
-            if not isinstance(effect, dict):
-                continue
-            kind = effect.get("kind")
-            needed = (
-                "resource"
-                if kind == "resource"
-                else "target"
-                if kind in ("health", "grievance")
-                else None
-            )
-            if needed is None or effect.get(needed):
-                continue
-            count += 1
-            logger.warning(
-                "submit_debate: %s effect lacks %r; keys sent: %s",
-                kind,
-                needed,
-                sorted(str(k) for k in effect),
-            )
+        for list_name in ("resource_effects", "person_effects"):
+            for effect in _as_list(option.get(list_name)):
+                if not isinstance(effect, dict):
+                    count += 1
+                    logger.warning(
+                        "submit_debate: %s entry is %s, not an object",
+                        list_name,
+                        type(effect).__name__,
+                    )
+                    continue
+                keys = sorted(str(k) for k in effect)
+                if list_name == "resource_effects":
+                    if effect.get("resource"):
+                        continue
+                    msg, args = "submit_debate: resource effect lacks 'resource'; keys sent: %s", ()
+                elif effect.get("kind") not in _PERSON_KINDS:
+                    msg = "submit_debate: person effect has kind %r; keys sent: %s"
+                    args = (effect.get("kind"),)
+                elif effect.get("target"):
+                    continue
+                else:
+                    msg, args = "submit_debate: person effect lacks 'target'; keys sent: %s", ()
+                count += 1
+                logger.warning(msg, *args, keys)
     return count
 
 
@@ -217,13 +263,7 @@ def parse_submit_debate(
             continue
         agent = by_name.get(str(option.get("advisor", "")).lower())
         reason = title[:_REASON_MAX]
-        nested = [
-            call
-            for effect in _as_list(option.get("effects"))
-            if isinstance(effect, dict)
-            for call in [_nested_call(effect, by_name, reason)]
-            if call is not None
-        ]
+        nested = _nested_calls(option, by_name, reason)
         tool_calls.append(
             ToolCall(
                 name="propose_action",

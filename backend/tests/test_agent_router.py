@@ -164,7 +164,8 @@ def _debate_haiku_body(agents) -> dict:
             # Setting-agnostic effect (the setting is picked per user):
             # without one the proposal classes as no_effect and the debate
             # retries.
-            "effects": [{"kind": "health", "target": "player", "delta": -1}],
+            "resource_effects": [],
+            "person_effects": [{"kind": "health", "target": "player", "delta": -1}],
         }
         for i in range(3)
     ]

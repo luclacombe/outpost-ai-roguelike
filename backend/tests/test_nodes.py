@@ -389,7 +389,8 @@ def _option(i: int, advisor: Agent, **overrides: Any) -> dict[str, Any]:
         "advisor": advisor.name,
         "title": f"Plan {i}",
         "description": f"Option {i}.",
-        "effects": [{"kind": "resource", "resource": "fuel", "delta": -5}],
+        "resource_effects": [{"resource": "fuel", "delta": -5}],
+        "person_effects": [],
     }
     option.update(overrides)
     return option
@@ -581,7 +582,7 @@ async def test_agent_debate_counts_only_validator_accepted_proposals(monkeypatch
             _option(0, nadia),
             _option(1, nadia, title=""),
             {},
-            _option(2, nadia, effects=[]),
+            _option(2, nadia, resource_effects=[]),
         ],
     )
     second = _debate_message(colony, _valid_options(colony))
@@ -654,8 +655,10 @@ async def test_debate_tool_names_this_colonys_advisors_and_resources(monkeypatch
     schema = fake.calls[0]["tools"][0]["input_schema"]
     option = schema["properties"]["options"]["items"]["properties"]
     assert option["advisor"]["enum"] == [a.name for a in colony.agents]
-    effect = option["effects"]["items"]["properties"]
+    effect = option["resource_effects"]["items"]["properties"]
     assert effect["resource"]["enum"] == list(colony.resources)
+    person = option["person_effects"]["items"]["properties"]
+    assert person["target"]["enum"] == [*(a.name for a in colony.agents), "player"]
 
 
 @pytest.mark.parametrize(
@@ -770,9 +773,7 @@ async def test_debate_keeps_first_on_tie(monkeypatch):
 
 async def test_debate_retry_note_names_incomplete_effects(monkeypatch):
     colony = make_colony_state()
-    bad = [
-        _option(i, colony.agents[i], effects=[{"kind": "resource", "delta": -5}]) for i in range(3)
-    ]
+    bad = [_option(i, colony.agents[i], resource_effects=[{"delta": -5}]) for i in range(3)]
     first = _debate_message(colony, bad)
     second = _debate_message(colony, _valid_options(colony))
     fake = _install_fake(monkeypatch, [first, second])
@@ -783,7 +784,8 @@ async def test_debate_retry_note_names_incomplete_effects(monkeypatch):
     user = fake.calls[1]["user"]
     assert "0 of 3 usable options" in user
     assert "3 effect(s) lacked a required field" in user
-    assert 'every resource effect needs "resource"' in user
+    assert 'every resource_effects entry needs "resource"' in user
+    assert 'every person_effects entry needs "target"' in user
     assert "retry_note" in user and "lacked" not in fake.calls[0]["user"]
     assert fake.calls[1]["system"] == fake.calls[0]["system"]
     assert fake.calls[1]["tools"] == fake.calls[0]["tools"]
@@ -794,7 +796,7 @@ async def test_debate_retry_note_names_incomplete_effects(monkeypatch):
 async def test_debate_logs_incomplete_effects_of_the_retry_response(monkeypatch, caplog):
     colony = make_colony_state()
     bad = [
-        _option(i, colony.agents[i], effects=[{"kind": "resource", "resource_id": "fuel"}])
+        _option(i, colony.agents[i], resource_effects=[{"resource_id": "fuel", "delta": -5}])
         for i in range(3)
     ]
     _install_fake(monkeypatch, [_debate_message(colony, bad), _debate_message(colony, bad)])
@@ -804,7 +806,7 @@ async def test_debate_logs_incomplete_effects_of_the_retry_response(monkeypatch,
 
     logged = [r.getMessage() for r in caplog.records if r.name == "app.agent.debate_format"]
     assert len(logged) == 6  # three incomplete effects per attempt, retry included
-    assert all("resource_id" in m for m in logged)
+    assert all("resource effect lacks 'resource'" in m and "resource_id" in m for m in logged)
 
 
 async def test_debate_no_retry_when_complete(monkeypatch):
@@ -1137,7 +1139,7 @@ async def test_propose_pick_resolve_pipeline_mutates_resource():
         nadia,
         title="Burn fuel for warmth",
         description="Run the heater hard.",
-        effects=[{"kind": "resource", "resource": "fuel", "delta": -10}],
+        resource_effects=[{"resource": "fuel", "delta": -10}],
     )
     respx.post(_ANTHROPIC_URL).mock(
         return_value=Response(

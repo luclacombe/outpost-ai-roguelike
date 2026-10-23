@@ -436,7 +436,8 @@ async def test_openrouter_debate_response_parses_and_costs(monkeypatch):
                             "advisor": nadia.name,
                             "title": "Burn fuel",
                             "description": "Run the heater hard.",
-                            "effects": [{"kind": "resource", "resource": "fuel", "delta": -10}],
+                            "resource_effects": [{"resource": "fuel", "delta": -10}],
+                            "person_effects": [],
                         }
                     ],
                 },

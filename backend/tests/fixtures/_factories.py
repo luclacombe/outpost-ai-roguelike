@@ -46,9 +46,9 @@ def make_haiku_debate_side_effect():
     #   "moral"     → MORAL    (food +3)
     #   "random"    → any of the three
     _effect_per_flavor = {
-        "DOMINANT": {"kind": "resource", "resource": "fuel", "delta": -5},
-        "MORAL": {"kind": "resource", "resource": "food", "delta": 3},
-        "WILDCARD": {"kind": "resource", "resource": "fuel", "delta": -8},
+        "DOMINANT": {"resource": "fuel", "delta": -5},
+        "MORAL": {"resource": "food", "delta": 3},
+        "WILDCARD": {"resource": "fuel", "delta": -8},
     }
 
     def _make_debate_body() -> dict[str, Any]:
@@ -59,7 +59,8 @@ def make_haiku_debate_side_effect():
                 "advisor": f"Advisor{i + 1}",
                 "title": f"Plan {i}",
                 "description": f"Option {i}.",
-                "effects": [_effect_per_flavor[flavors[i]]],
+                "resource_effects": [_effect_per_flavor[flavors[i]]],
+                "person_effects": [],
             }
             for i in range(3)
         ]
