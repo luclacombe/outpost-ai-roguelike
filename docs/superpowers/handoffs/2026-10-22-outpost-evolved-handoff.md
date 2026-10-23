@@ -201,3 +201,5 @@ Execute in order; record each outcome here and in the design doc.
 3. **Jev 1¢ test** through OpenRouter (TypeSafe SDK, base URL `https://openrouter.ai/api`, model `jev-latest`, one question well under 32k). Record result in design doc §8/§13.
 4. **Playtesters for W2:** only the user can choose; ask.
 5. Then **W1** (trace foundation, includes F5 fractional cost) per the design doc: brainstorm/spec gaps, plan, execute.
+
+**Pending reminder for the user (after the deploy is verified):** delete the old credentials: Langfuse key `outpost`; Supabase legacy anon/service_role keys (disable) and legacy JWT secret (revoke); old Google OAuth client secret; the Anthropic key Outpost used. Then check OpenRouter and Anthropic usage since 2026-10-21.
