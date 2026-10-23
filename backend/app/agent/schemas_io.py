@@ -38,7 +38,9 @@ Content-Type is `text/event-stream` with `Cache-Control: no-cache` and
     {"turn_number": int,
      "legitimacy": int,
      "player_health": int,
-     "cost_cents": int}
+     "cost_cents": int,
+     "resources": [ResourcePublic...],   # every resource, after this turn
+     "agents": [AgentPublic...]}         # every advisor, dead included
 
 `run_over`
     {"end_state": str, "turn_number": int, "cost_cents": int}

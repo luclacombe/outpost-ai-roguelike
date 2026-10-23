@@ -29,12 +29,12 @@ from app.game.post_mortem import (
 from app.game.preview import render_close
 from app.game.schemas import ColonyState
 from app.game.schemas_io import (
-    AgentPublic,
     GameSessionCreateRequest,
     GameSessionResponse,
     PostMortem,
     ProposalPublic,
-    ResourcePublic,
+    agents_public,
+    resources_public,
 )
 from app.game.service import create_game_session, get_game_session
 from app.game.setting_loader import load_setting
@@ -71,33 +71,8 @@ def _shape_response(state: ColonyState, *, setting_name: str) -> GameSessionResp
     difference between "row created" and "response rendered" is
     irrelevant to the player-facing view.
     """
-    resources = [
-        ResourcePublic(
-            id=r.id,
-            name=r.name,
-            icon=r.icon,
-            value=r.value,
-            max=r.max,
-            critical_threshold=r.critical_threshold,
-        )
-        for r in state.resources.values()
-    ]
-    agents = [
-        AgentPublic(
-            id=a.id,
-            name=a.name,
-            role=a.role,
-            archetype_quadrant=a.archetype_quadrant,
-            portrait_seed=a.portrait_seed,
-            verbal_tic=a.verbal_tic,
-            health=a.health,
-            morale=a.morale,
-            grievance=a.grievance,
-            is_alive=a.is_alive,
-            status=a.status,
-        )
-        for a in state.agents
-    ]
+    resources = resources_public(state)
+    agents = agents_public(state)
     proposals = [
         ProposalPublic(
             id=p.id,

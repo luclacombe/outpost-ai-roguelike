@@ -40,6 +40,8 @@ export function DashboardPreview() {
       playerHealth: DEV_GAME_STATE.player_health,
       currentEvent: null,
       proposals: [],
+      resources: DEV_GAME_STATE.resources,
+      agents: DEV_GAME_STATE.agents,
     },
     {
       beginTurnUrl: `/api/dev/turn${search}`,
@@ -94,8 +96,8 @@ export function DashboardPreview() {
         </div>
         <aside className="dashboard-area-status">
           <ColonyStatus
-            resources={DEV_GAME_STATE.resources}
-            agents={DEV_GAME_STATE.agents}
+            resources={stream.resources}
+            agents={stream.agents}
             eventLog={stream.eventLog}
             setting={setting}
           />
@@ -103,7 +105,7 @@ export function DashboardPreview() {
         <section className="dashboard-area-event lg:overflow-y-auto">
           <EventDebatePanel
             currentEvent={stream.currentEvent}
-            agents={DEV_GAME_STATE.agents}
+            agents={stream.agents}
             setting={setting}
             debateLines={stream.debateLines}
             narration={stream.narration}
@@ -121,7 +123,7 @@ export function DashboardPreview() {
         <section className="dashboard-area-choose">
           <ChoosePanel
             proposals={stream.proposals}
-            agents={DEV_GAME_STATE.agents}
+            agents={stream.agents}
             setting={setting}
             phase={stream.phase === "error" ? "idle" : stream.phase}
             legitimacy={stream.legitimacy ?? DEV_GAME_STATE.legitimacy}

@@ -239,6 +239,10 @@ export type TurnAdvancedPayload = {
   legitimacy: number;
   player_health: number;
   cost_cents: number;
+  /** Every resource after this turn; the dashboard's bars read these. */
+  resources: ResourcePublic[];
+  /** Every advisor after this turn (dead included). */
+  agents: AgentPublic[];
 };
 
 export type RunOverPayload = {

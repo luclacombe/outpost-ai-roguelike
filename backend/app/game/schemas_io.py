@@ -22,7 +22,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.game.schemas import AdvisorStatus, EndState, Event, ProposalFlavor, Quadrant
+from app.game.schemas import (
+    AdvisorStatus,
+    ColonyState,
+    EndState,
+    Event,
+    ProposalFlavor,
+    Quadrant,
+)
 
 
 class GameSessionCreateRequest(BaseModel):
@@ -62,6 +69,41 @@ class ResourcePublic(BaseModel):
     value: int
     max: int
     critical_threshold: int
+
+
+def resources_public(state: ColonyState) -> list[ResourcePublic]:
+    """Player-facing resources, in the setting's order."""
+    return [
+        ResourcePublic(
+            id=r.id,
+            name=r.name,
+            icon=r.icon,
+            value=r.value,
+            max=r.max,
+            critical_threshold=r.critical_threshold,
+        )
+        for r in state.resources.values()
+    ]
+
+
+def agents_public(state: ColonyState) -> list[AgentPublic]:
+    """Player-facing advisors, dead ones included (`is_alive=False`)."""
+    return [
+        AgentPublic(
+            id=a.id,
+            name=a.name,
+            role=a.role,
+            archetype_quadrant=a.archetype_quadrant,
+            portrait_seed=a.portrait_seed,
+            verbal_tic=a.verbal_tic,
+            health=a.health,
+            morale=a.morale,
+            grievance=a.grievance,
+            is_alive=a.is_alive,
+            status=a.status,
+        )
+        for a in state.agents
+    ]
 
 
 class ProposalPublic(BaseModel):

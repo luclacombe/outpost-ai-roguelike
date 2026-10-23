@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   API_BASE_URL,
+  type AgentPublic,
   type EndState,
   type EventPublic,
   type ProposalPublic,
+  type ResourcePublic,
   type TurnStreamEvent,
 } from "@/lib/api/client";
 import { iterateSse } from "@/lib/api/sse";
@@ -37,6 +39,9 @@ export type TurnStreamState = {
   legitimacy: number | null;
   playerHealth: number | null;
   costCents: number | null;
+  /** Live colony stats; seeded from /game/{id}, replaced on each `turn_advanced`. */
+  resources: ResourcePublic[];
+  agents: AgentPublic[];
   endState: EndState | null;
   /** Most recent error surfaced to the UI; cleared by a successful action. */
   error: { code: string; message: string } | null;
@@ -61,6 +66,8 @@ const INITIAL_STATE: TurnStreamState = {
   legitimacy: null,
   playerHealth: null,
   costCents: null,
+  resources: [],
+  agents: [],
   endState: null,
   error: null,
   eventLog: [],
@@ -76,6 +83,8 @@ type SeedOptions = {
   playerHealth: number | null;
   currentEvent: EventPublic | null;
   proposals: ProposalPublic[];
+  resources: ResourcePublic[];
+  agents: AgentPublic[];
   /** Already-set end state when reloading a closed run; null otherwise. */
   endState?: EndState | null;
 };
@@ -148,6 +157,8 @@ export function useTurnStream(
       playerHealth: seed.playerHealth,
       currentEvent: seed.currentEvent,
       proposals: seed.proposals,
+      resources: seed.resources,
+      agents: seed.agents,
       endState: seed.endState ?? null,
       phase: initialPhase,
     };
@@ -385,6 +396,8 @@ export function applyEvent(
         legitimacy: evt.data.legitimacy,
         playerHealth: evt.data.player_health,
         costCents: evt.data.cost_cents,
+        resources: evt.data.resources,
+        agents: evt.data.agents,
       };
     case "proposals_ready": {
       const event = evt.data.current_event;

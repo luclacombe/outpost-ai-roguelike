@@ -161,7 +161,8 @@ Layout lives in `globals.css` under `.dashboard-grid`. Three named areas, two br
 ```ts
 const stream = useTurnStream(gameId, seed, opts?);
 // → { phase, turnNumber, currentEvent, proposals, debateLines,
-//     narration, legitimacy, playerHealth, costCents, endState,
+//     narration, legitimacy, playerHealth, costCents, resources, agents,
+//     endState,
 //     error, eventLog, beginTurn, submitChoice }
 ```
 
@@ -238,7 +239,9 @@ Two surfaces consume the same `PostMortemView`:
 
 **Why two routes, not one with optional auth.** The public route is reachable to crawlers (Twitter, Discord, Bluesky). The authed route's parent `(authed)/layout.tsx` enforces `getUser()` — a crawler hitting `/post-mortem/<id>` would 401. Keep the public surface explicitly public.
 
-**`/run/<id>` redirects to `/post-mortem/<id>` when `end_state !== null`.** The dashboard's "ended" footer is a fallback only for the brief window between run termination and post-mortem aggregation completing — the canonical landing for a finished run is the post-mortem.
+**`/run/<id>` redirects to `/post-mortem/<id>` when `end_state !== null`.** That redirect only runs on page load, so the dashboard's "ended" footer carries a "Read the post-mortem" link (`ChoosePanel` `postMortemHref`); before 2026-10-23 it had none and a live player was stuck on "being assembled" until they reloaded.
+
+**Colony stats come from the stream.** `turn_advanced` carries every resource and advisor (`resources`, `agents`); `DashboardShell` renders `stream.resources` / `stream.agents`, seeded from `/game/{id}`. Reading `initialState.*` for anything that changes per turn freezes it for the whole run (the 2026-10-23 live run showed food 60 while the engine had 6).
 
 ## OG image patterns (Phase 8)
 

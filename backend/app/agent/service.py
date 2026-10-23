@@ -37,7 +37,7 @@ from app.agent.state import GameTurnState
 from app.game.exceptions import GameNotFound
 from app.game.preview import render_close
 from app.game.schemas import Agent, ColonyState, Proposal
-from app.game.schemas_io import ProposalPublic
+from app.game.schemas_io import ProposalPublic, agents_public, resources_public
 from app.game.service import get_game_session
 
 _DONE_SENTINEL = "[DONE]"
@@ -225,6 +225,8 @@ def _translate_update(
                     "legitimacy": colony.legitimacy,
                     "player_health": colony.player_health,
                     "cost_cents": colony.turn_cost_cents,
+                    "resources": [r.model_dump(mode="json") for r in resources_public(colony)],
+                    "agents": [a.model_dump(mode="json") for a in agents_public(colony)],
                 },
             )
         )

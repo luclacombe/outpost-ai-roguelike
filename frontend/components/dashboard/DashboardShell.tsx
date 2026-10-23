@@ -42,14 +42,15 @@ export function DashboardShell({ initialState, initialToken }: Props) {
     playerHealth: initialState.player_health,
     currentEvent: initialState.current_event,
     proposals: initialState.turn_proposals,
+    resources: initialState.resources,
+    agents: initialState.agents,
     endState: initialState.end_state,
   });
 
-  // Resources rerender from the server's initial snapshot. SSE doesn't carry
-  // resource deltas yet — they update on the next /game/{id} fetch (e.g. on
-  // page refresh after a turn). Acceptable for MVP; revisit if needed.
-  const resources = initialState.resources;
-  const agents = initialState.agents;
+  // Resources and advisors start from the server snapshot and are replaced by
+  // each `turn_advanced` frame, so the bars move as soon as a decision lands.
+  const resources = stream.resources;
+  const agents = stream.agents;
 
   const choosePhase: ChoosePhase =
     stream.phase === "error" ? "idle" : stream.phase;
@@ -108,6 +109,7 @@ export function DashboardShell({ initialState, initialToken }: Props) {
           phase={choosePhase}
           legitimacy={stream.legitimacy ?? initialState.legitimacy}
           closePreview={initialState.close_preview ?? []}
+          postMortemHref={`/post-mortem/${initialState.game_id}`}
           onChoose={stream.submitChoice}
           onBeginTurn={stream.beginTurn}
           onContinue={stream.continueAfterNarration}
