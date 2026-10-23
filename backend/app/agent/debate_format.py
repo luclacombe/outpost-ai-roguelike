@@ -32,6 +32,7 @@ DEBATE_TOOL_NAME = "submit_debate"
 _FLAVORS = ["DOMINANT", "MORAL", "WILDCARD"]
 _REASON_MAX = 60
 _MAX_EFFECTS = 5
+_KIND_REPR_MAX = 40
 _PERSON_KINDS = ("health", "grievance")
 
 
@@ -185,8 +186,9 @@ def incomplete_effects(response: Any) -> int:
     entry needs a `kind` of health or grievance and a non-empty `target`; an
     entry that is not an object counts too. Diagnostic only: nothing is dropped
     or repaired here (the engine validator decides). Each one logs a warning
-    with its sorted key names (never values), so a sweep shows whether the model
-    omitted the field or used another key. Never raises.
+    with its sorted key names, plus the offending kind (repr capped at 40
+    characters) or entry type; never other field values. A sweep thus shows
+    whether the model omitted the field or used another key. Never raises.
     """
     count = 0
     for option in _as_list(_debate_payload(response).get("options")):
@@ -208,8 +210,8 @@ def incomplete_effects(response: Any) -> int:
                         continue
                     msg, args = "submit_debate: resource effect lacks 'resource'; keys sent: %s", ()
                 elif effect.get("kind") not in _PERSON_KINDS:
-                    msg = "submit_debate: person effect has kind %r; keys sent: %s"
-                    args = (effect.get("kind"),)
+                    msg = "submit_debate: person effect has kind %s; keys sent: %s"
+                    args = (repr(effect.get("kind"))[:_KIND_REPR_MAX],)
                 elif effect.get("target"):
                     continue
                 else:

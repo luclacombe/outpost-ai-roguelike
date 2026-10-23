@@ -327,8 +327,8 @@ def build_debate_user_message(event: Event) -> str:
         f"</event>\n\n"
         "Call submit_debate once: a reaction line for each living advisor (at most 25 "
         "words, in character) and exactly three options (one DOMINANT, one MORAL, one "
-        "WILDCARD, each from a different advisor). Put every effect in `effects`; no "
-        "numbers in titles or descriptions."
+        "WILDCARD, each from a different advisor). Put every effect in `resource_effects` "
+        "or `person_effects`; no numbers in titles or descriptions."
     )
 
 

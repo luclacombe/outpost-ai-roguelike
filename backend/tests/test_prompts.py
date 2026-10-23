@@ -553,6 +553,20 @@ def test_preamble_describes_flat_contract() -> None:
     assert "propose_action" not in t
 
 
+def test_debate_user_message_names_both_effect_lists() -> None:
+    msg = build_debate_user_message(_flat_event())
+    assert "`effects`" not in msg
+    assert "`resource_effects`" in msg and "`person_effects`" in msg
+    assert "no numbers in titles or descriptions" in msg
+
+
+def test_preamble_names_both_effect_lists_not_the_old_shape() -> None:
+    t = prompts.build_preamble_block()["text"]
+    assert "resource_effects" in t and "person_effects" in t
+    assert '"kind": "resource"' not in t
+    assert "`effects`" not in t
+
+
 def test_debate_user_message_asks_for_one_call() -> None:
     assert "Call submit_debate once" in build_debate_user_message(_flat_event())
 

@@ -102,7 +102,9 @@ System blocks and tools are unchanged, so the cached prefix still hits.
 `incomplete_effects` also logs each such effect's key names (never values) as
 `submit_debate: resource effect lacks 'resource'; keys sent: [...]`,
 `submit_debate: person effect lacks 'target'; keys sent: [...]` or
-`submit_debate: person effect has kind %r; keys sent: [...]`, so a sweep shows
+`submit_debate: person effect has kind %r; keys sent: [...]` (the kind repr is
+capped at 40 chars) or `submit_debate: <list> entry is <type>, not an object`
+(a non-object entry), so a sweep shows
 whether the model left the field out or used another key (no key aliases are
 accepted). The response with more valid proposals wins, then more reactions
 (ties keep the first; reactions follow the kept response);

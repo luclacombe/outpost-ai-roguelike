@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from types import SimpleNamespace
 from typing import Any
@@ -147,9 +148,8 @@ def test_debate_tool_effect_fields_describe_requirements() -> None:
 
 
 def test_debate_tool_is_deterministic() -> None:
-    assert build_debate_tool(ROSTER, ["fuel", "food"]) == build_debate_tool(
-        ROSTER, ["fuel", "food"]
-    )
+    first = json.dumps(build_debate_tool(ROSTER, ["fuel", "food"]))
+    assert first == json.dumps(build_debate_tool(ROSTER, ["fuel", "food"]))
 
 
 def _effects_response(resource_effects: Any = None, person_effects: Any = None) -> SimpleNamespace:
@@ -190,6 +190,13 @@ def test_incomplete_effects_counts_new_shape(caplog: pytest.LogCaptureFixture) -
 def test_incomplete_effects_counts_bad_kind_and_missing_target_once() -> None:
     response = _effects_response(person_effects=[{"kind": "mood", "delta": 1}])
     assert incomplete_effects(response) == 1
+
+
+def test_incomplete_effects_caps_the_logged_kind(caplog: pytest.LogCaptureFixture) -> None:
+    response = _effects_response(person_effects=[{"kind": "k" * 500, "target": "Vera"}])
+    with caplog.at_level(logging.WARNING, logger="app.agent.debate_format"):
+        assert incomplete_effects(response) == 1
+    assert len(caplog.records[0].getMessage()) < 150
 
 
 def test_incomplete_effects_counts_non_dict_entries() -> None:
