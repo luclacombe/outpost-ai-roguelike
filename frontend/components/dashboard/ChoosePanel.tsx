@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import {
   type AgentPublic,
@@ -43,6 +45,8 @@ type Props = {
   onIssueOrder?: () => void;
   legitimacy?: number;
   closePreview?: string[];
+  /** Where the "ended" footer sends the player. */
+  postMortemHref?: string;
 };
 
 export function ChoosePanel({
@@ -55,6 +59,7 @@ export function ChoosePanel({
   onIssueOrder,
   legitimacy,
   closePreview,
+  postMortemHref,
 }: Props) {
   const agentsById = new Map(agents.map((a) => [a.id, a]));
 
@@ -76,9 +81,16 @@ export function ChoosePanel({
   if (phase === "ended") {
     return (
       <Footer>
-        <p className="font-terminal text-base text-px-text-dim">
-          The run is closed. The post-mortem is being assembled.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-terminal text-base text-px-text-dim">
+            The run is closed.
+          </p>
+          {postMortemHref ? (
+            <Button asChild size="lg" data-testid="post-mortem-link">
+              <Link href={postMortemHref}>Read the post-mortem</Link>
+            </Button>
+          ) : null}
+        </div>
       </Footer>
     );
   }

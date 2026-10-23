@@ -72,6 +72,10 @@ export function buildDecideStream(
       legitimacy: 64,
       player_health: DEV_GAME_STATE.player_health,
       cost_cents: 7,
+      resources: DEV_GAME_STATE.resources.map((r, i) =>
+        i === 0 ? { ...r, value: Math.max(0, r.value - 10) } : r,
+      ),
+      agents: DEV_GAME_STATE.agents,
     })}\n\n`,
     `event: proposals_ready\ndata: ${JSON.stringify({
       turn_number: nextTurn,
