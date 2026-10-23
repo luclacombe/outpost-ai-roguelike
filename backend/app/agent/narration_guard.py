@@ -24,6 +24,7 @@ MAX_SENTENCES = 4
 MAX_NON_LATIN_SHARE = 0.2
 
 _MARKUP = re.compile(r"<[A-Za-z/][^>]*>")
+_MD_MARKUP = re.compile(r"\*[^*\n]+\*|`[^`\n]+`")
 _FOURTH_WALL = re.compile(r"\bthe player\b", re.IGNORECASE)
 _ECHO_PREFIXES = ("now write", "write a", "context:", "characters:", "recap", "keep tone")
 # Spec §4.2: word-boundary anchors so "iPhone" and "McKay" yield no name token.
@@ -109,12 +110,60 @@ def _is_sentence_initial(text: str, start: int) -> bool:
     return prefix[-1] == "-" and (len(prefix) == 1 or prefix[-2].isspace())
 
 
+# Ordinal indicators and the micro sign are Latin-1 letters with no "LATIN" in
+# their Unicode name, so "nº 4" and "5 µm" must be allowed explicitly.
+_LATIN_ADJACENT = frozenset("ºªµ")
+
+
+def _is_non_latin_letter(char: str) -> bool:
+    return (
+        char.isalpha()
+        and char not in _LATIN_ADJACENT
+        and not unicodedata.name(char, "").startswith("LATIN")
+    )
+
+
 def _non_latin_share(text: str) -> float:
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return 0.0
-    non_latin = sum(1 for c in letters if not unicodedata.name(c, "").startswith("LATIN"))
-    return non_latin / len(letters)
+    return sum(1 for c in letters if _is_non_latin_letter(c)) / len(letters)
+
+
+def has_non_latin(text: str) -> bool:
+    """True when any letter is outside the Latin script (CJK, Cyrillic, ...)."""
+    return any(_is_non_latin_letter(c) for c in text)
+
+
+def non_latin_words(texts: Iterable[str]) -> frozenset[str]:
+    """Case-folded runs of consecutive non-Latin letters (words) in `texts`.
+
+    A run is one Cyrillic or CJK word however much punctuation or Latin text
+    surrounds it, so `«СЕКРЕТНО»,` yields `секретно`. Whitespace-split term sets
+    from `build_allowed_terms` keep such words whole, so feeding them through
+    here recovers the setting's own foreign vocabulary.
+    """
+    out: set[str] = set()
+    for text in texts:
+        run: list[str] = []
+        for char in text:
+            if _is_non_latin_letter(char):
+                run.append(char)
+            elif run:
+                out.add("".join(run).casefold())
+                run = []
+        if run:
+            out.add("".join(run).casefold())
+    return frozenset(out)
+
+
+def has_unknown_non_latin(text: str, allowed_words: frozenset[str]) -> bool:
+    """True when `text` holds a non-Latin word that is not in `allowed_words`.
+
+    `allowed_words` comes from `non_latin_words(allowed_terms)`. An empty set
+    makes this equivalent to `has_non_latin`.
+    """
+    return bool(non_latin_words([text]) - allowed_words)
 
 
 @cache
@@ -151,14 +200,23 @@ def _term_tokens(texts: Iterable[str]) -> frozenset[str]:
 
 
 def validate_narration(
-    text: str, allowed_terms: frozenset[str], roster_names: frozenset[str]
+    text: str,
+    allowed_terms: frozenset[str],
+    roster_names: frozenset[str],
+    *,
+    foreign_ok: Iterable[str] = (),
 ) -> list[Violation]:
-    """Every rule violated by `text`, in a stable order (spec §4.2 table)."""
+    """Every rule violated by `text`, in a stable order (spec §4.2 table).
+
+    `foreign_ok` is extra text (the setting's lore and narrative voice) whose
+    non-Latin words narration may quote; any other non-Latin word is a `script`
+    violation however small a share of the line it is.
+    """
     norm = _normalize(text)
     if not norm.strip():
         return [Violation("empty")]
     found: list[Violation] = []
-    if _MARKUP.search(norm):
+    if _MARKUP.search(norm) or _MD_MARKUP.search(norm):
         found.append(Violation("markup"))
     if _FOURTH_WALL.search(norm):
         found.append(Violation("fourth_wall"))
@@ -167,7 +225,9 @@ def validate_narration(
         if low.startswith(_ECHO_PREFIXES) or "narrator-voice" in low:
             found.append(Violation("prompt_echo"))
             break
-    if _non_latin_share(norm) > MAX_NON_LATIN_SHARE:
+    if _non_latin_share(norm) > MAX_NON_LATIN_SHARE or has_unknown_non_latin(
+        norm, non_latin_words([*allowed_terms, *foreign_ok])
+    ):
         found.append(Violation("script"))
     sentences = [s for s in _SENTENCE_SPLIT.split(norm.strip()) if s]
     if len(sentences) > MAX_SENTENCES or len(norm) > MAX_CHARS:
@@ -229,6 +289,9 @@ def sanitize_risk_note(
     if words & _foreign_resource_words(setting):
         return None
     blocking = {"markup", "fourth_wall", "script", "unknown_name"}
-    if any(v.kind in blocking for v in validate_narration(note, allowed_terms, roster_names)):
+    found = validate_narration(
+        note, allowed_terms, roster_names, foreign_ok=(setting.lore, setting.narrative_voice)
+    )
+    if any(v.kind in blocking for v in found):
         return None
     return note

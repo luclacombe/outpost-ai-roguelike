@@ -62,7 +62,7 @@ call downloads ~80MB, subsequent calls are free.
   `messages.create` call args.
 - Using prompt caching for per-call judges. The prompt is small and varies
   per response — cache-write overhead would dominate.
-- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Read `turn_logs.tool_calls` instead (the full phase-tagged record). `tool_validity_rate` counts LLM-originated phases (`debate`, `prepare`, `autonomy`, plus untagged legacy calls); `resolve` and `close` are engine-derived and excluded. `tool_validity_by_phase` gives the split.
+- Reading tool calls from `turn_logs.state_snapshot` to compute validity. `engine.advance_turn` clears `turn_tool_calls` BEFORE the snapshot is dumped, so the snapshot is empty. Read `turn_logs.tool_calls` instead (the full phase-tagged record). `tool_validity_rate` counts LLM-originated phases (`debate`, `prepare`, `autonomy`, plus untagged legacy calls); `resolve` and `close` are engine-derived and excluded. `tool_validity_by_phase` gives the split. Since 2026-10-22 the `submit_debate` / `submit_offturn` parsers drop unknown advisors, targets and foreign-script text, and clamp `back_leader` bonuses, before the engine sees a call, so rates are not directly comparable with earlier baselines.
 
 ## Test layout
 

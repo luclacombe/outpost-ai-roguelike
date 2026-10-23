@@ -9,6 +9,7 @@ import pytest
 from app.agent.narration_guard import (
     build_allowed_terms,
     build_strict_terms,
+    has_non_latin,
     sanitize_risk_note,
     validate_narration,
 )
@@ -165,3 +166,57 @@ def test_risk_note_with_inline_setting() -> None:
     assert sanitize_risk_note("The water could freeze.", inline, ALLOWED, ROSTER) is None
     note = "Fuel may run short before the convoy."
     assert sanitize_risk_note(note, inline, ALLOWED, ROSTER) == note
+
+
+def test_has_non_latin() -> None:
+    assert has_non_latin("plain words, café") is False
+    assert has_non_latin("static on the 頻道") is True
+    assert has_non_latin("Поделиться") is True
+    assert has_non_latin("") is False
+
+
+def test_invented_cyrillic_word_is_script() -> None:
+    text = "You backed Astrid. The pump held in Коридор Б until dawn, and Nadia slept."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert [v.code for v in found] == ["script"]
+    assert found[0].hard
+
+
+def test_setting_foreign_word_is_allowed() -> None:
+    text = "You backed Astrid. The crate was stamped СЕКРЕТНО, and Nadia left it shut."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert "script" not in [v.code for v in found]
+
+
+def test_markdown_emphasis_is_markup() -> None:
+    lore = [ARCTIC.lore, "медсестра"]
+    star = "You backed Astrid. The *медсестра* kept the ledger, and Nadia slept."
+    bold = "You backed Astrid. **Note** the pump held until dawn."
+    tick = "You backed Astrid. The `pump` held until dawn."
+    for text in (star, bold, tick):
+        found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=lore)
+        markup = [v for v in found if v.code == "markup"]
+        assert len(markup) == 1 and markup[0].hard, text
+        assert not any(v.code == "script" for v in found), text
+    plain = "You backed Astrid. The pump held until dawn, and Nadia slept."
+    assert validate_narration(plain, ALLOWED, ROSTER, foreign_ok=lore) == []
+
+
+def test_script_reported_once() -> None:
+    text = "Насос выдержал до рассвета. Никто не спал."
+    found = validate_narration(text, ALLOWED, ROSTER, foreign_ok=[ARCTIC.lore])
+    assert [v.code for v in found].count("script") == 1
+
+
+def test_risk_note_keeps_the_settings_own_foreign_word() -> None:
+    note = "Opening the files marked СЕКРЕТНО could stir up old loyalties nobody wants back."
+    assert sanitize_risk_note(note, ARCTIC, ALLOWED, ROSTER) == note
+
+
+def test_risk_note_drops_an_invented_foreign_word() -> None:
+    note = "Opening the files marked ЖУРНАЛ could stir up old loyalties."
+    assert sanitize_risk_note(note, ARCTIC, ALLOWED, ROSTER) is None
+
+
+def test_latin_adjacent_ordinal_and_micro_signs_are_not_script() -> None:
+    assert "script" not in codes("Corridor nº 4 held. The 5 µm filter and a 2ª shift cleared it.")

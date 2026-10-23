@@ -218,13 +218,11 @@ def test_debate_user_message_contains_event_body():
     msg = build_debate_user_message(event)
     assert "Ice storm" in msg
     assert "Winds are peeling" in msg
-    assert "caller_agent_id" in msg
 
 
 def test_autonomous_user_message_mentions_introspection():
     msg = build_autonomous_user_message("The player conceded to the miners.")
     assert "conceded to the miners" in msg
-    assert "caller_agent_id" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -539,12 +537,45 @@ def test_debate_user_message_drops_preview_instruction() -> None:
     event = Event(id="e", category="c", title="T", body="B", severity=1, origin=EventOrigin.NATURAL)
     message = prompts.build_debate_user_message(event)
     assert "effects_preview" not in message
-    assert "no numbers in name or description" in message
+    assert "no numbers in titles or descriptions" in message
 
 
-def test_preamble_tells_debate_to_emit_only_propose_action() -> None:
-    text = " ".join(prompts.build_preamble_block()["text"].split())
-    assert "In the debate, emit only `propose_action`" in text
-    assert "every effect goes inside `tool_calls_on_pick`" in text
-    assert "any other tool call in the debate is discarded" in text
-    assert "separate tool_use" not in text
+def _flat_event() -> Event:
+    return Event(id="e", category="c", title="T", body="B", severity=1, origin=EventOrigin.NATURAL)
+
+
+def test_preamble_describes_flat_contract() -> None:
+    t = prompts.build_preamble_block()["text"]
+    assert "submit_debate" in t and "submit_offturn" in t
+    assert "tool_calls_on_pick" not in t
+    assert "caller_agent_id" not in t
+    assert "<agent name=" not in t
+    assert "propose_action" not in t
+
+
+def test_debate_user_message_names_both_effect_lists() -> None:
+    msg = build_debate_user_message(_flat_event())
+    assert "`effects`" not in msg
+    assert "`resource_effects`" in msg and "`person_effects`" in msg
+    assert "no numbers in titles or descriptions" in msg
+
+
+def test_preamble_names_both_effect_lists_not_the_old_shape() -> None:
+    t = prompts.build_preamble_block()["text"]
+    assert "resource_effects" in t and "person_effects" in t
+    assert '"kind": "resource"' not in t
+    assert "`effects`" not in t
+
+
+def test_preamble_has_no_em_dashes() -> None:
+    assert "\u2014" not in prompts.build_preamble_block()["text"]
+
+
+def test_debate_user_message_asks_for_one_call() -> None:
+    assert "Call submit_debate once" in build_debate_user_message(_flat_event())
+
+
+def test_autonomous_user_message_asks_for_submit_offturn() -> None:
+    msg = build_autonomous_user_message("The colony chose to ration.")
+    assert "submit_offturn" in msg
+    assert "caller_agent_id" not in msg

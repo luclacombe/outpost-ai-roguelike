@@ -18,7 +18,7 @@ Daily browser-based narrative roguelike. Four AI advisors run a fragile colony u
 - Frontend: Next.js 16 App Router + TypeScript strict + Tailwind v4 + shadcn/ui (pixel-art re-themed) + DiceBear
 - Deploy: Railway (backend), Vercel (frontend)
 - Observability: Langfuse (cloud Hobby, 50K obs/mo), LangSmith agentevals for CI
-- LLM: provider set by `LLM_*` settings (`backend/app/config.py`). On OpenRouter since 2026-10-01 (Anthropic org disabled): fast (debate + autonomous) = `deepseek/deepseek-v4-pro-0813` pinned StreamLake→Novita via `LLM_PROVIDER_ORDER`, narration = `deepseek/deepseek-v4.1-flash`, thinking off. Defaults remain Claude Haiku (fast) + Sonnet (narration). Prompt caching mandatory either way
+- LLM: provider set by `LLM_*` settings (`backend/app/config.py`). On OpenRouter since 2026-10-01 (Anthropic org disabled): debate, autonomous and narration run on `deepseek/deepseek-v4.1-flash-1017`, unpinned, thinking off, chosen 2026-10-22 by a blind full-game test (1.41¢ a game; V4 Pro was 6¢). Choose models on whole games, not single turns: caching and cross-turn continuity decide cost and quality. Defaults remain Claude Haiku (fast) + Sonnet (narration). Prompt caching mandatory either way
 
 ---
 
@@ -29,7 +29,7 @@ Daily browser-based narrative roguelike. Four AI advisors run a fragile colony u
 3. **Dead means dead.** Agents removed on death never reappear.
 4. **One run per account per day**, server-authoritative.
 5. **Prompt caching on by default.** `cache_control: ephemeral` blocks for personality + colony state.
-6. **Debate is one batched LLM call**, XML-delimited, not N calls per agent.
+6. **Debate is one batched LLM call per attempt**: a single forced structured tool call (`submit_debate`) holding every advisor's reaction and the three options, not N calls per agent.
 7. **Settings are schema-driven** — no hand-coded settings in app code.
 8. **No LLM-generated images in MVP.** Portraits via DiceBear, backgrounds via CSS.
 9. **RLS is safety net**, not primary auth. Filter by `user_id` in application code.
@@ -137,7 +137,7 @@ Use the right skill for the task:
 - Using Supabase client for game-state queries — use SQLAlchemy async + psycopg3 (supabase-py only for auth admin)
 - Using `ChatAnthropic` from LangChain — call `anthropic.messages.create()` directly for cache/batch control
 - Skipping prompt caching "for simplicity" — cache_control is mandatory
-- One LLM call per agent in debate — use one batched XML call (see ARCHITECTURE §3.6)
+- One LLM call per agent in debate: use the one forced `submit_debate` call per attempt (see `backend/app/agent/CLAUDE.md`, "Structured calls")
 - Writing AI-tell prose: "unfortunately", "delve into", em-dash overuse, rule-of-three lists, "a tapestry of" (run `/humanizer` on user-facing prose)
 - Running CI without inlined `Settings()` env placeholders. `app.config.settings = Settings()` runs at module import; CI runners have no `.env`, so importing `app.*` for `pytest` or `ruff` without setting `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_URL`, and one of `ANTHROPIC_API_KEY` / `LLM_API_KEY` at the job level fails before any test runs. Pattern is in `.github/workflows/test.yml` and `deploy.yml` — copy if you add a new workflow that imports the app.
 - Adding a transitive dep that pulls `python-jose` back in. We removed it in Phase 9 because its `ecdsa` transitive (Minerva timing attack on P-256) tripped Dependabot HIGH. JWT signing/verification goes through `pyjwt[crypto]`; the auth tests that forge ES256 keypairs use `cryptography.hazmat` directly.

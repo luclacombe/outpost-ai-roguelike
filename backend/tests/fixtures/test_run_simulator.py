@@ -69,8 +69,8 @@ async def test_tool_calls_round_trip_through_turn_logs(eval_user_id, graph_postg
     field (None or str), so the validity-rate metric can fold over them
     without re-validating.
 
-    The mocked-Haiku factory emits propose_action with structured
-    `tool_calls_on_pick`, so the harness's `_tool_calls_from_turn_log` now
+    The mocked-Haiku factory emits a submit_debate whose effects become
+    nested `tool_calls_on_pick`, so the harness's `_tool_calls_from_turn_log` now
     sees one nested call per turn (the chosen proposal's nested mutation).
     """
 
@@ -103,8 +103,8 @@ async def test_resource_history_moves_with_picked_proposal(eval_user_id, graph_p
     """Phase 3 acceptance: in a 3-turn mocked run, ≥1 resource changes.
 
     Guards the 2026-04-30 frozen-dashboard regression (report §1.1). The
-    mocked debate factory emits a propose_action whose tool_calls_on_pick
-    carries a modify_resource; SimulatedPlayer("moral") picks the MORAL
+    mocked debate factory emits a submit_debate whose resource effect
+    becomes a nested modify_resource; SimulatedPlayer("moral") picks the MORAL
     proposal, which the factory has set to food +3. So food should rise
     monotonically across turns.
     """

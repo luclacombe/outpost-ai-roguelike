@@ -59,8 +59,11 @@ members:
   DETAINED advisors remaining, so SPEC §7.3's three-action triple stays
   one-author-per-proposal.
 
-`set_advisor_status` is in `_NESTED_TOOL_WHITELIST` (LLM may include it in
-a proposal's `tool_calls_on_pick`). `modify_legitimacy` is NOT — only
+`set_advisor_status` is in `_NESTED_TOOL_WHITELIST`, but the flat
+`submit_debate` schema (`agent/debate_format.py`) no longer exposes a status
+effect (its effect kinds are `resource`, `health`, `grievance`), so detain and
+dismiss are unreachable from the LLM until an effect kind is added (W4 may
+revisit). The engine and validator still accept it. `modify_legitimacy` is NOT — only
 the engine emits it (`derive_resolution_consequences`, `close_turn`).
 
 ## propose_action: three-stage validation
@@ -72,7 +75,8 @@ that fire at pick time. Validation is deliberately staged:
   item must be `{name: str (in `_NESTED_TOOL_WHITELIST`), args: dict}`.
   Rejects on bad shape (`nested_tool_malformed`) or off-whitelist tool
   (`nested_tool_not_allowed`). Whitelist: `modify_resource`,
-  `modify_health`, `adjust_grievance`, `set_advisor_status`. At most ONE
+  `modify_health`, `adjust_grievance`, `set_advisor_status` (the LLM path
+  no longer emits it, see above). At most ONE
   `set_advisor_status` per `tool_calls_on_pick`
   (`multiple_status_mutations`) — mass-DETAIN would otherwise leave next
   turn with one ACTIVE author and break SPEC §7.3's three-author triple.
