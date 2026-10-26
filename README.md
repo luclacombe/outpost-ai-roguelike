@@ -2,13 +2,13 @@
 
 A daily browser roguelike where four AI advisors run a fragile colony, argue about what to do next, hold grudges, and sometimes try to kill you.
 
-You play the leader. Each day you get one run. It lasts 8–12 turns, ends in death or rescue or coup, and produces a post-mortem timeline you can share.
+You play the leader. Each day you get one run. It lasts 8–12 turns, ends when the colony holds out, collapses, ousts you or kills you, and produces a post-mortem timeline you can share.
 
 > **Status (October 2026):** playable at [outpost-ai-roguelike.vercel.app](https://outpost-ai-roguelike.vercel.app) with Google sign-in, one run a day. That's the turn-based version this README describes. It works, but my first full run in production showed it isn't much of a game yet: my choices felt disconnected from the numbers, and reading four advisors argue got old fast. So I'm rebuilding it as a short real-time holdout on a new deterministic engine. The current version stays up until the new one is playable end to end. See [Where it's going](#where-its-going).
 
 ## Why this exists
 
-I wanted to find out whether four small models, given personalities and grievances and a shared world to mutate through tool calls, could produce stories that feel like a person wrote them. Not "the AI wrote a story." Stories where you can point at turn six and say *that's the moment Marisol stopped trusting me, and that's why she sided with Kel later.*
+I wanted to find out whether a small model voicing four advisors, given personalities and grievances and a shared world to mutate through tool calls, could produce stories that feel like a person wrote them. Not "the AI wrote a story." Stories where you can point at turn six and say *that's the moment Marisol stopped trusting me, and that's why she sided with Kel later.*
 
 Most LLM-driven games either let the model freely narrate (fun, but the world doesn't actually change) or pin everything down so tightly the model is just a flavor layer. Outpost picks a middle path: a deterministic engine owns state, the agents propose changes only through validated tool calls, and a single batched debate call decides the turn. The debate is one forced structured tool call that returns every advisor's reaction plus three options, so four advisors cost one LLM call, not four.
 
@@ -19,7 +19,7 @@ Some of it works. Some of it I would do differently next time. It's all in `docs
 - **Four advisors** with three personality axes (Order/Liberty, Collective/Individual, Cautious/Bold) and persistent memory across turns. They form alliances. They die. Dead means dead.
 - **Three interlocking systems:** a Grievance Stack (advisors track every choice you make against them), a Delayed Consequence log (decisions seed events 1–3 turns later), and a Legitimacy meter (drops too far and the colony stops obeying).
 - **Three launch settings:** arctic research station, orbital colony, desert outpost. Each is a YAML schema, so adding a fourth setting is a config change, not code.
-- **Permadeath end-states:** colony failure, coup, leader assassinated, evacuation, partial survival, full survival. The post-mortem timeline shows the chain of decisions that got you there, plus counterfactuals the engine ran on the branches you didn't take.
+- **Permadeath end-states:** the colony endures, collapses, ousts you, or kills you. The post-mortem timeline shows the chain of decisions that got you there, plus the consequences you never set off and the coups that nearly happened.
 - **One run per account per day**, server-authoritative. Resets at UTC midnight.
 - **Shareable post-mortem** with an OG image card sized for Twitter, Bluesky, and Discord.
 
@@ -119,11 +119,11 @@ Three workflows in `.github/workflows/`:
 - `eval.yml`: real-LLM eval pipeline, on PRs that touch `backend/**` or `docs/PLAN.md`. Has a hard $0.50/run budget ceiling enforced as a pytest assertion.
 - `deploy.yml`: backend Railway deploy on push to main, gated by inline test job.
 
-The eval gate blocks merges that drop personality consistency below 0.72 or tool-call validity below 85%. See `docs/ARCHITECTURE.md` §12.
+The eval gate is meant to block merges that drop personality consistency below 0.72 or tool-call validity below 85% (see `docs/ARCHITECTURE.md` §12). It isn't enforced right now. The real-LLM path needs API secrets the repo hasn't had since the game moved to OpenRouter, so the workflow skips it.
 
 ## Where it's going
 
-The live game proved the plumbing: auth, the daily gate, streamed turns, cost tracking, evals. It didn't prove the fun. The rebuild goes in this order:
+The live game proved the plumbing: auth, the daily gate, streamed turns, cost tracking. It didn't prove the fun. The rebuild goes in this order:
 
 1. A deterministic TypeScript engine plus a headless simulator with bots, so balance gets tuned against thousands of runs instead of my gut.
 2. An ugly but playable version. If it isn't fun as grey boxes, no LLM work starts.
@@ -131,7 +131,7 @@ The live game proved the plumbing: auth, the daily gate, streamed turns, cost tr
 4. The LLM layers: each day's content generated overnight and checked in the simulator before anyone plays it, and advisors who act on their own.
 5. A post-mortem built from cause records, where every number on screen links back to whatever changed it.
 
-Two lines sum up the goal. For players: the colony you play today was evolved last night. For the engineering: every number has a receipt. The design docs live in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+Two lines sum up the goal. For players: the colony you play today was evolved last night. For the engineering: every number has a receipt. The design doc for the rebuild lands in `docs/superpowers/specs/` with the first engine merge.
 
 ## Documentation
 
@@ -139,7 +139,7 @@ Two lines sum up the goal. For players: the colony you play today was evolved la
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): technical architecture, env vars, deploy
 - [`docs/PLAN.md`](docs/PLAN.md): phased implementation plan, errors & learnings log
 - [`docs/research/`](docs/research/): research source material for architectural decisions
-- [`docs/superpowers/`](docs/superpowers/): newer specs, plans and handoffs (October 2026 onward)
+- [`docs/superpowers/`](docs/superpowers/): design specs, implementation plans and session handoffs
 - [`CLAUDE.md`](CLAUDE.md): conventions and invariants for AI-assisted development on this repo
 
 ## License
