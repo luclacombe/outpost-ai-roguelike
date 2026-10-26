@@ -127,10 +127,16 @@ def test_reject_alg_confusion_hs256_with_public_key_bytes(monkeypatch):
     """Classic alg-confusion: attacker mints an HS256 token using the
     asymmetric public key bytes as the HMAC secret. Our dispatcher picks
     the HS256 branch which verifies against SUPABASE_JWT_SECRET, not the
-    public key, so the forgery fails. (PyJWT itself blocks PEM-formatted
-    keys at encode time, so we pass raw DER-encoded bytes to make sure
-    the rejection comes from *our* dispatch logic, not that safety net.)
+    public key, so the forgery fails. (PyJWT >= 2.14 refuses PEM and DER
+    keys as HMAC secrets at encode time, so we sign the token by hand to
+    make sure the rejection comes from *our* dispatch logic, not that
+    safety net.)
     """
+    import base64
+    import hashlib
+    import hmac
+    import json
+
     from cryptography.hazmat.primitives import serialization
 
     _, pub = _make_es256_keypair()
@@ -139,11 +145,17 @@ def test_reject_alg_confusion_hs256_with_public_key_bytes(monkeypatch):
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-    token = jwt.encode(
-        {"sub": "evil", "aud": "authenticated", "exp": 9999999999},
-        pub_der,
-        algorithm="HS256",
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = b64url(
+        json.dumps({"sub": "evil", "aud": "authenticated", "exp": 9999999999}).encode()
     )
+    signing_input = f"{header}.{payload}".encode()
+    signature = b64url(hmac.new(pub_der, signing_input, hashlib.sha256).digest())
+    token = f"{header}.{payload}.{signature}"
     with pytest.raises(HTTPException) as exc:
         decode_supabase_jwt(token)
     assert exc.value.status_code == 401
