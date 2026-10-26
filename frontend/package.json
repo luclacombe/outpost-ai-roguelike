@@ -10,9 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@dicebear/core": "^9.4.2",
-    "@dicebear/pixel-art": "^9.4.2",
-    "@dicebear/thumbs": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
+    "@dicebear/pixel-art": "^9.4.3",
+    "@dicebear/thumbs": "^9.4.3",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.1",
     "class-variance-authority": "^0.7.1",
