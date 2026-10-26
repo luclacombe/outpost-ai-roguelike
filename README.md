@@ -2,16 +2,15 @@
 
 A daily browser roguelike where four AI advisors run a fragile colony, argue about what to do next, hold grudges, and sometimes try to kill you.
 
-You play the leader. Each day you get one run. It lasts 8–12 turns, ends in death or rescue or coup, and produces a post-mortem timeline you can share.
+You play the leader. Each day you get one run. It lasts 8–12 turns, ends when the colony holds out, collapses, ousts you or kills you, and produces a post-mortem timeline you can share.
 
-> **Status (Apr 2026):** MVP shipped. Live at *[deploy in progress]*.
-> Public-readiness gate is `docs/SPEC.md` §16 — see [Verification](#verification) below.
+> **Status (October 2026):** playable at [outpost-ai-roguelike.vercel.app](https://outpost-ai-roguelike.vercel.app) with Google sign-in, one run a day. That's the turn-based version this README describes. It works, but my first full run in production showed it isn't much of a game yet: my choices felt disconnected from the numbers, and reading four advisors argue got old fast. So I'm rebuilding it as a short real-time holdout on a new deterministic engine. The current version stays up until the new one is playable end to end. See [Where it's going](#where-its-going).
 
 ## Why this exists
 
-I wanted to find out whether four small models, given personalities and grievances and a shared world to mutate through tool calls, could produce stories that feel like a person wrote them. Not "the AI wrote a story." Stories where you can point at turn six and say *that's the moment Marisol stopped trusting me, and that's why she sided with Kel later.*
+I wanted to find out whether a small model voicing four advisors, given personalities and grievances and a shared world to mutate through tool calls, could produce stories that feel like a person wrote them. Not "the AI wrote a story." Stories where you can point at turn six and say *that's the moment Marisol stopped trusting me, and that's why she sided with Kel later.*
 
-Most LLM-driven games either let the model freely narrate (fun, but the world doesn't actually change) or pin everything down so tightly the model is just a flavor layer. Outpost picks a middle path: a deterministic engine owns state, the agents propose changes only through validated tool calls, and a single batched debate call decides the turn. The XML-delimited debate keeps cost and latency bounded: one LLM call for four advisors instead of four.
+Most LLM-driven games either let the model freely narrate (fun, but the world doesn't actually change) or pin everything down so tightly the model is just a flavor layer. Outpost picks a middle path: a deterministic engine owns state, the agents propose changes only through validated tool calls, and a single batched debate call decides the turn. The debate is one forced structured tool call that returns every advisor's reaction plus three options, so four advisors cost one LLM call, not four.
 
 Some of it works. Some of it I would do differently next time. It's all in `docs/PLAN.md`'s "Errors & Learnings" log.
 
@@ -20,7 +19,7 @@ Some of it works. Some of it I would do differently next time. It's all in `docs
 - **Four advisors** with three personality axes (Order/Liberty, Collective/Individual, Cautious/Bold) and persistent memory across turns. They form alliances. They die. Dead means dead.
 - **Three interlocking systems:** a Grievance Stack (advisors track every choice you make against them), a Delayed Consequence log (decisions seed events 1–3 turns later), and a Legitimacy meter (drops too far and the colony stops obeying).
 - **Three launch settings:** arctic research station, orbital colony, desert outpost. Each is a YAML schema, so adding a fourth setting is a config change, not code.
-- **Permadeath end-states:** colony failure, coup, leader assassinated, evacuation, partial survival, full survival. The post-mortem timeline shows the chain of decisions that got you there, plus counterfactuals the engine ran on the branches you didn't take.
+- **Permadeath end-states:** the colony endures, collapses, ousts you, or kills you. The post-mortem timeline shows the chain of decisions that got you there, plus the consequences you never set off and the coups that nearly happened.
 - **One run per account per day**, server-authoritative. Resets at UTC midnight.
 - **Shareable post-mortem** with an OG image card sized for Twitter, Bluesky, and Discord.
 
@@ -28,12 +27,14 @@ Inspirations: Papers Please, Don't Starve, Detroit: Become Human, Rimworld, Fros
 
 ## Stack
 
-- **Backend:** FastAPI (Python 3.12), LangGraph for the turn graph, raw Anthropic SDK for LLM calls (Haiku-dominant, prompt-cached, debate batched into one XML-delimited call). Deployed on Railway.
+- **Backend:** FastAPI (Python 3.12), LangGraph for the turn graph, and the raw Anthropic SDK pointed at any Anthropic-compatible endpoint. Production runs DeepSeek V4.1 Flash through OpenRouter, prompt-cached, with the debate as one forced tool call. Deployed on Railway.
 - **Frontend:** Next.js 16 App Router, TypeScript strict, Tailwind v4, shadcn/ui re-themed for pixel-art, DiceBear for portraits. Deployed on Vercel.
 - **Data:** Supabase Postgres via SQLAlchemy async + psycopg3. Supabase Auth (Google OAuth) with JWTs validated locally in FastAPI.
-- **Observability:** Langfuse for traces, LangSmith `agentevals` for the merge-gate evals (personality consistency, tool-call validity, narrative repetition, decision coherence, game balance).
+- **Observability:** every LLM call's model, tokens and billed cost are stored with its turn. Langfuse traces the LangGraph steps. LangSmith `agentevals` runs the merge-gate evals (personality consistency, tool-call validity, narrative repetition, decision coherence, game balance).
 
-Why these choices? `docs/research/` has the long version. The short one: prompt caching + Haiku keeps p95 cost under $0.25/run, raw SDK keeps cache and batch control honest, LangGraph gives durable state across the SSE pause/resume, Supabase is the cheapest way to get OAuth and Postgres in one place.
+Why these choices? `docs/research/` has the long version. The short one: the raw SDK keeps cache and tool-call control honest, LangGraph gives durable state across the SSE pause/resume, and Supabase is the cheapest way to get OAuth and Postgres in one place.
+
+The model was picked blind. Twenty models played 12 real turns, the game's own validator threw out broken output, and four Opus judges scored the rest without knowing which model wrote what. The finalists then played full games. DeepSeek V4.1 Flash matched the previous model's quality at 1.41 cents a game in real spend, down from about 6.
 
 ## Repo layout
 
@@ -64,7 +65,7 @@ cd outpost-ai-roguelike
 
 # Backend (terminal 1)
 cd backend
-cp .env.example .env                  # fill in Supabase + Anthropic keys
+cp .env.example .env                  # fill in Supabase + LLM provider keys
 supabase start                        # local Postgres on 54322
 docker compose up -d                  # FastAPI on 8000 with reload
 
@@ -114,40 +115,33 @@ pnpm build
 
 Three workflows in `.github/workflows/`:
 
-- `test.yml` — backend ruff + unit tests + frontend lint + build, on every PR and push to main.
-- `eval.yml` — real-LLM eval pipeline, on PRs that touch `backend/**` or `docs/PLAN.md`. Has a hard $0.50/run budget ceiling enforced as a pytest assertion.
-- `deploy.yml` — backend Railway deploy on push to main, gated by inline test job.
+- `test.yml`: backend ruff + unit tests + frontend lint + build, on every PR and push to main.
+- `eval.yml`: real-LLM eval pipeline, on PRs that touch `backend/**` or `docs/PLAN.md`. Has a hard $0.50/run budget ceiling enforced as a pytest assertion.
+- `deploy.yml`: backend Railway deploy on push to main, gated by inline test job.
 
-The eval gate blocks merges that drop personality consistency below 0.72 or tool-call validity below 85%. See `docs/ARCHITECTURE.md` §12.
+The eval gate is meant to block merges that drop personality consistency below 0.72 or tool-call validity below 85% (see `docs/ARCHITECTURE.md` §12). It isn't enforced right now. The real-LLM path needs API secrets the repo hasn't had since the game moved to OpenRouter, so the workflow skips it.
 
-## Verification
+## Where it's going
 
-The MVP ship gate is `docs/SPEC.md` §16. Status is updated when verification runs:
+The live game proved the plumbing: auth, the daily gate, streamed turns, cost tracking. It didn't prove the fun. The rebuild goes in this order:
 
-- [ ] Run completes on all three settings without errors or placeholder text
-- [ ] End-state distribution within 10% of targets after 50 test runs
-- [ ] Eval pipeline passes thresholds on 20 simulated games
-- [ ] p95 LLM cost under $0.25/run
-- [ ] Google OAuth + daily gate work in production
-- [ ] Post-mortem + share card render on Twitter/X, Discord, Bluesky
-- [ ] WCAG AA passes on all views
-- [ ] Site loads under 2s on 3G
-- [ ] CI green, Lighthouse mobile > 85 on landing
+1. A deterministic TypeScript engine plus a headless simulator with bots, so balance gets tuned against thousands of runs instead of my gut.
+2. An ugly but playable version. If it isn't fun as grey boxes, no LLM work starts.
+3. Server-side replay of each run's action log, so a score can't be faked from the browser.
+4. The LLM layers: each day's content generated overnight and checked in the simulator before anyone plays it, and advisors who act on their own.
+5. A post-mortem built from cause records, where every number on screen links back to whatever changed it.
 
-When all boxes check, the repo flips public.
+Two lines sum up the goal. For players: the colony you play today was evolved last night. For the engineering: every number has a receipt. The design doc for the rebuild lands in `docs/superpowers/specs/` with the first engine merge.
 
 ## Documentation
 
-- [`docs/SPEC.md`](docs/SPEC.md) — game design, mechanics, tone, MVP criteria
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — technical architecture, env vars, deploy
-- [`docs/PLAN.md`](docs/PLAN.md) — phased implementation plan, errors & learnings log
-- [`docs/research/`](docs/research/) — research source material for architectural decisions
-- [`CLAUDE.md`](CLAUDE.md) — conventions and invariants for AI-assisted development on this repo
+- [`docs/SPEC.md`](docs/SPEC.md): game design, mechanics, tone, MVP criteria
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): technical architecture, env vars, deploy
+- [`docs/PLAN.md`](docs/PLAN.md): phased implementation plan, errors & learnings log
+- [`docs/research/`](docs/research/): research source material for architectural decisions
+- [`docs/superpowers/`](docs/superpowers/): design specs, implementation plans and session handoffs
+- [`CLAUDE.md`](CLAUDE.md): conventions and invariants for AI-assisted development on this repo
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-<sub>Maintainer note: to flip the repo public once §16 fully checks, run `gh repo edit luclacombe/outpost-ai-roguelike --visibility public --accept-visibility-change-consequences`.</sub>
+MIT. See [LICENSE](LICENSE).

@@ -1,3 +1,14 @@
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# Security floors for transitive deps whose parents pin vulnerable ranges.
+# Drop an entry once its parent ships a fixed range (check `pnpm audit`).
+overrides:
+  "brace-expansion@<2": ^1.1.21
+  "brace-expansion@>=3 <5.0.11": ^5.0.11
+  "js-yaml@>=4 <4.3.2": ^4.3.2
+  "nanoid@<3.3.18": ^3.3.18
+  "postcss@<8.5.18": ^8.5.18
+  "source-map-js@<1.2.2": ^1.2.2
+  "ws@>=8 <8.21.0": ^8.21.0
