@@ -159,3 +159,54 @@ def test_reject_alg_confusion_hs256_with_public_key_bytes(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         decode_supabase_jwt(token)
     assert exc.value.status_code == 401
+
+
+# --- Misconfiguration surfaces as 401, not 500 -----------------------------
+#
+# PyJWT raises InvalidKeyError (unusable HS256 secret) and PyJWKSetError
+# (JWKS with no keys) outside the InvalidTokenError tree. Both must still
+# map to 401 so a config slip never turns into a 500 on every request.
+
+
+def test_unusable_hs256_secret_returns_401(monkeypatch):
+    """A PEM public key pasted into SUPABASE_JWT_SECRET makes PyJWT refuse
+    the key at decode time with InvalidKeyError."""
+    from cryptography.hazmat.primitives import serialization
+
+    import app.auth.service as service
+
+    _, pub = _make_es256_keypair()
+    pem = pub.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+    monkeypatch.setattr(service.settings, "SUPABASE_JWT_SECRET", pem)
+    token = jwt.encode(
+        {"sub": "u", "aud": "authenticated", "exp": 9999999999},
+        "some-other-secret-at-least-32-bytes-long",
+        algorithm="HS256",
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_supabase_jwt(token)
+    assert exc.value.status_code == 401
+
+
+def test_empty_jwks_returns_401(monkeypatch):
+    """A JWKS endpoint that serves {"keys": []} raises PyJWKSetError inside
+    PyJWKClient; the real client path runs, only the HTTP fetch is faked."""
+    from jwt import PyJWKClient
+
+    import app.auth.jwks as jwks
+
+    monkeypatch.setattr(jwks, "_client", None)
+    monkeypatch.setattr(PyJWKClient, "fetch_data", lambda self: {"keys": []})
+    priv, _ = _make_es256_keypair()
+    token = jwt.encode(
+        {"sub": "u", "aud": "authenticated", "exp": 9999999999},
+        priv,
+        algorithm="ES256",
+        headers={"kid": "missing"},
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_supabase_jwt(token)
+    assert exc.value.status_code == 401

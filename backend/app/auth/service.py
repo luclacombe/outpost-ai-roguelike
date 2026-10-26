@@ -12,13 +12,13 @@ attacker flips an RS256 token to HS256 and uses the public key as the
 HMAC secret.
 
 All verification failures (expired, bad signature, wrong audience,
-malformed, JWKS fetch failure) surface as HTTP 401. Callers should not
+malformed, JWKS fetch failure or empty set, unusable secret) surface as
+HTTP 401. Callers should not
 have to map the PyJWT exception taxonomy.
 """
 
 import jwt
 from fastapi import HTTPException, status
-from jwt.exceptions import PyJWKClientError
 
 from app.auth.jwks import get_jwks_client
 from app.config import settings
@@ -64,7 +64,8 @@ def decode_supabase_jwt(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     except jwt.ExpiredSignatureError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from e
-    except (jwt.InvalidTokenError, PyJWKClientError) as e:
-        # Base class for bad signature, wrong audience, malformed, plus
-        # JWKS-specific failures (key not found, fetch error).
+    except jwt.PyJWTError as e:
+        # Root of PyJWT's taxonomy: bad signature, wrong audience, malformed,
+        # JWKS failures (key not found, fetch error, empty set) and an
+        # unusable configured secret (InvalidKeyError). None of these may 500.
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e
