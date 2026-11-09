@@ -22,6 +22,15 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
+  // Never refresh on the OAuth callback. auth-js deletes the PKCE
+  // code-verifier cookie whenever it saves a session, so refreshing an
+  // older expired session here strips the verifier before the route
+  // handler can exchange the code ("PKCE code verifier not found").
+  // The callback creates a fresh session anyway.
+  if (request.nextUrl.pathname === "/auth/callback") {
+    return response;
+  }
+
   const supabase = createServerClient(
     supabaseUrl,
     supabaseAnon,

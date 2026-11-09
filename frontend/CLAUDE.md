@@ -127,6 +127,7 @@ Never replace a shadcn primitive with a raw `<div>` for "simplicity."
 - **Client component triggers OAuth.** Server actions don't expose `window.location.origin`, which we need for `redirectTo`. Sign-in is a client `'use client'` component.
 - **Auth gate uses `getUser()`, not `getSession()`.** `getSession()` trusts the cookie; `getUser()` re-validates against Supabase. Always `getUser()` on the server.
 - **Middleware (proxy) skips assets via matcher.** The matcher excludes `_next/*`, image extensions, and fonts — don't widen it without reason; every match runs a Supabase token refresh.
+- **The proxy must not refresh on `/auth/callback`.** auth-js deletes the PKCE `-code-verifier` cookie whenever it saves a session, so refreshing an older expired session there breaks the code exchange ("PKCE code verifier not found") for anyone signing in again. `updateSession` returns early for that path; keep it that way.
 
 ## Supabase env tolerance
 

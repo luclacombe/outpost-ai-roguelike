@@ -2564,6 +2564,10 @@ Any gap → back to fix.
 
 - **Single-turn model tests picked the wrong model.** Symptom: the 2026-10-22 bake-off chose MiMo V2.6 Flash (tied with V4 Pro on 12 single turns, cheapest per call); over 18 whole games it scored 89% of V4 Pro, dropped reactions on 3 turns and cost more than GPT-6 Luna because only 19% of its prompt hit the cache (Luna 95%). Root cause: one cold call measures neither caching nor continuity and voice across turns. Fix: models are chosen on whole games with a blind read and billed cost per game; V4.1 Flash won. Files: `docs/superpowers/specs/2026-10-22-outpost-evolved-design.md` (W1b, §14), `backend/.env.example`, `CLAUDE.md`.
 
+### Live check before job applications (2026-11-09)
+
+- **Signing in again failed with "PKCE code verifier not found".** Symptom: a browser that still held an older, expired session got `/auth/error?reason=exchange_failed` after Google sign-in, yet `/play` worked because the old session survived. Root cause: `proxy.ts` refreshed the expired session on `/auth/callback`; auth-js `_saveSession()` deletes the `-code-verifier` cookie on every save, and the proxy passes that deletion to the route handler, so the exchange had no verifier. First-time visitors never hit it. Fix: `updateSession` skips `/auth/callback`; the callback also sends a user who already holds a valid session on to `next` instead of the error page, and the `next` guard now rejects `//host` and `/\host`. Files: `frontend/lib/supabase/middleware.ts`, `frontend/app/auth/callback/route.ts`.
+
 ---
 
 ## Scope Check (from writing-plans skill)
