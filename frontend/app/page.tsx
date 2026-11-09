@@ -134,13 +134,13 @@ export default function Landing() {
       <footer className="mt-auto flex flex-wrap items-center justify-end gap-4 border-t border-px-border pt-6 text-px-text-dim">
         <div className="flex gap-4 text-sm">
           <Link
-            href="/about"
+            href="/privacy"
             className="font-heading uppercase hover:text-px-text"
           >
-            About
+            Privacy
           </Link>
           <a
-            href="https://github.com/luclacombe/Outpost"
+            href="https://github.com/luclacombe/outpost-ai-roguelike"
             target="_blank"
             rel="noreferrer noopener"
             className="font-heading uppercase hover:text-px-text"
