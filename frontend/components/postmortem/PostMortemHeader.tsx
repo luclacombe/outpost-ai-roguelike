@@ -54,12 +54,16 @@ export function PostMortemHeader({ data, setting }: Props) {
               {data.final_legitimacy}
             </dd>
           </div>
-          <div>
-            <dt className="inline">Cost </dt>
-            <dd className="ml-1 inline font-display text-px-text">
-              {(data.cost_cents / 100).toFixed(2)}¢
-            </dd>
-          </div>
+          {/* Hidden at 0: sub-cent turns round to 0 in the backend total
+              (PLAN Errors & Learnings, "Game cost totals read 0¢"). */}
+          {data.cost_cents > 0 ? (
+            <div>
+              <dt className="inline">Cost </dt>
+              <dd className="ml-1 inline font-display text-px-text">
+                {data.cost_cents}¢
+              </dd>
+            </div>
+          ) : null}
         </dl>
       </div>
 

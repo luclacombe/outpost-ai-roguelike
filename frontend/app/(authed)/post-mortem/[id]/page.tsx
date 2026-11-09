@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CrtOverlay } from "@/components/CrtOverlay";
+import { PostMortemActions } from "@/components/postmortem/PostMortemActions";
 import { PostMortemView } from "@/components/postmortem/PostMortemView";
 import {
   API_BASE_URL,
@@ -88,6 +89,7 @@ export default async function PostMortemPage({
     <>
       <CrtOverlay />
       <PostMortemView data={result.data} />
+      <PostMortemActions shareToken={result.data.share_token} />
     </>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { CrtOverlay } from "@/components/CrtOverlay";
+import { PostMortemActions } from "@/components/postmortem/PostMortemActions";
 import { PostMortemView } from "@/components/postmortem/PostMortemView";
 import {
   API_BASE_URL,
@@ -82,6 +83,7 @@ export default async function SharedPostMortemPage({
     <>
       <CrtOverlay />
       <PostMortemView data={data} />
+      <PostMortemActions shareToken={null} />
     </>
   );
 }

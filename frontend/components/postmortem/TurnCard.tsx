@@ -282,12 +282,14 @@ function StateDelta({
           {turn.legitimacy}
         </dd>
       </div>
-      <div>
-        <dt className="inline">cost </dt>
-        <dd className="ml-1 inline font-display text-px-text">
-          {turn.cost_cents}¢
-        </dd>
-      </div>
+      {turn.cost_cents > 0 ? (
+        <div>
+          <dt className="inline">cost </dt>
+          <dd className="ml-1 inline font-display text-px-text">
+            {turn.cost_cents}¢
+          </dd>
+        </div>
+      ) : null}
       {grievanceItems.map((g) => (
         <div key={g.id}>
           <dt className="inline">{g.name} </dt>
