@@ -54,6 +54,12 @@ export type TurnStreamState = {
   pendingProposals: ProposalPublic[];
   pendingTurnNumber: number | null;
   pendingLogEntry: EventLogEntry | null;
+  /**
+   * The next turn's debate. /decide streams it after the current turn's
+   * narration, before its own event; it waits here so it never renders
+   * under the event it does not belong to.
+   */
+  pendingDebateLines: DebateLine[];
 };
 
 const INITIAL_STATE: TurnStreamState = {
@@ -75,6 +81,7 @@ const INITIAL_STATE: TurnStreamState = {
   pendingProposals: [],
   pendingTurnNumber: null,
   pendingLogEntry: null,
+  pendingDebateLines: [],
 };
 
 type SeedOptions = {
@@ -310,6 +317,7 @@ export function useTurnStream(
       ...s,
       phase: "running",
       debateLines: [],
+      pendingDebateLines: [],
       narration: null,
       error: null,
     }));
@@ -318,7 +326,12 @@ export function useTurnStream(
 
   const submitChoice = useCallback(
     async (proposalId: string) => {
-      setState((s) => ({ ...s, phase: "submitting", error: null }));
+      setState((s) => ({
+        ...s,
+        phase: "submitting",
+        pendingDebateLines: [],
+        error: null,
+      }));
       await consumeStream(
         decideUrl,
         "POST",
@@ -345,7 +358,7 @@ function promotePendingTurn(s: TurnStreamState): TurnStreamState {
     proposals: s.pendingProposals,
     turnNumber: s.pendingTurnNumber ?? s.turnNumber,
     narration: null,
-    debateLines: [],
+    debateLines: s.pendingDebateLines,
     eventLog: s.pendingLogEntry
       ? [...s.eventLog, s.pendingLogEntry]
       : s.eventLog,
@@ -353,6 +366,7 @@ function promotePendingTurn(s: TurnStreamState): TurnStreamState {
     pendingProposals: [],
     pendingTurnNumber: null,
     pendingLogEntry: null,
+    pendingDebateLines: [],
   };
 }
 
@@ -366,9 +380,19 @@ export function applyEvent(
 ): TurnStreamState {
   switch (evt.type) {
     case "agent_spoke":
+      // On /decide every agent_spoke is the NEXT turn's debate (the graph
+      // runs resolve -> narrate -> advance -> next debate -> pause), so it
+      // is held until that turn's event is shown.
+      if (s.phase === "submitting" || s.phase === "advancing") {
+        return {
+          ...s,
+          phase: "advancing",
+          pendingDebateLines: appendDebateLine(s.pendingDebateLines, evt.data),
+        };
+      }
       return {
         ...s,
-        phase: s.phase === "submitting" ? "advancing" : "running",
+        phase: "running",
         debateLines: appendDebateLine(s.debateLines, evt.data),
       };
     case "decision_applied":
@@ -438,7 +462,8 @@ export function applyEvent(
         turnNumber: evt.data.turn_number,
         currentEvent: event,
         proposals: evt.data.proposals,
-        debateLines: isNewTurn ? [] : s.debateLines,
+        debateLines: isNewTurn ? s.pendingDebateLines : s.debateLines,
+        pendingDebateLines: [],
         narration: isNewTurn ? null : s.narration,
         eventLog: logEntry ? [...s.eventLog, logEntry] : s.eventLog,
       };
